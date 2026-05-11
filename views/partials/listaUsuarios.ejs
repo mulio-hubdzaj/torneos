@@ -1,0 +1,48 @@
+<!-- Formulario de búsqueda -->
+<!-- partials/-->
+
+
+<div id="usuariosTable">
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Seleccionar</th>
+        <th>Nombre</th>
+        <th>Correo</th>
+        <th>Documento</th>
+        <th>Rol actual</th>
+        <th>Vinculado</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% usuarios.forEach(u => { %>
+        <tr>
+          <td>
+            <input type="checkbox" name="delegados[]" value="<%= u.id_usuario %>"
+              <%= u.puede_asignar_delegado ? '' : 'disabled' %>>
+          </td>
+          <td><%= u.nombre %></td>
+          <td><%= u.correo %></td>
+          <td><%= u.documento %></td>
+          <td>
+            <% if (u.rol_id == 1) { %> Espectador <% } %>
+            <% if (u.rol_id == 2) { %> Delegado <% } %>
+            <% if (u.rol_id == 3) { %> Admin <% } %>
+            <% if (u.rol_id == 99) { %> SuperAdmin <% } %>
+          </td>
+          <td>
+            <% if (u.puede_asignar_delegado) { %>
+              <span class="badge bg-secondary">Libre</span>
+            <% } else if (u.vinculo && u.vinculo.startsWith('Delegado')) { %>
+              <span class="badge bg-success"><%= u.vinculo %></span>
+            <% } else if (u.vinculo && u.vinculo.startsWith('Jugador')) { %>
+              <span class="badge bg-info"><%= u.vinculo %></span>
+            <% } else { %>
+              <span class="badge bg-warning text-dark">No disponible</span>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

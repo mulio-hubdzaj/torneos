@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ver equipo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .equipo-logo {
+      width: 96px;
+      height: 96px;
+      object-fit: contain;
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid rgba(0,0,0,.1);
+    }
+    .jugador-numero {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      background: #212529;
+      color: #fff;
+    }
+  </style>
+</head>
+<body class="bg-stadium">
+  <nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <span class="navbar-brand fw-bold">Ver equipo</span>
+      <a href="<%= returnUrl %>" class="btn btn-outline-light btn-sm">
+        &larr; Atras
+      </a>
+    </div>
+  </nav>
+
+  <main class="container mt-4">
+    <div class="card shadow">
+      <div class="card-header bg-secondary text-white">
+        <div class="d-flex align-items-center gap-3">
+          <img src="<%= equipo.icono || '/images/default_team.png' %>" alt="" class="equipo-logo">
+          <div>
+            <h4 class="mb-1"><%= equipo.nombre %></h4>
+            <span class="badge <%= equipo.estado ? 'text-bg-success' : 'text-bg-secondary' %>">
+              <%= equipo.estado ? 'Activo' : 'Inactivo' %>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <h5>Delegados</h5>
+        <ul class="list-group mb-4">
+          <% if (delegados && delegados.length > 0) { %>
+            <% delegados.forEach(del => { %>
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span><%= del.Usuario ? del.Usuario.nombre : del.id_usuario %></span>
+                <span class="badge text-bg-light border"><%= del.rol || del.rol_equipo || 'delegado' %></span>
+              </li>
+            <% }) %>
+          <% } else { %>
+            <li class="list-group-item text-muted">No hay delegados asignados</li>
+          <% } %>
+        </ul>
+
+        <h5>Jugadores</h5>
+        <div class="table-responsive mb-4">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 64px;">Nro.</th>
+                <th>Jugador</th>
+                <th>Vinculo</th>
+                <th>Estado</th>
+                <th>Capitan</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (jugadores && jugadores.length > 0) { %>
+                <% jugadores.forEach(j => { %>
+                  <% const vinculo = j.JugadorEquipo || {}; %>
+                  <tr>
+                    <td><span class="jugador-numero"><%= vinculo.numero_camiseta || '-' %></span></td>
+                    <td>
+                      <strong><%= j.nombre %> <%= j.apellido %></strong>
+                      <% if (j.documento) { %>
+                        <small class="text-muted d-block"><%= j.documento %></small>
+                      <% } %>
+                    </td>
+                    <td><%= vinculo.tipo_vinculo || 'titular' %></td>
+                    <td>
+                      <span class="badge <%= vinculo.estado === false ? 'text-bg-warning' : 'text-bg-primary' %>">
+                        <%= vinculo.estado === false ? 'Inactivo' : 'Activo' %>
+                      </span>
+                    </td>
+                    <td>
+                      <% if (vinculo.capitan) { %>
+                        <span class="badge text-bg-success">Capitan</span>
+                      <% } else { %>
+                        <span class="text-muted">-</span>
+                      <% } %>
+                    </td>
+                  </tr>
+                <% }) %>
+              <% } else { %>
+                <tr><td colspan="5" class="text-muted">No hay jugadores asignados</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="text-end">
+          <a href="<%= returnUrl %>" class="btn btn-dark">Cerrar</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

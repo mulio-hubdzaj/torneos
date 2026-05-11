@@ -1,0 +1,360 @@
+administrar ejs
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Administrar Equipo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body.bg-stadium {
+      display: block;
+      align-items: initial;
+      justify-content: initial;
+      color: #000;
+    }
+
+    .administrar-equipo-wrap {
+      padding-top: 42px;
+      padding-bottom: 48px;
+    }
+
+    .administrar-equipo-card {
+      max-width: none;
+      text-align: left;
+    }
+
+    .administrar-equipo-card h4,
+    .administrar-equipo-card h5 {
+      text-align: center;
+    }
+
+    body[data-rol-id="2"] form[action="/equipos/desvincularDelegado"],
+    body[data-rol-id="2"] button[onclick^="abrirModalDelegados"],
+    body[data-rol-id="2"] form[action="/equipos/asignarDelegados"],
+    body[data-rol-id="2"] form[action="/equipos/desvincularJugador"],
+    body[data-rol-id="2"] .btn-prestamo {
+      display: none !important;
+    }
+
+    body[data-rol-id="2"] table.table-sm th:nth-child(9),
+    body[data-rol-id="2"] table.table-sm td:has(form[action="/equipos/desvincularJugador"]) {
+      display: none !important;
+    }
+  </style>
+</head>
+<body class="bg-stadium" data-rol-id="<%= rol_id %>">
+  <% const esDelegado = Number(rol_id) === 2; %>
+
+  <!-- Bloque de alertas -->
+  <% if (messages.error && messages.error.length > 0) { %>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      <%= messages.error[0] %>
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  <% } %>
+  <% if (messages.success && messages.success.length > 0) { %>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+      <%= messages.success[0] %>
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  <% } %>
+
+  <!-- Cabecera negra con botón Atrás -->
+  <nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <span class="navbar-brand fw-bold">Administrar Equipo</span>
+      <a href="/torneos/gestionar/<%= equipo.id_torneo %>#equipos" class="btn btn-outline-light btn-sm">
+        ← Atrás
+      </a>
+    </div>
+  </nav>
+
+  <div class="container administrar-equipo-wrap">
+    <div class="card shadow administrar-equipo-card">
+      <div class="card-header bg-primary text-white">
+        <h4 class="mb-0"><%= equipo.nombre %></h4>
+      </div>
+      <div class="card-body">
+
+        <!-- Icono -->
+        <h5>Icono del equipo</h5>
+        <% if (equipo.icono) { %>
+          <img src="<%= equipo.icono %>" alt="Icono" class="img-thumbnail mb-2" style="max-width:100px;">
+        <% } else { %>
+          <p class="text-muted">Sin icono asignado</p>
+        <% } %>
+       <form action="/equipos/<%= equipo.id_equipo %>/icono" method="POST" enctype="multipart/form-data">
+  <input type="file" name="icono" accept="image/*">
+  <button type="submit">Actualizar Icono</button>
+</form>
+
+
+
+
+        <hr>
+
+<!-- Delegados -->
+<h5>Delegados</h5>
+<ul class="list-group mb-2">
+  <% if (equipo.Delegados && equipo.Delegados.length > 0) { %>
+    <% equipo.Delegados.forEach(del => { %>
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>
+          <%= del.Usuario ? del.Usuario.nombre : del.id_usuario %>
+          - Documento: <%= del.Usuario ? del.Usuario.documento : '' %>
+          (<%= del.rol %>)
+        </span>
+        <% if (!esDelegado) { %>
+        <form action="/equipos/desvincularDelegado" method="POST" style="display:inline;">
+          <input type="hidden" name="id_usuario" value="<%= del.Usuario ? del.Usuario.id_usuario : del.id_usuario %>">
+          <input type="hidden" name="id_equipo" value="<%= equipo.id_equipo %>">
+          <button type="submit" class="btn btn-sm btn-danger">✖</button>
+        </form>
+        <% } %>
+      </li>
+    <% }) %>
+  <% } else { %>
+    <li class="list-group-item text-muted">No hay delegados asignados</li>
+  <% } %>
+</ul>
+<!-- Botón para abrir modal de asignar delegados -->
+<% if (!esDelegado) { %>
+<button type="button" class="btn btn-sm btn-success" onclick="abrirModalDelegados(<%= equipo.id_equipo %>)">
+  Asignar Delegado
+</button>
+<% } %>
+
+<hr>
+
+<h5>Jugadores</h5>
+<form action="/equipos/actualizarJugadores" method="POST" id="formJugadores"></form>
+  <input type="hidden" name="id_equipo" value="<%= equipo.id_equipo %>" form="formJugadores">
+  <div class="table-responsive">
+  <table class="table table-sm">
+    <thead>
+      <tr>
+        <th>Documento</th>
+        <th>Nombre</th>
+        <th>Apellido</th>
+        <th>Número camiseta</th>
+        <th>Tipo vínculo</th>
+        <th>Capitán</th>
+        <th>Fecha vinculación</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (jugadores && jugadores.length > 0) { %>
+        <% jugadores.forEach(j => { %>
+          <tr>
+            <td><%= j.documento %></td>
+            <td>
+              <%= j.nombre %>
+              <% if (Number(j.sancion_partidos_restantes || 0) > 0) { %>
+                <span class="badge text-bg-danger ms-1">Suspendido <%= j.sancion_partidos_restantes %> fecha</span>
+              <% } %>
+              <% if (j.sancion_observaciones) { %>
+                <small class="text-muted d-block"><%= j.sancion_observaciones %></small>
+              <% } %>
+            </td>
+            <td><%= j.apellido %></td>
+            <td>
+              <input type="number" name="numero_camiseta_<%= j.id_jugador %>" 
+                     value="<%= j.JugadorEquipo.numero_camiseta || '' %>" 
+                     class="form-control form-control-sm" 
+                     form="formJugadores"
+                     oninput="habilitarGuardar()">
+            </td>
+            <td><%= j.tipo_vinculo || 'titular' %></td>
+     <td>
+  <input type="checkbox" 
+         name="capitan" 
+         value="<%= j.id_jugador %>" 
+         <%= j.JugadorEquipo.capitan ? 'checked' : '' %> 
+         form="formJugadores"
+         onclick="seleccionarCapitan(this); habilitarGuardar();">
+</td>
+
+
+
+
+
+
+            <td><%= j.JugadorEquipo.fecha_inicio || '-' %></td>
+          <td>
+          <% if (j.JugadorEquipo && j.JugadorEquipo.estado === false) { %>
+            <span class="badge bg-warning text-dark">Deshabilitado</span>
+          <% } else { %>
+            <span class="badge bg-primary">Habilitado</span>
+          <% } %>
+        </td>
+
+            <td>
+              <form action="/equipos/desvincularJugador" method="POST" style="display:inline;">
+                <input type="hidden" name="id_jugador" value="<%= j.id_jugador %>">
+                <input type="hidden" name="id_equipo" value="<%= equipo.id_equipo %>">
+                <button type="submit" class="btn btn-sm btn-danger">✖</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      <% } else { %>
+        <tr><td colspan="9" class="text-muted">No hay jugadores asignados</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+  </div>
+
+  <button type="submit" class="btn btn-primary" id="btnGuardarCambios" form="formJugadores" disabled>Guardar cambios</button>
+  <button type="button" class="btn btn-secondary btn-prestamo" disabled>Agregar jugador de préstamo</button>
+
+<button type="button" class="btn btn-sm btn-success" onclick="abrirModalJugadores(<%= equipo.id_equipo %>)">
+  Asignar Jugador
+</button>
+
+
+  <!-- Modal Delegados -->
+  <form action="/equipos/asignarDelegados" method="POST">
+    <input type="hidden" name="id_equipo" id="id_equipo_delegados">
+    <div class="modal fade" id="modalAsignarDelegado" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header bg-dark text-white">
+            <h5 class="modal-title">Asignar Delegados</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <!-- Buscador fijo en el modal -->
+            <div class="mb-3 d-flex">
+              <input type="text" id="searchQuery" class="form-control me-2" placeholder="Buscar por Documento o nombre">
+              <button type="button" class="btn btn-primary" onclick="buscarUsuarios()">Buscar</button>
+            </div>
+
+            <!-- Contenedor de la tabla -->
+            <div id="usuariosTable">
+              <%- include('../partials/listaUsuarios', { usuarios: usuarios }) %>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-success">Guardar</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+ <input type="hidden" name="id_torneo" value="<%= id_torneo %>">
+
+<script>
+  function buscarUsuarios() {
+    const query = document.getElementById('searchQuery').value;
+    const idTorneo = document.querySelector('input[name="id_torneo"]').value; // 👈 leer el hidden
+
+    const params = new URLSearchParams();
+    params.append('query', query);
+    params.append('id_torneo', idTorneo); // 👈 enviar también el torneo
+
+    fetch('/equipos/buscarUsuariosEntidad', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    })
+    .then(res => res.text())
+    .then(html => {
+      document.getElementById('usuariosTable').innerHTML = html;
+    })
+    .catch(err => console.error('Error en búsqueda:', err));
+  }
+</script>
+
+
+  <!-- Modal Jugadores -->
+  <!-- Modal Jugadores -->
+<form action="/equipos/asignarJugadores" method="POST">
+  <input type="hidden" name="id_equipo" id="id_equipo_jugadores">
+  <input type="hidden" name="id_torneo" value="<%= id_torneo %>">
+  <div class="modal fade" id="modalAsignarJugador" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title">Asignar Jugadores</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Buscador fijo en el modal -->
+          <div class="mb-3 d-flex">
+            <input type="text" id="searchQueryJugadores" class="form-control me-2" placeholder="Buscar por Documento o nombre">
+            <button type="button" class="btn btn-primary" onclick="buscarJugadores()">Buscar</button>
+          </div>
+
+          <!-- Contenedor de la tabla -->
+          <div id="jugadoresTable">
+            <%- include('../partials/listaJugadores', { jugadores: jugadores }) %>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-success">Guardar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+<script>
+  function buscarJugadores() {
+    const query = document.getElementById('searchQueryJugadores').value;
+    const idTorneo = document.querySelector('input[name="id_torneo"]').value;
+
+    const params = new URLSearchParams();
+    params.append('query', query);
+    params.append('id_torneo', idTorneo);
+
+    fetch('/equipos/buscarJugadores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    })
+    .then(res => res.text())
+    .then(html => {
+      document.getElementById('jugadoresTable').innerHTML = html;
+    })
+    .catch(err => console.error('Error en búsqueda:', err));
+  }
+</script>
+
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function abrirModalDelegados(id_equipo) {
+      document.getElementById('id_equipo_delegados').value = id_equipo;
+      var modal = new bootstrap.Modal(document.getElementById('modalAsignarDelegado'));
+      modal.show();
+    }
+    function abrirModalJugadores(id_equipo) {
+      document.getElementById('id_equipo_jugadores').value = id_equipo;
+      var modal = new bootstrap.Modal(document.getElementById('modalAsignarJugador'));
+      modal.show();
+      buscarJugadores(); // 👈 dispara la búsqueda al abrirs
+    }
+  </script>
+
+
+<script>
+  function seleccionarCapitan(checkbox) {
+    document.querySelectorAll('input[name="capitan"]').forEach(cb => {
+      if (cb !== checkbox) cb.checked = false;
+    });
+  }
+
+  function habilitarGuardar() {
+    document.getElementById('btnGuardarCambios').disabled = false;
+  }
+</script>
+
+
+
+</body>
+</html>

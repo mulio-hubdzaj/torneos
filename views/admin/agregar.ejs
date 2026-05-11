@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Agregar Entidad</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Forzar visualmente mayúsculas */
+    input[type="text"] {
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body class="container mt-4">
+  <h1>Agregar Entidad</h1>
+<!-- Bloque de mensajes flash -->
+<% if (messages) { %>
+  <% if (messages.success && messages.success.length > 0) { %>
+    <div class="alert alert-success"><%= messages.success[0] %></div>
+  <% } %>
+  <% if (messages.danger && messages.danger.length > 0) { %>
+    <div class="alert alert-danger"><%= messages.danger[0] %></div>
+  <% } %>
+  <% if (messages.info && messages.info.length > 0) { %>
+    <div class="alert alert-info"><%= messages.info[0] %></div>
+  <% } %>
+<% } %>
+
+
+
+  <!-- Formulario de creación -->
+  <form action="/admin/nueva" method="POST">
+    <div class="mb-3">
+      <label for="codigo" class="form-label">Código:</label>
+      <input type="text" id="codigo" name="codigo" class="form-control" required>
+    </div>
+    <div class="mb-3">
+      <label for="descripcion" class="form-label">Descripción:</label>
+      <input type="text" id="descripcion" name="descripcion" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-success">Crear entidad</button>
+    <a href="/admin" class="btn btn-secondary">Cancelar</a>
+  </form>
+
+  <script>
+    // Forzar que lo que se escriba se convierta a mayúsculas
+    document.getElementById('codigo').addEventListener('input', function() {
+      this.value = this.value.toUpperCase();
+    });
+    document.getElementById('descripcion').addEventListener('input', function() {
+      this.value = this.value.toUpperCase();
+    });
+  </script>
+</body>
+</html>

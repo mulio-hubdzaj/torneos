@@ -1,0 +1,74 @@
+<%- include('../partials/header') %>
+
+<div class="container mt-4">
+  <div class="card bg-light bg-opacity-75 p-4 shadow">
+    <h3 class="mb-3">Editar Jugador</h3>
+
+     <!--  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"> -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+    <!-- 🔔 Bloque de mensajes -->
+    <% if (messages && messages.error && messages.error.length > 0) { %>
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <%= messages.error[0] %>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    <% } %>
+
+    <% if (messages && messages.success && messages.success.length > 0) { %>
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <%= messages.success[0] %>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    <% } %>
+
+    <form action="/jugadores/editar/<%= jugador.id_jugador %>" method="POST">
+      <!-- Datos globales del jugador -->
+      <div class="mb-3">
+        <label for="nombre" class="form-label">Nombre</label>
+        <input type="text" class="form-control text-uppercase" id="nombre" name="nombre" 
+               value="<%= jugador.nombre %>" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="apellido" class="form-label">Apellido</label>
+        <input type="text" class="form-control text-uppercase" id="apellido" name="apellido" 
+               value="<%= jugador.apellido %>" required>
+      </div>
+
+      <div class="mb-3">
+        <label for="documento" class="form-label">Documento</label>
+        <input type="text" class="form-control text-uppercase" id="documento" name="documento" 
+               value="<%= jugador.documento %>" readonly>
+      </div>
+
+      <div class="mb-3">
+        <label for="fecha_nacimiento" class="form-label">Fecha de Nacimiento</label>
+        <input type="date" class="form-control" id="fecha_nacimiento" name="fecha_nacimiento" 
+               value="<%= jugador.fecha_nacimiento ? String(jugador.fecha_nacimiento).slice(0, 10) : '' %>">
+      </div>
+
+      <!-- Datos específicos del vínculo en el torneo -->
+      <div class="mb-3">
+        <label for="estado" class="form-label">Estado en el torneo</label>
+        <select class="form-select" id="estado" name="estado">
+          <option value="true" <%= vinculo && vinculo.estado ? 'selected' : '' %>>Activo</option>
+          <option value="false" <%= vinculo && !vinculo.estado ? 'selected' : '' %>>Inactivo</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+  <label for="observaciones" class="form-label">Observaciones</label>
+  <textarea class="form-control text-uppercase" id="observaciones" name="observaciones"><%= vinculo && vinculo.observaciones ? vinculo.observaciones : '' %></textarea>
+</div>
+
+
+      <div class="text-end">
+        <button type="submit" class="btn btn-success">Guardar</button>
+        <a href="/torneos/gestionar/<%= torneo_id %>#jugadores" class="btn btn-secondary">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<%- include('../partials/footer') %>

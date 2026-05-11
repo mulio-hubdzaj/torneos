@@ -1,0 +1,40 @@
+<!-- partials/listaJugadores-->
+
+<div id="jugadoresTable">
+  <table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Seleccionar</th>
+      <th>Nombre</th>
+      <th>Documento</th>
+      <th>Estado</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% if (jugadores && jugadores.length > 0) { %>
+      <% jugadores.forEach(j => { %>
+        <tr>
+          <td>
+            <input type="checkbox" name="jugadores[]" value="<%= j.id_jugador %>"
+              <%= j.deshabilitar_checkbox ? 'disabled' : '' %> >
+          </td>
+          <td><%= j.nombre %></td>
+          <td><%= j.documento %></td>
+          <td>
+            <% if (j.estado_vinculo === false) { %>
+              <span class="badge bg-danger">Desactivado</span>
+            <% } else if (j.vinculo && j.vinculo !== 'Libre') { %>
+              <span class="badge bg-success"><%= j.vinculo %></span>
+            <% } else { %>
+              <span class="badge bg-secondary">Libre</span>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    <% } else { %>
+      <tr><td colspan="4" class="text-muted">No se encontraron jugadores</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+</div>

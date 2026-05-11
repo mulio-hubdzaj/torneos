@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Editar Torneo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Forzar visualmente mayúsculas */
+    input[type="text"] {
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body class="container mt-4">
+  <h1>Editar Torneo</h1>
+
+  <!-- Bloque de mensajes flash -->
+  <% if (messages && messages.success && messages.success.length > 0) { %>
+    <div class="alert alert-success"><%= messages.success[0] %></div>
+  <% } %>
+  <% if (messages && messages.error && messages.error.length > 0) { %>
+    <div class="alert alert-danger"><%= messages.error[0] %></div>
+  <% } %>
+
+  <!-- Formulario de edición -->
+  <form action="/torneos/editar/<%= torneo.id_torneo %>" method="POST">
+    <div class="mb-3">
+      <label for="nombre_torneo" class="form-label">Nombre del Torneo:</label>
+      <input type="text" id="nombre_torneo" name="nombre_torneo" class="form-control" 
+             value="<%= torneo.nombre_torneo %>" required>
+    </div>
+    <div class="mb-3">
+      <label for="temporada" class="form-label">Temporada:</label>
+      <input type="text" id="temporada" name="temporada" class="form-control" 
+             value="<%= torneo.temporada %>" required>
+    </div>
+    <div class="mb-3">
+      <label for="fecha_inicio" class="form-label">Fecha de Inicio:</label>
+      <input type="date" id="fecha_inicio" name="fecha_inicio" class="form-control" 
+             value="<%= torneo.fecha_inicio ? torneo.fecha_inicio.toISOString().split('T')[0] : '' %>">
+    </div>
+    <div class="mb-3 form-check">
+      <input type="checkbox" class="form-check-input" id="estado" name="estado" 
+             <%= torneo.estado ? 'checked' : '' %>>
+      <label class="form-check-label" for="estado">Activo</label>
+    </div>
+    <button type="submit" class="btn btn-success">Guardar cambios</button>
+    <a href="/torneos" class="btn btn-secondary">Cancelar</a>
+  </form>
+
+  <script>
+    // Forzar mayúsculas en nombre y temporada
+    document.getElementById('nombre_torneo').addEventListener('input', function() {
+      this.value = this.value.toUpperCase();
+    });
+    document.getElementById('temporada').addEventListener('input', function() {
+      this.value = this.value.toUpperCase();
+    });
+  </script>
+</body>
+</html>

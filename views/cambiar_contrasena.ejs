@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Cambiar contraseña</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="d-flex justify-content-center align-items-center vh-100">
+  <div class="card shadow p-4" style="min-width: 360px; max-width: 420px;">
+    <h1 class="mb-3 text-center">Cambiar contraseña</h1>
+    <p class="text-muted text-center">Ingrese una nueva contraseña para continuar.</p>
+
+    <% if (messages) { %>
+      <% if (messages.info && messages.info.length > 0) { %>
+        <div class="alert alert-info"><%= messages.info[0] %></div>
+      <% } %>
+      <% if (messages.danger && messages.danger.length > 0) { %>
+        <div class="alert alert-danger"><%= messages.danger[0] %></div>
+      <% } %>
+      <% if (messages.success && messages.success.length > 0) { %>
+        <div class="alert alert-success"><%= messages.success[0] %></div>
+      <% } %>
+    <% } %>
+
+    <form action="/cambiar-contrasena" method="POST">
+      <div class="mb-3">
+        <label for="contrasena" class="form-label">Nueva contraseña</label>
+        <div class="input-group">
+          <input type="password" id="contrasena" name="contrasena"
+                 class="form-control password-segura"
+                 pattern="(?=.{8,})(?=(?:.*\d){2,})(?=.*[^A-Za-z0-9\s]).+"
+                 title="Minimo 8 caracteres, 1 caracter especial y 2 numeros"
+                 required>
+          <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('contrasena', this)" aria-label="Ver contrasena">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+        <div class="progress mt-2" style="height: 8px;">
+          <div class="progress-bar bg-danger" id="passwordProgress" style="width: 0%;"></div>
+        </div>
+        <div class="small mt-2" id="passwordChecklist">
+          <div data-req="longitud" class="text-danger">Al menos 8 caracteres</div>
+          <div data-req="numeros" class="text-danger">Al menos 2 numeros</div>
+          <div data-req="especial" class="text-danger">Al menos 1 caracter especial</div>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="confirmar_contrasena" class="form-label">Confirmar contraseña</label>
+        <div class="input-group">
+          <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" class="form-control password-segura" minlength="8" required>
+          <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('confirmar_contrasena', this)" aria-label="Ver confirmacion">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary w-100">Guardar contraseña</button>
+    </form>
+  </div>
+  <script>
+    function togglePassword(inputId, button) {
+      const input = document.getElementById(inputId);
+      const icon = button.querySelector('i');
+      const mostrar = input.type === 'password';
+      input.type = mostrar ? 'text' : 'password';
+      icon.className = mostrar ? 'bi bi-eye-slash' : 'bi bi-eye';
+    }
+
+    function actualizarSeguridadPassword() {
+      const input = document.getElementById('contrasena');
+      const progress = document.getElementById('passwordProgress');
+      const valor = input?.value || '';
+      const requisitos = {
+        longitud: valor.length >= 8,
+        numeros: (valor.match(/\d/g) || []).length >= 2,
+        especial: /[^A-Za-z0-9\s]/.test(valor)
+      };
+      const cumplidos = Object.values(requisitos).filter(Boolean).length;
+      const porcentaje = Math.round((cumplidos / Object.keys(requisitos).length) * 100);
+
+      Object.entries(requisitos).forEach(([key, ok]) => {
+        const item = document.querySelector(`#passwordChecklist [data-req="${key}"]`);
+        if (!item) return;
+        item.classList.toggle('text-success', ok);
+        item.classList.toggle('text-danger', !ok);
+        item.textContent = item.textContent.replace(/^(OK|NO)\s*/, '');
+      });
+
+      if (progress) {
+        progress.style.width = `${porcentaje}%`;
+        progress.className = `progress-bar ${porcentaje < 50 ? 'bg-danger' : (porcentaje < 100 ? 'bg-warning' : 'bg-success')}`;
+      }
+    }
+
+    document.getElementById('contrasena')?.addEventListener('input', actualizarSeguridadPassword);
+    actualizarSeguridadPassword();
+  </script>
+</body>
+</html>

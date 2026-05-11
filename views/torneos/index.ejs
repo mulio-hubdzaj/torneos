@@ -1,0 +1,4053 @@
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gestión de Torneos</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const hash = window.location.hash;
+      const rolId = Number(<%= Number(rol_id || 0) %>);
+      const hashesBloqueados = rolId === 1
+        ? ['#grupos', '#equipos', '#items', '#usuarios', '#finanzas']
+        : (rolId === 2 ? ['#grupos', '#items', '#usuarios'] : []);
+
+      if (hashesBloqueados.includes(hash)) {
+        window.location.hash = '#torneos';
+        return;
+      }
+
+      if (hash) {
+        const triggerEl = document.querySelector(`a[href="${hash}"]`);
+        if (triggerEl) {
+          const tab = new bootstrap.Tab(triggerEl);
+          tab.show();
+        }
+      }
+
+      const fechaActiva = new URLSearchParams(window.location.search).get('fecha');
+      if (fechaActiva) {
+        const fechaTrigger = document.getElementById(`fecha-${fechaActiva}-tab`);
+        if (fechaTrigger) {
+          const fechaTab = new bootstrap.Tab(fechaTrigger);
+          fechaTab.show();
+        }
+      }
+    });
+  </script>
+</head>
+
+<body class="bg-stadium">
+
+  <!-- Barra superior fija -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <div class="navbar-brand fw-bold me-4 py-0">
+        <div>Panel de Torneos</div>
+        <div class="small fw-normal text-warning lh-sm">
+          <i class="bi bi-building"></i>
+          <%= entidadActual ? (entidadActual.codigo || ('Entidad #' + entityId)) : ('Entidad #' + entityId) %>
+        </div>
+      </div>
+      <ul class="nav nav-tabs me-auto" role="tablist">
+
+
+        <li class="nav-item">
+          <a class="nav-link <%= (rol_id == 1 || rol_id == 2) ? 'active' : '' %>" 
+             id="torneos-tab" data-bs-toggle="tab" href="#torneos" role="tab">TORNEOS</a>
+        </li>
+
+
+        <% if (rol_id == 3 || rol_id == 99) { %>
+          <li class="nav-item">
+            <a class="nav-link active" 
+               id="grupos-tab" data-bs-toggle="tab" href="#grupos" role="tab">Grupos</a>
+          </li>
+        <% } %>
+
+        <li class="nav-item">
+          <a class="nav-link" id="jugadores-tab" data-bs-toggle="tab" href="#jugadores" role="tab">Jugadores</a>
+        </li>
+        <% if (rol_id == 2 || rol_id == 3 || rol_id == 99) { %>
+          <li class="nav-item">
+            <a class="nav-link" id="equipos-tab" data-bs-toggle="tab" href="#equipos" role="tab">Equipos</a>
+          </li>
+        <% } %>
+        <li class="nav-item">
+          <a class="nav-link" id="partidos-tab" data-bs-toggle="tab" href="#partidos" role="tab">Partidos</a>
+        </li>
+        <% if (rol_id != 1) { %>
+          <li class="nav-item">
+            <a class="nav-link" id="finanzas-tab" data-bs-toggle="tab" href="#finanzas" role="tab">Finanzas</a>
+          </li>
+        <% } %>
+        <li class="nav-item">
+          <a class="nav-link" id="estadisticas-tab" data-bs-toggle="tab" href="#estadisticas" role="tab">Estadísticas</a>
+        </li>
+        <% if (rol_id == 3 || rol_id == 99) { %>
+          <li class="nav-item">
+            <a class="nav-link" id="items-tab" data-bs-toggle="tab" href="#items" role="tab">Items</a>
+          </li>
+        <% } %>
+        <% if (rol_id == 3 || rol_id == 99) { %>
+          <li class="nav-item">
+            <a class="nav-link" id="usuarios-tab" data-bs-toggle="tab" href="#usuarios" role="tab">Usuarios</a>
+          </li>
+        <% } %>
+      </ul>
+
+      <!-- Botones de navegación a la derecha -->
+      <div class="d-flex ms-auto">
+        <% if (rol_id != 1) { %>
+          <a href="/entidad/gestionar/<%= entityId %>" class="btn btn-success btn-sm me-2">Ir a Torneos</a>
+        <% } %>
+        <% if (rol_id == 99) { %>
+          <a href="/admin" class="btn btn-success btn-sm me-2">Ir a Entidades</a>
+        <% } %>
+        <a href="/logout" class="btn btn-success btn-sm">Cerrar sesión</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Bloque de alertas arriba -->
+ <% if (messages.danger && messages.danger.length > 0) { %>
+  <div class="alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3"
+       style="z-index:1050; max-width:600px;" role="alert">
+    <%= messages.danger[0] %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+<% } %>
+
+<% if (messages.success && messages.success.length > 0) { %>
+  <div class="alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3"
+       style="z-index:1050; max-width:600px;" role="alert">
+    <%= messages.success[0] %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+<% } %>
+
+<% if (messages.info && messages.info.length > 0) { %>
+  <div class="alert alert-info alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3"
+       style="z-index:1050; max-width:600px;" role="alert">
+    <%= messages.info[0] %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+<% } %>
+
+<% if (messages.warning && messages.warning.length > 0) { %>
+  <div class="alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3"
+       style="z-index:1050; max-width:600px;" role="alert">
+    <%= messages.warning[0] %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+<% } %>
+
+
+  <!-- Contenido de pestañas -->
+  <div class="container mt-5 tab-content">
+
+  <!-- TORNEOS -->
+
+    <div class="tab-pane fade <%= (rol_id == 1 || rol_id == 2) ? 'show active' : '' %>" 
+     id="torneos" role="tabpanel">
+
+      <h3 class="text-white">Selección de Torneos</h3>
+      <ul class="list-group mb-3">
+        <li class="list-group-item fw-bold text-muted">Todos los torneos</li>
+        <% torneos.forEach(function(t) { %>
+          <li class="list-group-item d-flex justify-content-between align-items-center <%= (selectedTorneo == t.id_torneo ? 'active' : '') %>">
+            <a href="/torneos/gestionar/<%= t.id_torneo %>" class="text-decoration-none <%= (selectedTorneo == t.id_torneo ? 'text-white' : 'text-dark') %>">
+              <strong><%= t.nombre_torneo %></strong> - <%= t.temporada %>
+            </a>
+            <% if (rol_id == 3 || rol_id == 99) { %>
+              <button type="button"
+                      class="btn btn-sm <%= (selectedTorneo == t.id_torneo ? 'btn-light' : 'btn-outline-primary') %>"
+                      data-id="<%= t.id_torneo %>"
+                      data-nombre="<%= t.nombre_torneo %>"
+                      data-portada="<%= t.portada || '' %>"
+                      onclick="abrirModalPersonalizarTorneo(this)">
+                <i class="bi bi-image"></i> Personalizar
+              </button>
+            <% } %>
+          </li>
+        <% }); %>
+      </ul>
+      <% if (selectedTorneo) { %>
+        <p class="text-white">Torneo seleccionado: <%= torneo.nombre_torneo %> (<%= torneo.temporada %>)</p>
+        <% if (torneo.descripcion) { %>
+          <p class="text-muted"><%= torneo.descripcion %></p>
+        <% } %>
+      <% } else { %>
+        <p class="text-muted">Seleccione un torneo para ver detalles.</p>
+      <% } %>
+    </div>
+
+
+    
+    <!-- Grupos -->
+    <!-- Grupos -->
+<div class="tab-pane fade <%= (rol_id == 3 || rol_id == 99) ? 'show active' : '' %>" 
+     id="grupos" role="tabpanel">
+  <h3 class="text-white">Grupos del Torneo</h3>
+
+  <!-- Crear grupo -->
+  <form action="/grupos/crear" method="POST" class="mb-3">
+    <div class="input-group">
+      <input type="text" name="nombre_grupo" class="form-control text-uppercase"
+             placeholder="Nuevo grupo" required
+             oninput="this.value = this.value.toUpperCase()">
+      <input type="hidden" name="id_torneo" value="<%= torneo.id_torneo %>">
+      <button type="submit" class="btn btn-success">Agregar Grupo</button>
+    </div>
+  </form>
+
+  <% if (grupos && grupos.length > 0) { %>
+    <div class="row">
+      <% grupos.forEach(grupo => { %>
+        <div class="col-md-6 mb-4">
+          <div class="card shadow">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+              <strong><%= grupo.nombre_grupo %></strong>
+              <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
+                <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST"
+                      onsubmit="return confirm('¿Seguro que quiere eliminar? Este grupo contiene equipos');">
+                  <button type="submit" class="btn btn-sm btn-danger">✖</button>
+                </form>
+              <% } else { %>
+                <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST">
+                  <button type="submit" class="btn btn-sm btn-danger">✖</button>
+                </form>
+              <% } %>
+            </div>
+
+            <div class="card-body">
+              <!-- Mostrar nombre sin edición -->
+              <p class="fw-bold">Nombre personalizado: <%= grupo.nombre_grupo %></p>
+
+              <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
+                <h6>Equipos en este grupo:</h6>
+                <ul class="list-group">
+                  <% grupo.Equipos.forEach(equipo => { %>
+                    <li class="list-group-item d-flex justify-content-between align-items-center 
+                               <%= !equipo.estado ? 'text-muted bg-light' : '' %>">
+                      <span><%= equipo.nombre %></span>
+                      <div class="btn-group">
+                        <form action="/equipos/eliminar/<%= equipo.id_equipo %>" method="POST" style="display:inline;">
+                          <input type="hidden" name="redirect_hash" value="#grupos">
+                          <button type="submit" class="btn btn-sm btn-danger">✖</button>
+                        </form>
+                      </div>
+                      <% if (!equipo.estado) { %>
+                        <small class="badge text-bg-secondary">Equipo inactivo - deshabilitada</small>
+                      <% } %>
+                    </li>
+                  <% }) %>
+                </ul>
+              <% } else { %>
+                <p class="text-muted">No hay equipos asignados a este grupo.</p>
+              <% } %>
+
+              <% if (grupo.movimientos_salida && grupo.movimientos_salida.length > 0) { %>
+                <div class="mt-2">
+                  <% grupo.movimientos_salida.forEach(mov => { %>
+                    <div class="alert alert-warning py-1 px-2 mb-1">
+                      <strong><%= mov.Equipo ? mov.Equipo.nombre : 'Equipo' %></strong>
+                      <strong>Pasó a otro grupo/fase</strong>
+                      <% if (mov.GrupoDestino) { %>
+                        <small class="text-muted">(<%= mov.GrupoDestino.nombre_grupo %>)</small>
+                      <% } %>
+                    </div>
+                  <% }) %>
+                </div>
+              <% } %>
+
+              <!-- Agregar equipo -->
+              <form action="/equipos/crear" method="POST" class="mt-2 form-agregar-equipo">
+                <div class="input-group">
+                  <input type="text" name="nombre_equipo" class="form-control text-uppercase" 
+                         placeholder="Nuevo equipo" required 
+                         oninput="this.value = this.value.toUpperCase()">
+                  <input type="hidden" name="id_grupo" value="<%= grupo.id_grupo %>">
+                  <input type="hidden" name="id_torneo" value="<%= torneo.id_torneo %>">
+                  <button type="submit" class="btn btn-success">Agregar</button>
+                </div>
+              </form>
+
+              <!-- Botón para sortear encuentros -->
+              <% if (grupo.encuentros_sorteados) { %>
+                <button class="btn btn-secondary mt-3" disabled>
+                  <i class="bi bi-lock-fill"></i> Sortear Encuentros
+                </button>
+                <div class="mt-2 small text-warning">Encuentros ya sorteados</div>
+              <% } else if (grupo.Equipos && grupo.Equipos.length > 1) { %>
+                <button class="btn btn-primary mt-3 abrir-sorteo-btn" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#modalSorteoFase1"
+                        data-id-grupo="<%= grupo.id_grupo %>"
+                        data-num-equipos="<%= grupo.Equipos.length %>"
+                        data-id-torneo="<%= torneo.id_torneo %>">
+                  <i class="fas fa-shuffle"></i> Sortear Encuentros
+                </button>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } else { %>
+    <p class="text-muted">No hay grupos creados aún para este torneo.</p>
+  <% } %>
+
+  <!-- ============================================ -->
+  <!-- MODAL FASE 1: CONFIRMACIÓN INICIAL -->
+  <!-- ============================================ -->
+  <div class="modal fade" id="modalSorteoFase1" tabindex="-1" role="dialog" aria-labelledby="modalLabel1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalLabel1">
+            <i class="fas fa-shuffle"></i> Sortear Encuentros
+          </h5>
+          <button type="button" class="close text-white" data-bs-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="lead">¿Desea sortear los equipos de este grupo?</p>
+          <p class="text-muted" id="grupoNombreInfo"></p>
+          <div class="alert alert-info" role="alert">
+            <i class="fas fa-lightbulb"></i>
+            <strong>Total de equipos:</strong> <span id="totalEquiposInfo">-</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="fas fa-times"></i> Cancelar
+          </button>
+          <button type="button" class="btn btn-primary" onclick="abrirModalFase2()">
+            <i class="fas fa-arrow-right"></i> Continuar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- MODAL FASE 2: CONFIGURACIÓN DEL SORTEO -->
+  <!-- ============================================ -->
+  <div class="modal fade" id="modalSorteoFase2" tabindex="-1" role="dialog" aria-labelledby="modalLabel2" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalLabel2">
+            <i class="fas fa-cog"></i> Configurar Sorteo
+          </h5>
+          <button type="button" class="close text-white" data-bs-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="formSorteo">
+            <!-- Tipo de encuentro -->
+            <div class="form-group">
+              <label for="tipoEncuentro" class="font-weight-bold">
+                <i class="fas fa-question-circle"></i> Tipo de encuentro:
+              </label>
+              <div class="custom-control custom-radio mb-2">
+                <input 
+                  type="radio" 
+                  id="radioSimple" 
+                  name="tipo" 
+                  value="simple" 
+                  class="custom-control-input" 
+                  checked 
+                  onchange="actualizarValidacion()"
+                >
+                <label class="custom-control-label text-dark" for="radioSimple">
+                  <strong>Simple</strong> - Cada equipo juega una sola vez contra cada otro
+                </label>
+              </div>
+              <div class="custom-control custom-radio mb-3">
+                <input 
+                  type="radio" 
+                  id="radioIdaVuelta" 
+                  name="tipo" 
+                  value="ida_vuelta" 
+                  class="custom-control-input" 
+                  onchange="actualizarValidacion()"
+                >
+                <label class="custom-control-label text-dark" for="radioIdaVuelta">
+                  <strong>Ida y Vuelta</strong> - Cada equipo juega dos veces contra cada otro
+                </label>
+              </div>
+              <div class="custom-control custom-radio mb-3">
+                <input 
+                  type="radio" 
+                  id="radioFijo" 
+                  name="tipo" 
+                  value="fijo" 
+                  class="custom-control-input" 
+                  onchange="actualizarValidacion()"
+                >
+                <label class="custom-control-label text-dark" for="radioFijo">
+                  <strong>Fijo</strong> - Especificar número de fechas manualmente
+                </label>
+              </div>
+            </div>
+
+            <!-- Campo para número de fechas (solo visible cuando es fijo) -->
+            <div class="form-group" id="grupNumFechas" style="display: none;">
+              <label for="numFechas" class="font-weight-bold">
+                <i class="fas fa-calendar-alt"></i> Número de fechas:
+              </label>
+              <input 
+                type="number" 
+                id="numFechas" 
+                name="numFechas" 
+                class="form-control" 
+                min="1" 
+                max="50" 
+                placeholder="Ej: 3, 5, 10"
+                oninput="actualizarValidacion()"
+              >
+              <small class="text-muted d-block mt-1" id="textNumFechasInfo"></small>
+            </div>
+
+            <!-- Validación de fechas -->
+            <div id="alertaValidacion" class="alert mt-3" style="display: none;" role="alert"></div>
+
+            <!-- Resumen estimado -->
+            <div class="card bg-light mt-3">
+              <div class="card-body">
+                <h6 class="card-title">
+                  <i class="fas fa-chart-bar"></i> Resumen:
+                </h6>
+                <ul class="list-unstyled small">
+                  <li>
+                    <strong>Equipos en el grupo:</strong> 
+                    <span id="resumenEquipos">-</span>
+                  </li>
+                  <li>
+                    <strong>Partidos por equipo (estimado):</strong> 
+                    <span id="resumenPartidosEquipo">-</span>
+                  </li>
+                  <li>
+                    <strong>Total de partidos (estimado):</strong> 
+                    <span id="resumenTotalPartidos">-</span>
+                  </li>
+                  <li>
+                    <strong>Número de fechas:</strong> 
+                    <span id="resumenFechas">-</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </form>
+          </div>
+          <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="fas fa-arrow-left"></i> Atrás
+          </button>
+          <button type="button" class="btn btn-success" id="btnConfirmarSorteo" onclick="confirmarSorteo()">
+            <i class="fas fa-check"></i> Confirmar Sorteo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Variables globales para el modal
+let grupoActual = null;
+let numEquiposActual = 0;
+let torneoActual = null;
+const equiposPorGrupo = <%- JSON.stringify((equipos || []).reduce((acc, equipo) => {
+  const key = String(equipo.id_grupo || '');
+  if (!acc[key]) acc[key] = [];
+  acc[key].push({
+    id_equipo: equipo.id_equipo,
+    nombre: equipo.nombre,
+    id_grupo: equipo.id_grupo,
+    nombre_grupo: equipo.nombre_grupo || 'Sin grupo'
+  });
+  return acc;
+}, {})) %>;
+let finanzasResumen = <%- JSON.stringify(finanzasResumen || []).replace(/</g, '\\u003c') %>;
+
+function formatearFechaInput(fecha) {
+  if (!fecha) return '';
+  return String(fecha).slice(0, 10);
+}
+
+function formatoMontoFinanzas(valor) {
+  const numero = Number(valor || 0);
+  return numero.toLocaleString('es-PY', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  });
+}
+
+function formatoFechaFinanzas(fecha) {
+  if (!fecha) return '-';
+  const valor = String(fecha).slice(0, 10);
+  return valor ? valor.split('-').reverse().join('/') : '-';
+}
+
+function etiquetaFechaFinanzas(movimiento) {
+  const numero = movimiento?.numero_fecha || '-';
+  const fechaCalendario = formatoFechaFinanzas(movimiento?.fecha_calendario || movimiento?.fecha_registro);
+  const grupo = movimiento?.nombre_grupo_display || movimiento?.nombre_grupo || '';
+  return `
+    <strong class="d-block">Fecha ${escaparHtml(numero)}</strong>
+    ${grupo ? `<span class="badge text-bg-secondary">${escaparHtml(grupo)}</span>` : ''}
+    <small class="text-muted">${fechaCalendario}</small>
+  `;
+}
+
+function renderFinanzasResumen() {
+  const tbody = document.getElementById('finanzasResumenTbody');
+  if (!tbody) return;
+
+  if (!finanzasResumen.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay equipos cargados para este torneo.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = finanzasResumen.map(equipo => `
+    <tr data-finanzas-equipo-id="${escaparHtml(equipo.id_equipo)}">
+      <td>
+        <div class="d-flex align-items-center gap-2">
+          <img src="${escaparHtml(equipo.icono || '/images/default_team.png')}" alt="" style="width:28px;height:28px;object-fit:cover;border-radius:50%;">
+          <strong class="text-dark">${escaparHtml(equipo.nombre || '')}</strong>
+        </div>
+      </td>
+      <td class="text-dark">${escaparHtml(equipo.nombre_grupo || 'Sin grupo')}</td>
+      <td class="text-center finanzas-estado-cell">
+        ${equipo.adeuda ? '<span class="fw-bold text-danger" title="Equipo con deuda">‼️‼️</span>' : '<span class="badge text-bg-success">Al dia</span>'}
+      </td>
+      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell ${equipo.adeuda ? 'text-danger' : 'text-dark'}">${formatoMontoFinanzas(equipo.saldo_actual)}</td>
+      <td class="text-end finanzas-admin-only">
+        <button type="button" class="btn btn-sm btn-outline-dark" onclick="abrirDetalleFinanzas('${escaparHtml(equipo.id_equipo)}')">Detalles</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function sincronizarFinanzasDesdeServidor() {
+  try {
+    const response = await fetch(`/torneos/<%= torneo.id_torneo %>/finanzas/resumen`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await response.json();
+    if (!data.success) return;
+    finanzasResumen = data.finanzasResumen || [];
+    renderFinanzasResumen();
+  } catch (error) {
+    console.error('No se pudo actualizar finanzas:', error);
+  }
+}
+
+function abrirDetalleFinanzas(idEquipo) {
+  const equipo = finanzasResumen.find(item => String(item.id_equipo) === String(idEquipo));
+  if (!equipo) return;
+
+  document.getElementById('finanzasDetalleTitulo').textContent = `Detalle financiero - ${equipo.nombre}`;
+  document.getElementById('finanzasDetalleSubtitulo').textContent = `${equipo.nombre_grupo || 'Sin grupo'} · Saldo actual: ${formatoMontoFinanzas(equipo.saldo_actual)}`;
+
+  const tbody = document.getElementById('finanzasDetalleTbody');
+  tbody.innerHTML = '';
+
+  if (!equipo.movimientos || equipo.movimientos.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Sin movimientos financieros registrados.</td></tr>';
+  } else {
+    equipo.movimientos.forEach(movimiento => {
+      const fila = document.createElement('tr');
+      fila.innerHTML = `
+        <td>${etiquetaFechaFinanzas(movimiento)}</td>
+        <td>${escaparHtml(movimiento.concepto || 'Movimiento')}</td>
+        <td class="text-end">${formatoMontoFinanzas(movimiento.deuda_inicial)}</td>
+        <td class="text-end">${formatoMontoFinanzas(movimiento.total_items)}</td>
+        <td class="text-end">${formatoMontoFinanzas(movimiento.entrega)}</td>
+        <td class="text-end fw-bold">${formatoMontoFinanzas(movimiento.saldo)}</td>
+      `;
+      tbody.appendChild(fila);
+
+      const items = movimiento.items || [];
+      if (items.length > 0) {
+        const filaItems = document.createElement('tr');
+        filaItems.innerHTML = `
+          <td></td>
+          <td colspan="5">
+            <div class="small text-dark">
+              ${items.map(item => `
+                <div class="d-flex justify-content-between border-bottom py-1">
+                  <span>${escaparHtml(item.nombre || 'Item')} x${item.cantidad || 0}${item.observaciones ? ` · ${escaparHtml(item.observaciones)}` : ''}</span>
+                  <strong>${formatoMontoFinanzas(item.total)}</strong>
+                </div>
+              `).join('')}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(filaItems);
+      }
+    });
+  }
+
+  document.getElementById('finanzasDetalleTotalItems').textContent = formatoMontoFinanzas(equipo.total_items);
+  document.getElementById('finanzasDetalleTotalEntregado').textContent = formatoMontoFinanzas(equipo.total_entregado);
+  document.getElementById('finanzasDetalleSaldo').textContent = formatoMontoFinanzas(equipo.saldo_actual);
+  document.getElementById('finanzasDetalleAlerta').classList.toggle('d-none', !equipo.adeuda);
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modalDetalleFinanzas')).show();
+}
+
+function sumarMinutosHora(hora, minutos) {
+  if (!hora) return '';
+  const [hh, mm] = hora.split(':').map(Number);
+  const base = new Date(2000, 0, 1, hh || 0, mm || 0, 0, 0);
+  base.setMinutes(base.getMinutes() + Number(minutos || 0));
+  return `${String(base.getHours()).padStart(2, '0')}:${String(base.getMinutes()).padStart(2, '0')}`;
+}
+
+function recargarManteniendoPestana(hash = '#partidos') {
+  window.location.href = `${window.location.pathname}${window.location.search}${hash}`;
+}
+
+function obtenerEquiposGrupo(grupoId) {
+  return equiposPorGrupo[String(grupoId)] || [];
+}
+
+function actualizarAccionesPartido(partidoId, estado) {
+  const fila = document.querySelector(`.estado-select[data-id="${partidoId}"]`)?.closest('tr');
+  if (!fila) return;
+  const botonEditar = fila.querySelector('.editar-horario-btn');
+  const botonEliminar = fila.querySelector('form[action*="/eliminar"] button[type="submit"]');
+
+  if (botonEditar) botonEditar.disabled = estado === 'finalizado';
+  if (botonEliminar) botonEliminar.disabled = estado === 'finalizado';
+}
+
+function cerrarModalBootstrapSeguro(modalId) {
+  const modalEl = document.getElementById(modalId);
+  if (!modalEl) return;
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.hide();
+  setTimeout(() => {
+    document.body.classList.remove('modal-open');
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+    document.body.style.removeProperty('padding-right');
+    document.body.style.removeProperty('overflow');
+  }, 150);
+}
+
+function limpiarBloqueoModalBootstrap() {
+  document.body.classList.remove('modal-open');
+  document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+  document.body.style.removeProperty('padding-right');
+  document.body.style.removeProperty('overflow');
+}
+
+function normalizarCampoMarcador(input) {
+  input.value = input.value.replace(/\D/g, '');
+}
+
+function marcadorValido(valor) {
+  return /^(0|[1-9]\d*)$/.test(valor) && Number.parseInt(valor, 10) <= 99;
+}
+
+function abrirModalItem(item = null) {
+  const form = document.getElementById('formItem');
+  const titulo = document.getElementById('itemModalTitulo');
+  const idInput = document.getElementById('itemId');
+  const nombreInput = document.getElementById('itemNombre');
+  const descripcionInput = document.getElementById('itemDescripcion');
+  const montoInput = document.getElementById('itemMonto');
+  const torneoInput = document.getElementById('itemTorneoId');
+  const entityInput = document.getElementById('itemEntityId');
+
+  if (!form || !titulo || !idInput || !nombreInput || !descripcionInput || !montoInput || !torneoInput || !entityInput) return;
+
+  if (item) {
+    titulo.textContent = 'Editar item';
+    form.action = `/items/${item.id_item}`;
+    idInput.value = item.id_item;
+    nombreInput.value = item.nombre || '';
+    descripcionInput.value = item.descripcion || '';
+    montoInput.value = item.monto || '';
+  } else {
+    titulo.textContent = 'Nuevo item';
+    form.action = '/items';
+    idInput.value = '';
+    nombreInput.value = '';
+    descripcionInput.value = '';
+    montoInput.value = '';
+  }
+
+  torneoInput.value = '<%= torneo.id_torneo %>';
+  entityInput.value = '<%= torneo.entity_id %>';
+
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalItem'));
+  modal.show();
+}
+
+function abrirModalPersonalizarTorneo(button) {
+  const torneoId = button.dataset.id;
+  const nombre = button.dataset.nombre || 'torneo';
+  const portada = button.dataset.portada || '';
+  const modalEl = document.getElementById('modalPersonalizarTorneo');
+  const titulo = document.getElementById('modalPersonalizarTorneoTitulo');
+  const formPortada = document.getElementById('formPortadaTorneo');
+  const formEliminar = document.getElementById('formEliminarPortadaTorneo');
+  const bloqueActual = document.getElementById('bloquePortadaActual');
+  const imgActual = document.getElementById('portadaActualPreview');
+
+  if (!torneoId || !modalEl || !titulo || !formPortada || !formEliminar || !bloqueActual || !imgActual) return;
+
+  titulo.textContent = `Personalizar ${nombre}`;
+  formPortada.action = `/torneos/${torneoId}/portada`;
+  formEliminar.action = `/torneos/${torneoId}/portada/eliminar`;
+
+  if (portada) {
+    imgActual.src = portada;
+    bloqueActual.classList.remove('d-none');
+    formEliminar.classList.remove('d-none');
+  } else {
+    imgActual.removeAttribute('src');
+    bloqueActual.classList.add('d-none');
+    formEliminar.classList.add('d-none');
+  }
+
+  const input = document.getElementById('portadaTorneo');
+  if (input) input.value = '';
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+
+function actualizarOpcionesCruceManual() {
+  const selectGrupo = document.getElementById('manualGrupoId');
+  const selectEquipoA = document.getElementById('manualEquipoA');
+  const selectEquipoB = document.getElementById('manualEquipoB');
+
+  if (!selectGrupo || !selectEquipoA || !selectEquipoB) return;
+
+  const grupoId = selectGrupo.value;
+  const equipos = obtenerEquiposGrupo(grupoId);
+  const equipoASeleccionado = selectEquipoA.value;
+  const equipoBSeleccionado = selectEquipoB.value;
+
+  const renderOptions = (seleccionExcluida) => {
+    return ['<option value="">Seleccione un equipo</option>']
+      .concat(
+        equipos
+          .filter(equipo => String(equipo.id_equipo) !== String(seleccionExcluida))
+          .map(equipo => `<option value="${equipo.id_equipo}">${equipo.nombre}</option>`)
+      )
+      .join('');
+  };
+
+  selectEquipoA.innerHTML = renderOptions(equipoBSeleccionado);
+  selectEquipoB.innerHTML = renderOptions(equipoASeleccionado);
+
+  if (equipoASeleccionado && equipos.some(e => String(e.id_equipo) === String(equipoASeleccionado))) {
+    selectEquipoA.value = equipoASeleccionado;
+  }
+  if (equipoBSeleccionado && equipos.some(e => String(e.id_equipo) === String(equipoBSeleccionado))) {
+    selectEquipoB.value = equipoBSeleccionado;
+  }
+}
+
+// Validar fechas según cantidad de equipos
+function validarFechas(numEquipos, fechasIngresadas) {
+  const maxSimple = numEquipos - 1;
+  const maxIdaVuelta = (numEquipos - 1) * 2;
+
+  let valido = false;
+  let mensaje = "";
+  let tipo = "";
+
+  if (fechasIngresadas > 0 && fechasIngresadas <= maxSimple) {
+    valido = true;
+    tipo = "success";
+    mensaje = `✅ Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ${fechasIngresadas} encuentros de forma balanceada.`;
+  } else if (fechasIngresadas === maxIdaVuelta) {
+    valido = true;
+    tipo = "success";
+    mensaje = `✅ Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ida y vuelta (${maxIdaVuelta} encuentros) de forma balanceada.`;
+  } else if (fechasIngresadas > 0) {
+    valido = true;
+    tipo = "warning";
+    mensaje = `⚠️ Atención: con ${numEquipos} equipos y ${fechasIngresadas} fechas, el torneo quedará disparejo. 
+    Se sugiere ${maxSimple} (simple) o ${maxIdaVuelta} (ida/vuelta). El sistema generará encuentros aleatorios.`;
+  } else {
+    valido = false;
+    tipo = "danger";
+    mensaje = `❌ Error: el número de fechas debe ser mayor a 0.`;
+  }
+
+  return { valido, mensaje, tipo };
+}
+
+// Abrir modal fase 1 y capturar datos
+function abrirModalSorteo(idGrupo, numEquipos, idTorneo) {
+  grupoActual = idGrupo;
+  numEquiposActual = numEquipos;
+  torneoActual = idTorneo;
+  
+  // Actualizar info en fase 1
+  document.getElementById('grupoNombreInfo').innerHTML = `Grupo con <strong>${numEquipos} equipos</strong>`;
+  document.getElementById('totalEquiposInfo').textContent = numEquipos;
+}
+
+// Abrir modal fase 2
+function abrirModalFase2() {
+  const modal1 = bootstrap.Modal.getInstance(document.getElementById('modalSorteoFase1'));
+  if (modal1) modal1.hide();
+  
+  setTimeout(() => {
+    const modal2 = new bootstrap.Modal(document.getElementById('modalSorteoFase2'));
+    modal2.show();
+    actualizarValidacion(); // Calcular valores iniciales
+  }, 300);
+}
+
+// Actualizar validación en tiempo real
+function actualizarValidacion() {
+  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  const numFechas = document.getElementById('numFechas');
+  const grupNumFechas = document.getElementById('grupNumFechas');
+  const alertaValidacion = document.getElementById('alertaValidacion');
+  const textNumFechasInfo = document.getElementById('textNumFechasInfo');
+
+  // Mostrar/ocultar campo de fechas
+  if (tipo === 'fijo') {
+    grupNumFechas.style.display = 'block';
+    textNumFechasInfo.textContent = `Ingrese un número entre 1 y ${numEquiposActual * 2}`;
+  } else {
+    grupNumFechas.style.display = 'none';
+  }
+
+  // Calcular fechas automáticamente
+  let fechas = 0;
+  const maxSimple = numEquiposActual % 2 === 1 ? numEquiposActual : numEquiposActual - 1;
+  if (tipo === 'simple') {
+    fechas = maxSimple;
+  } else if (tipo === 'ida_vuelta') {
+    fechas = maxSimple * 2;
+  } else if (tipo === 'fijo') {
+    fechas = parseInt(numFechas.value) || 0;
+  }
+
+  // Actualizar resumen
+  actualizarResumen(tipo, fechas);
+
+  // Validar si es fijo
+  if (tipo === 'fijo' && numFechas.value) {
+    const validacion = validarFechas(numEquiposActual, fechas);
+    alertaValidacion.innerHTML = validacion.mensaje;
+    alertaValidacion.className = `alert alert-${validacion.tipo} mt-3`;
+    alertaValidacion.style.display = 'block';
+  } else {
+    alertaValidacion.style.display = 'none';
+  }
+}
+
+// Actualizar resumen de estadísticas
+function actualizarResumen(tipo, fechas) {
+  const maxPartidosPorEquipo = (numEquiposActual - 1) * 2;
+  const partidosPorEquipo = Math.min(numEquiposActual - 1, fechas);
+  const totalPartidos = Math.floor((numEquiposActual * partidosPorEquipo) / 2);
+
+  document.getElementById('resumenEquipos').textContent = numEquiposActual;
+  document.getElementById('resumenFechas').textContent = fechas || '-';
+  document.getElementById('resumenPartidosEquipo').textContent = partidosPorEquipo || '-';
+  document.getElementById('resumenTotalPartidos').textContent = totalPartidos || '-';
+}
+
+// Confirmar y ejecutar sorteo
+async function confirmarSorteo() {
+  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  let numFechas = 0;
+
+  const maxSimple = numEquiposActual % 2 === 1 ? numEquiposActual : numEquiposActual - 1;
+  if (tipo === 'simple') {
+    numFechas = maxSimple;
+  } else if (tipo === 'ida_vuelta') {
+    numFechas = maxSimple * 2;
+  } else if (tipo === 'fijo') {
+    numFechas = parseInt(document.getElementById('numFechas').value);
+  }
+
+  if (!numFechas || numFechas <= 0) {
+    alert('Por favor, ingrese un número válido de fechas.');
+    return;
+  }
+
+  const btnConfirmar = document.getElementById('btnConfirmarSorteo');
+  btnConfirmar.disabled = true;
+  btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+
+  try {
+    const response = await fetch(`/partidos/torneos/${torneoActual}/grupos/${grupoActual}/sortear`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tipo: tipo,
+        numFechas: numFechas
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      // Mostrar mensaje de éxito
+      const modal = bootstrap.Modal.getInstance(document.getElementById('modalSorteoFase2'));
+      modal.hide();
+      
+      setTimeout(() => {
+        alert(data.message);
+        location.reload(); // Recargar página para mostrar los cambios
+      }, 300);
+    } else {
+      alert('Error: ' + data.message);
+      btnConfirmar.disabled = false;
+      btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Error al procesar el sorteo.');
+    btnConfirmar.disabled = false;
+    btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
+  }
+}
+
+// Inicializar cuando el documento esté listo
+document.addEventListener('DOMContentLoaded', function() {
+  actualizarValidacion();
+
+  document.querySelectorAll('.editar-horario-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const partidoId = button.dataset.id;
+      const equipoA = button.dataset.equipoA;
+      const equipoB = button.dataset.equipoB;
+      const fecha = button.dataset.fecha || '';
+      const hora = button.dataset.hora || '';
+      const torneoId = button.dataset.torneoId;
+
+      document.getElementById('modalHorarioTitulo').textContent = `${equipoA} vs ${equipoB}`;
+      document.getElementById('formEditarHorario').action = `/partidos/${partidoId}/horario`;
+      document.getElementById('horarioPartidoId').value = partidoId;
+      document.getElementById('horarioFecha').value = fecha;
+      document.getElementById('horarioHora').value = hora;
+      document.getElementById('horarioTorneoId').value = torneoId;
+
+      const modal = new bootstrap.Modal(document.getElementById('modalEditarHorario'));
+      modal.show();
+    });
+  });
+
+  // Abrir sorteo desde botón sin inline onclick
+  document.querySelectorAll('.abrir-sorteo-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const grupoId = button.dataset.idGrupo;
+      const numEquipos = parseInt(button.dataset.numEquipos, 10);
+      const torneoId = button.dataset.idTorneo;
+
+      abrirModalSorteo(grupoId, numEquipos, torneoId);
+    });
+  });
+
+  // Editar marcador
+  document.querySelectorAll('.editar-marcador-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const partidoId = button.dataset.id;
+      const equipoA = button.dataset.equipoA;
+      const equipoB = button.dataset.equipoB;
+      const golesA = button.dataset.golesA;
+      const golesB = button.dataset.golesB;
+
+      document.getElementById('marcadorTitulo').textContent = `${equipoA} vs ${equipoB}`;
+      document.getElementById('marcadorPartidoId').value = partidoId;
+      document.getElementById('marcadorGolesA').value = golesA;
+      document.getElementById('marcadorGolesB').value = golesB;
+
+      const modal = new bootstrap.Modal(document.getElementById('modalEditarMarcador'));
+      modal.show();
+    });
+  });
+
+  // Guardar horarios comunes para una fecha
+  document.querySelectorAll('.guardar-horarios-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      const numeroFecha = button.dataset.numeroFecha;
+      guardarHorariosComunes(numeroFecha);
+    });
+  });
+
+  document.querySelectorAll('.abrir-cruce-manual-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      abrirModalCruceManual(button.dataset.numeroFecha, button.dataset.grupoId || '');
+    });
+  });
+
+  const manualGrupo = document.getElementById('manualGrupoId');
+  if (manualGrupo) {
+    manualGrupo.addEventListener('change', () => {
+      poblarCruceManualGrupo(manualGrupo.value);
+    });
+  }
+
+  const manualEquipoA = document.getElementById('manualEquipoA');
+  const manualEquipoB = document.getElementById('manualEquipoB');
+  if (manualEquipoA && manualEquipoB) {
+    manualEquipoA.addEventListener('change', actualizarOpcionesCruceManual);
+    manualEquipoB.addEventListener('change', actualizarOpcionesCruceManual);
+  }
+
+  const formCruceManual = document.getElementById('formCruceManual');
+  if (formCruceManual) {
+    formCruceManual.addEventListener('submit', async (event) => {
+      if (formCruceManual.dataset.confirmadoIdaVuelta === '1') return;
+
+      const equipoA = manualEquipoA ? manualEquipoA.value : '';
+      const equipoB = manualEquipoB ? manualEquipoB.value : '';
+      if (!equipoA || !equipoB) {
+        event.preventDefault();
+        alert('Selecciona dos equipos del mismo grupo.');
+        return;
+      }
+      if (String(equipoA) === String(equipoB)) {
+        event.preventDefault();
+        alert('El cruce manual no puede usar el mismo equipo en ambos lados.');
+        return;
+      }
+
+      event.preventDefault();
+      const cruceModalEl = document.getElementById('modalCruceManual');
+      if (cruceModalEl?.classList.contains('show')) {
+        const cruceModal = bootstrap.Modal.getOrCreateInstance(cruceModalEl);
+        await new Promise(resolve => {
+          cruceModalEl.addEventListener('hidden.bs.modal', resolve, { once: true });
+          cruceModal.hide();
+        });
+      }
+
+      const inputIdaVuelta = document.getElementById('manualIdaVuelta');
+      if (inputIdaVuelta) {
+        const crearIdaVuelta = await confirmarApp(
+          'Desea crear encuentro en formato ida y vuelta?',
+          'Tipo de encuentro',
+          {
+            aceptar: 'SI, crear ida y vuelta',
+            cancelar: 'NO, crear encuentro simple'
+          }
+        );
+        inputIdaVuelta.value = crearIdaVuelta ? '1' : '0';
+      }
+
+      formCruceManual.dataset.confirmadoIdaVuelta = '1';
+      formCruceManual.submit();
+    });
+  }
+
+  document.querySelectorAll('.form-eliminar-encuentro').forEach(form => {
+    form.addEventListener('submit', async event => {
+      if (form.dataset.confirmadoEliminar === '1') return;
+
+      event.preventDefault();
+      const confirmado = await confirmarApp(
+        'Esta accion eliminara el encuentro seleccionado.',
+        'Eliminar encuentro',
+        {
+          aceptar: 'SI, eliminar encuentro',
+          cancelar: 'NO, conservar encuentro',
+          destacar: true
+        }
+      );
+
+      if (!confirmado) return;
+
+      form.dataset.confirmadoEliminar = '1';
+      form.submit();
+    });
+  });
+
+  document.querySelectorAll('.form-intercambiar-equipos').forEach(form => {
+    form.addEventListener('submit', async event => {
+      if (form.dataset.confirmadoIntercambiar === '1') return;
+
+      event.preventDefault();
+      const confirmado = await confirmarApp(
+        'Desea intercambiar Equipo A y Equipo B en este encuentro?',
+        'Intercambiar equipos',
+        {
+          aceptar: 'SI, intercambiar',
+          cancelar: 'NO, mantener orden'
+        }
+      );
+
+      if (!confirmado) return;
+
+      const redirectInput = form.querySelector('input[name="redirect_url"]');
+      if (redirectInput) {
+        redirectInput.value = `${window.location.pathname}${window.location.search}#partidos`;
+      }
+
+      form.dataset.confirmadoIntercambiar = '1';
+      form.submit();
+    });
+  });
+
+  document.querySelectorAll('.btn-item-nuevo').forEach(btn => {
+    btn.addEventListener('click', () => abrirModalItem());
+  });
+
+  document.querySelectorAll('.btn-item-editar').forEach(btn => {
+    btn.addEventListener('click', () => {
+      abrirModalItem({
+        id_item: btn.dataset.id,
+        nombre: btn.dataset.nombre,
+        descripcion: btn.dataset.descripcion,
+        monto: btn.dataset.monto
+      });
+    });
+  });
+});
+
+// Función para guardar horarios comunes a toda una fecha
+async function guardarHorariosComunes(numeroFecha) {
+  const form = document.getElementById(`formFechaComun-${numeroFecha}`);
+  const formData = new FormData(form);
+
+  const fechaComun = formData.get('fecha_comun');
+  const horaInicial = formData.get('hora_inicial');
+  const intervaloMinutos = parseInt(formData.get('intervalo_minutos'));
+
+  if (!fechaComun) {
+    alert('Por favor selecciona una fecha común.');
+    return;
+  }
+  if (!horaInicial) {
+    alert('Por favor ingresa una hora inicial.');
+    return;
+  }
+  if (!intervaloMinutos || intervaloMinutos < 5) {
+    alert('Por favor ingresa un intervalo válido (mínimo 5 minutos).');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/partidos/actualizar-horarios-fecha`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        numero_fecha: numeroFecha,
+        torneo_id: formData.get('torneo_id'),
+        fecha_comun: fechaComun,
+        hora_inicial: horaInicial,
+        intervalo_minutos: intervaloMinutos
+      })
+    });
+
+    const data = await response.json();
+
+  if (data.success) {
+    alert(data.message);
+    const fechaDisplay = fechaComun.split('-').reverse().join('/');
+    const fechaPane = document.getElementById(`fecha-${numeroFecha}`);
+    if (fechaPane) {
+      let horaActual = horaInicial;
+      fechaPane.querySelectorAll('tbody tr').forEach(row => {
+        const celdas = row.querySelectorAll('td');
+        if (celdas[4]) celdas[4].textContent = fechaDisplay;
+        if (celdas[5]) celdas[5].textContent = horaActual;
+
+        const btnEditar = row.querySelector('.editar-horario-btn');
+        if (btnEditar) {
+          btnEditar.dataset.fecha = fechaComun;
+          btnEditar.dataset.hora = horaActual;
+        }
+
+        horaActual = sumarMinutosHora(horaActual, intervaloMinutos);
+      });
+    }
+  } else {
+    alert('Error: ' + data.message);
+  }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Error al actualizar los horarios.');
+  }
+}
+
+function poblarCruceManualGrupo(grupoId) {
+  const selectGrupo = document.getElementById('manualGrupoId');
+  const selectEquipoA = document.getElementById('manualEquipoA');
+  const selectEquipoB = document.getElementById('manualEquipoB');
+
+  if (!selectGrupo || !selectEquipoA || !selectEquipoB) return;
+
+  selectGrupo.value = grupoId || '';
+  actualizarOpcionesCruceManual();
+}
+
+function abrirModalCruceManual(numeroFecha, grupoId = '') {
+  const inputFecha = document.getElementById('manualNumeroFecha');
+  const selectGrupo = document.getElementById('manualGrupoId');
+  const redirectInput = document.getElementById('manualRedirectUrl');
+  if (inputFecha) inputFecha.value = numeroFecha;
+  if (redirectInput) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('fecha', numeroFecha);
+    redirectInput.value = `${window.location.pathname}?${params.toString()}#partidos`;
+  }
+  if (selectGrupo) {
+    if (grupoId) {
+      selectGrupo.value = grupoId;
+      poblarCruceManualGrupo(grupoId);
+    } else if (selectGrupo.options.length > 0) {
+      const primerGrupo = selectGrupo.options[0].value || selectGrupo.options[1]?.value || '';
+      selectGrupo.value = primerGrupo;
+      poblarCruceManualGrupo(primerGrupo);
+    }
+  }
+  const modal = new bootstrap.Modal(document.getElementById('modalCruceManual'));
+  modal.show();
+}
+
+// Cambiar estado de un partido
+async function cambiarEstado(selectElement) {
+  const partidoId = selectElement.dataset.id;
+  const nuevoEstado = selectElement.value;
+
+  try {
+    const response = await fetch(`/partidos/${partidoId}/estado`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        partido_id: partidoId,
+        nuevoEstado: nuevoEstado
+      })
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      alert('Error: ' + data.message);
+    } else {
+      const marcador = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a-id]`);
+      if (marcador) marcador.dataset.estado = nuevoEstado;
+      recalcularEstadisticasCliente();
+    }
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+
+// Guardar marcador
+async function guardarMarcador() {
+  const partidoId = document.getElementById('marcadorPartidoId').value;
+  const golesA = document.getElementById('marcadorGolesA').value;
+  const golesB = document.getElementById('marcadorGolesB').value;
+
+  if (golesA === '' || golesB === '') {
+    alert('Por favor ingresa ambos marcadores.');
+    return;
+  }
+
+  if (!marcadorValido(golesA) || !marcadorValido(golesB)) {
+    alert('El marcador debe ser un numero entero entre 0 y 99, sin negativos ni ceros a la izquierda.');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/partidos/${partidoId}/marcador`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        partido_id: partidoId,
+        goles_a: golesA,
+        goles_b: golesB,
+        estado: 'finalizado'
+      })
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      const resultCell = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a]`);
+      if (resultCell) {
+        resultCell.setAttribute('data-goles-a', golesA);
+        resultCell.setAttribute('data-goles-b', golesB);
+        resultCell.setAttribute('data-estado', 'finalizado');
+        const span = resultCell.querySelector('span');
+        if (span) {
+          span.textContent = `${golesA} - ${golesB}`;
+        }
+      }
+      const selectEstado = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
+      if (selectEstado) {
+        selectEstado.value = 'finalizado';
+      }
+      actualizarAccionesPartido(partidoId, 'finalizado');
+      recalcularEstadisticasCliente();
+      cerrarModalBootstrapSeguro('modalEditarMarcador');
+    } else {
+      alert('Error: ' + data.message);
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Error al actualizar marcador');
+  }
+}
+
+async function guardarEstadoPartido(pidoId, nuevoEstado) {
+  try {
+    const res = await fetch(`/partidos/${pidoId}/estado`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ partido_id: pidoId, nuevoEstado: nuevoEstado })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const selectEl = document.querySelector(`.estado-select[data-id="${pidoId}"]`);
+      if (selectEl) selectEl.value = nuevoEstado;
+      const marcador = document.querySelector(`td[data-id="${pidoId}"][data-equipo-a-id]`);
+      if (marcador) marcador.dataset.estado = nuevoEstado;
+      actualizarAccionesPartido(pidoId, nuevoEstado);
+      recalcularEstadisticasCliente();
+      return true;
+    } else {
+      alert('Error: ' + data.message);
+      return false;
+    }
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
+function initMatchHandlers() {
+  document.querySelectorAll('.btn-guardar-match').forEach(btn => {
+    btn.onclick = async () => {
+      const tr = btn.closest('tr');
+      const estado = tr.querySelector('.estado-select').value;
+      if (await guardarEstadoPartido(btn.dataset.id, estado)) {
+        btn.style.color = 'green';
+        setTimeout(() => {
+          btn.style.color = '';
+        }, 900);
+      }
+    };
+  });
+  document.querySelectorAll('td[data-equipo-a][data-id]').forEach(td => {
+    td.style.cursor = 'pointer';
+    td.onclick = () => {
+      document.getElementById('marcadorTitulo').textContent = td.dataset.equipoA + ' vs ' + td.dataset.equipoB;
+      document.getElementById('marcadorPartidoId').value = td.dataset.id;
+      document.getElementById('marcadorGolesA').value = td.dataset.golesA || 0;
+      document.getElementById('marcadorGolesB').value = td.dataset.golesB || 0;
+      new bootstrap.Modal(document.getElementById('modalEditarMarcador')).show();
+    };
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => { initMatchHandlers(); });
+
+document.addEventListener('DOMContentLoaded', () => {
+  const modalMarcador = document.getElementById('modalEditarMarcador');
+  if (modalMarcador) {
+    modalMarcador.addEventListener('hidden.bs.modal', limpiarBloqueoModalBootstrap);
+  }
+
+  document.querySelectorAll('.marcador-goles-input').forEach(input => {
+    input.addEventListener('input', () => normalizarCampoMarcador(input));
+    input.addEventListener('blur', () => {
+      if (input.value !== '' && !marcadorValido(input.value)) {
+        input.value = '';
+      }
+    });
+  });
+
+  document.getElementById('btnBuscarCargaJugadores')?.addEventListener('click', aplicarBusquedaCargaJugadores);
+  document.getElementById('buscarCargaJugadores')?.addEventListener('input', event => {
+    if (!event.target.value) aplicarBusquedaCargaJugadores();
+  });
+  document.getElementById('buscarCargaJugadores')?.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      aplicarBusquedaCargaJugadores();
+    }
+  });
+});
+
+let cargaEquipoPartidoActual = null;
+let cargaItemsDisponibles = [];
+let cargaEquipoPartidoBotonActual = null;
+let cargaReglaTarjetasActual = { acumula_amarillas: false };
+
+function formatoMonto(valor) {
+  const numero = Number(valor || 0);
+  return Math.round(numero).toLocaleString('es-PY');
+}
+
+function escaparHtml(valor) {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function mostrarAvisoApp(mensaje, titulo = 'Atencion') {
+  const modalEl = document.getElementById('modalAvisoApp');
+  if (!modalEl) {
+    alert(mensaje);
+    return;
+  }
+
+  document.getElementById('modalAvisoAppTitulo').textContent = titulo;
+  const mensajeEl = document.getElementById('modalAvisoAppMensaje');
+  mensajeEl.textContent = mensaje;
+  const esAvisoAcumulacion = String(mensaje || '').includes('El jugador alcanzo el limite de amarillas');
+  mensajeEl.classList.toggle('text-dark', !esAvisoAcumulacion);
+  mensajeEl.classList.toggle('text-danger', esAvisoAcumulacion);
+  mensajeEl.classList.toggle('fw-bold', esAvisoAcumulacion);
+  document.getElementById('modalAvisoAppCancelar').classList.add('d-none');
+  document.getElementById('modalAvisoAppAceptar').textContent = 'Aceptar';
+  document.getElementById('modalAvisoAppAceptar').onclick = () => {
+    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+  };
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+
+function esMensajeAcumulacionTarjetas(mensaje = '', titulo = '') {
+  const texto = `${titulo} ${mensaje}`.toLowerCase();
+  return texto.includes('limite de amarillas') ||
+    texto.includes('acumulacion de amarillas') ||
+    texto.includes('confirmar suspension');
+}
+
+function confirmarApp(mensaje, titulo = 'Confirmar', opciones = {}) {
+  const modalEl = document.getElementById('modalAvisoApp');
+  if (!modalEl) return Promise.resolve(confirm(mensaje));
+
+  return new Promise(resolve => {
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const btnCancelar = document.getElementById('modalAvisoAppCancelar');
+    const btnAceptar = document.getElementById('modalAvisoAppAceptar');
+    let respondido = false;
+
+    document.getElementById('modalAvisoAppTitulo').textContent = titulo;
+    const mensajeEl = document.getElementById('modalAvisoAppMensaje');
+    mensajeEl.textContent = mensaje;
+    const destacarMensaje = opciones.destacar === true || esMensajeAcumulacionTarjetas(mensaje, titulo);
+    mensajeEl.classList.toggle('text-dark', !destacarMensaje);
+    mensajeEl.classList.toggle('text-danger', destacarMensaje);
+    mensajeEl.classList.toggle('fw-bold', destacarMensaje);
+    btnCancelar.classList.remove('d-none');
+    btnCancelar.textContent = opciones.cancelar || 'Cancelar';
+    btnAceptar.textContent = opciones.aceptar || 'Continuar';
+
+    const finalizar = respuesta => {
+      respondido = true;
+      modal.hide();
+      resolve(respuesta);
+    };
+
+    btnCancelar.onclick = () => finalizar(false);
+    btnAceptar.onclick = () => finalizar(true);
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      if (!respondido) resolve(false);
+    }, { once: true });
+
+    modal.show();
+  });
+}
+
+async function confirmarResetPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const confirmado = await confirmarApp(
+    'Se generara una contraseña temporal y el usuario debera cambiarla en su proximo inicio de sesion.',
+    'Resetear contraseña',
+    { aceptar: 'Generar clave', cancelar: 'Cancelar', destacar: true }
+  );
+
+  if (confirmado) form.submit();
+}
+
+function configurarSuspFechasDecision(tr, bloquear = false) {
+  const input = tr.querySelector('.carga-jugador-suspendidos');
+  if (!input) return;
+
+  input.disabled = Boolean(bloquear);
+  input.classList.toggle('bg-light', Boolean(bloquear));
+  input.classList.toggle('text-muted', Boolean(bloquear));
+}
+
+function valorNumeroInput(valor) {
+  const normalizado = String(valor || '0').replace(/\./g, '').replace(',', '.');
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) && numero >= 0 ? numero : 0;
+}
+
+function formatearCampoDinero(input) {
+  const soloNumeros = String(input.value || '').replace(/\D/g, '');
+  input.value = soloNumeros ? formatoMonto(soloNumeros) : '';
+}
+
+function normalizarNombreItem(valor) {
+  return String(valor || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+function opcionesItemsCarga(nombreSeleccionado = '') {
+  return [
+    '<option value="">Seleccionar item</option>',
+    ...cargaItemsDisponibles.map(item => {
+      const nombre = String(item.nombre || '');
+      const selected = nombre === nombreSeleccionado ? 'selected' : '';
+      return `<option value="${escaparHtml(nombre)}" data-monto="${escaparHtml(item.monto)}" ${selected}>${escaparHtml(nombre)} - ${formatoMonto(item.monto)}</option>`;
+    })
+  ].join('');
+}
+
+function agregarFilaItemCarga(item = {}) {
+  const tbody = document.getElementById('cargaItemsTbody');
+  const tr = document.createElement('tr');
+  if (item.autoTarjeta) {
+    tr.dataset.tarjetaAuto = '1';
+  }
+  tr.innerHTML = `
+    <td>
+      <select class="form-select form-select-sm carga-item-nombre">
+        ${opcionesItemsCarga(item.nombre || '')}
+      </select>
+    </td>
+    <td><input type="text" inputmode="numeric" class="form-control form-control-sm carga-monto carga-item-monto campo-dinero" value="${formatoMonto(item.monto || 0)}"></td>
+    <td><input type="number" min="1" step="1" class="form-control form-control-sm carga-numero carga-item-cantidad" value="${item.cantidad || 1}"></td>
+    <td><input type="text" class="form-control form-control-sm carga-item-observaciones" value="${escaparHtml(item.observaciones || '')}"></td>
+    <td class="text-end carga-item-total">0.00</td>
+    <td><small class="text-muted">${escaparHtml(item.fecha_registro_fmt || '-')}</small></td>
+    <td class="text-center">
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove(); recalcularCargaEquipoPartido();">
+        <i class="bi bi-trash"></i>
+      </button>
+    </td>
+  `;
+
+  tbody.appendChild(tr);
+  const select = tr.querySelector('.carga-item-nombre');
+  select.addEventListener('change', () => {
+    const option = select.selectedOptions[0];
+    tr.querySelector('.carga-item-monto').value = formatoMonto(option?.dataset?.monto || 0);
+    delete tr.dataset.tarjetaAuto;
+    recalcularCargaEquipoPartido();
+  });
+  tr.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', () => {
+      if (input.classList.contains('campo-dinero')) formatearCampoDinero(input);
+      recalcularCargaEquipoPartido();
+    });
+  });
+  recalcularCargaEquipoPartido();
+  return tr;
+}
+
+function actualizarAcumulacionAmarillasFila(tr, avisar = false) {
+  const regla = cargaReglaTarjetasActual || {};
+  const info = tr.querySelector('.carga-acumulado-amarillas');
+  if (!info) return false;
+
+  const previas = Number.parseInt(tr.dataset.amarillasPrevias || '0', 10) || 0;
+  const amarillasPartido = Number.parseInt(tr.querySelector('.carga-jugador-amarillas')?.value || '0', 10) || 0;
+  const limite = Number.parseInt(regla.amarillas_para_suspension || tr.dataset.amarillasLimite || '0', 10) || 0;
+  const total = previas + amarillasPartido;
+  const umbralAlerta = Math.max(limite - 1, 1);
+  const alerta = Boolean(regla.acumula_amarillas) && limite > 0 && total >= umbralAlerta && total < limite;
+  const alcanzoLimite = Boolean(regla.acumula_amarillas) && limite > 0 && total >= limite;
+  const destacar = alerta || alcanzoLimite;
+
+  info.classList.toggle('text-danger', destacar);
+  info.classList.toggle('fw-bold', destacar);
+  if (limite > 0) {
+    const decision = tr.dataset.accionAcumulacion;
+    const estado = alcanzoLimite
+      ? (decision === 'suspension' ? ' - suspension confirmada' : (decision === 'advertencia' ? ' - advertencia registrada' : ' - requiere decision'))
+      : (alerta ? ' - en riesgo' : '');
+    info.textContent = `Amarillas acumuladas: ${total}/${limite}${estado}`;
+  } else {
+    info.textContent = `Amarillas acumuladas: ${total}`;
+  }
+
+  if (alcanzoLimite) {
+    const observaciones = tr.querySelector('.carga-jugador-observaciones');
+    if (observaciones && !/acumulacion/i.test(observaciones.value || '')) {
+      observaciones.placeholder = 'Suspension por acumulacion de amarillas';
+    }
+    if (avisar && tr.dataset.avisoAcumulacion !== '1') {
+      tr.dataset.avisoAcumulacion = '1';
+      mostrarAvisoApp('El jugador alcanzo el limite de amarillas. Al guardar se pedira confirmar si se suspende o solo se registra advertencia.', 'Suspension por acumulacion');
+    }
+  } else {
+    delete tr.dataset.avisoAcumulacion;
+    delete tr.dataset.accionAcumulacion;
+    configurarSuspFechasDecision(tr, false);
+  }
+
+  return alcanzoLimite;
+}
+
+function actualizarAcumulacionesAmarillas(avisar = false) {
+  let hayAcumulacion = false;
+  document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]').forEach(tr => {
+    hayAcumulacion = actualizarAcumulacionAmarillasFila(tr, avisar) || hayAcumulacion;
+  });
+  return hayAcumulacion;
+}
+
+function obtenerNombreJugadorCarga(tr) {
+  return tr.querySelector('strong')?.textContent?.trim() || 'Jugador';
+}
+
+async function resolverDecisionesAcumulacion() {
+  const filas = Array.from(document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]'))
+    .filter(tr => actualizarAcumulacionAmarillasFila(tr) && !tr.dataset.accionAcumulacion);
+  const regla = cargaReglaTarjetasActual || {};
+  const fechasDefault = Number.parseInt(regla.fechas_suspension_acumulacion || '1', 10) || 1;
+
+  for (const tr of filas) {
+    const nombre = obtenerNombreJugadorCarga(tr);
+    const confirmarSuspension = await confirmarApp(
+      `${nombre} alcanzo el limite de amarillas. Quiere confirmar la suspension del jugador?`,
+      'Confirmar suspension',
+      { aceptar: 'SI', cancelar: 'NO' }
+    );
+    const suspendidos = tr.querySelector('.carga-jugador-suspendidos');
+
+    if (confirmarSuspension) {
+      tr.dataset.accionAcumulacion = 'suspension';
+      if (suspendidos && (Number.parseInt(suspendidos.value || '0', 10) || 0) <= 0) {
+        suspendidos.value = fechasDefault;
+      }
+      configurarSuspFechasDecision(tr, true);
+    } else {
+      tr.dataset.accionAcumulacion = 'advertencia';
+      if (suspendidos) suspendidos.value = 0;
+      configurarSuspFechasDecision(tr, false);
+    }
+
+    actualizarAcumulacionAmarillasFila(tr);
+  }
+}
+
+function aplicarBusquedaCargaJugadores() {
+  const busqueda = normalizarNombreItem(document.getElementById('buscarCargaJugadores')?.value || '');
+  document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]').forEach(tr => {
+    const texto = normalizarNombreItem(tr.dataset.busqueda || '');
+    tr.classList.toggle('d-none', Boolean(busqueda) && !texto.includes(busqueda));
+  });
+}
+
+function renderCargaJugadores(jugadores) {
+  const tbody = document.getElementById('cargaJugadoresTbody');
+  tbody.innerHTML = '';
+
+  if (!jugadores.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Este equipo no tiene jugadores activos vinculados.</td></tr>';
+    return;
+  }
+
+  jugadores.forEach(jugador => {
+    const tr = document.createElement('tr');
+    tr.dataset.jugadorId = jugador.id_jugador;
+    tr.dataset.amarillasPrevias = jugador.amarillas_acumuladas_previas || 0;
+    tr.dataset.amarillasLimite = jugador.amarillas_para_suspension || 0;
+    tr.dataset.busqueda = [
+      jugador.numero_camiseta ? `#${jugador.numero_camiseta}` : '',
+      jugador.numero_camiseta || '',
+      jugador.nombre || '',
+      jugador.apellido || '',
+      jugador.documento || ''
+    ].join(' ');
+    const vinculoActivo = !(jugador.estado_vinculo === false || jugador.estado_vinculo === 'f' || jugador.estado_vinculo === 0);
+    const sancionVigente = !vinculoActivo;
+    const motivoBloqueo = jugador.observacion_vinculo || jugador.suspension_vigente_observaciones || '';
+    if (sancionVigente) {
+      tr.classList.add('table-warning');
+      tr.dataset.sancionVigente = '1';
+    }
+    tr.innerHTML = `
+      <td>
+        <strong>${jugador.numero_camiseta ? `#${escaparHtml(jugador.numero_camiseta)} ` : ''}${escaparHtml(jugador.nombre || '')} ${escaparHtml(jugador.apellido || '')}</strong>
+        <small class="text-muted d-block">${escaparHtml(jugador.documento || '')}</small>
+        <small class="text-muted d-block carga-acumulado-amarillas"></small>
+        ${sancionVigente ? `<span class="badge text-bg-warning">Suspendido ${escaparHtml(jugador.suspension_partidos_restantes || 1)} fecha</span>` : ''}
+        ${sancionVigente && motivoBloqueo ? `<small class="text-muted d-block">${escaparHtml(motivoBloqueo)}</small>` : ''}
+      </td>
+      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-goles" value="${sancionVigente ? 0 : (jugador.goles || 0)}" ${sancionVigente ? 'disabled' : ''}></td>
+      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-amarillas" value="${sancionVigente ? 0 : (jugador.tarjetas_amarillas || 0)}" ${sancionVigente ? 'disabled' : ''}></td>
+      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-rojas" value="${sancionVigente ? 0 : (jugador.tarjetas_rojas || 0)}" ${sancionVigente ? 'disabled' : ''}></td>
+      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-suspendidos" value="${jugador.partidos_suspendidos || 0}"></td>
+      <td><input type="text" class="form-control form-control-sm carga-jugador-observaciones" value="${escaparHtml(jugador.suspension_observaciones || '')}"></td>
+    `;
+    tbody.appendChild(tr);
+    tr.querySelectorAll('.carga-jugador-amarillas, .carga-jugador-rojas').forEach(input => {
+      input.addEventListener('input', () => {
+        delete tr.dataset.accionAcumulacion;
+        configurarSuspFechasDecision(tr, false);
+        actualizarAcumulacionAmarillasFila(tr, input.classList.contains('carga-jugador-amarillas'));
+      });
+    });
+    actualizarAcumulacionAmarillasFila(tr);
+  });
+}
+
+function recalcularCargaEquipoPartido() {
+  const deudaAnterior = valorNumeroInput(document.getElementById('cargaDeudaAnterior').value);
+  const aporte = valorNumeroInput(document.getElementById('cargaMontoAportado').value);
+  let totalItems = 0;
+
+  document.querySelectorAll('#cargaItemsTbody tr').forEach(tr => {
+    const monto = valorNumeroInput(tr.querySelector('.carga-item-monto')?.value);
+    const cantidad = valorNumeroInput(tr.querySelector('.carga-item-cantidad')?.value);
+    const total = monto * cantidad;
+    totalItems += total;
+    const totalCell = tr.querySelector('.carga-item-total');
+    if (totalCell) totalCell.textContent = formatoMonto(total);
+  });
+
+  const saldo = deudaAnterior + totalItems - aporte;
+  document.getElementById('cargaTotalItems').value = formatoMonto(totalItems);
+  document.getElementById('cargaSaldoFinal').value = formatoMonto(saldo);
+}
+
+async function abrirCargaEquipoPartido(partidoId, equipoId, boton = null) {
+  try {
+    cargaEquipoPartidoBotonActual = boton;
+    const response = await fetch(`/partidos/${partidoId}/equipo/${equipoId}/carga`);
+    const data = await response.json();
+    if (!data.success) {
+      mostrarAvisoApp(data.message || 'No se pudo preparar la carga', 'Carga del encuentro');
+      return;
+    }
+
+    cargaEquipoPartidoActual = {
+      partidoId,
+      equipoId,
+      equipoNombre: data.equipo.nombre,
+      numeroFecha: data.partido.numero_fecha || null,
+      fechaCalendario: data.partido.fecha || null
+    };
+    cargaItemsDisponibles = data.items || [];
+    cargaReglaTarjetasActual = data.reglaTarjetas || { acumula_amarillas: false };
+
+    document.getElementById('cargaPartidoTitulo').textContent = `${data.equipo.nombre} - Fecha ${data.partido.numero_fecha || '-'}`;
+    document.getElementById('cargaPartidoSubtitulo').textContent = `Partido #${data.partido.id_partido} · ${data.partido.fecha || '-'}`;
+    document.getElementById('cargaDeudaAnterior').value = formatoMonto(data.deudaAnterior);
+    document.getElementById('cargaMontoAportado').value = formatoMonto(data.montoAportado);
+    document.getElementById('cargaItemsTbody').innerHTML = '';
+    const buscadorCarga = document.getElementById('buscarCargaJugadores');
+    if (buscadorCarga) buscadorCarga.value = '';
+
+    renderCargaJugadores(data.jugadores || []);
+
+    if (data.itemsCargados && data.itemsCargados.length > 0) {
+      data.itemsCargados.forEach(item => agregarFilaItemCarga(item));
+    }
+
+    actualizarAcumulacionesAmarillas();
+    recalcularCargaEquipoPartido();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalCargaEquipoPartido')).show();
+  } catch (error) {
+    console.error(error);
+    mostrarAvisoApp('Error al abrir la carga del encuentro', 'Carga del encuentro');
+  }
+}
+
+function leerEquiposEstadisticasCliente() {
+  return Array.from(document.querySelectorAll('#estadisticasTbody tr[data-equipo-id]')).map(row => ({
+    id_equipo: row.dataset.equipoId,
+    nombre: row.dataset.nombre || '',
+    icono: row.dataset.icono || '/images/default_team.png',
+    nombre_grupo: row.dataset.grupoNombre || 'Sin grupo',
+    pj: 0,
+    pj_total: 0,
+    pg: 0,
+    pe: 0,
+    pp: 0,
+    gf: 0,
+    gc: 0,
+    puntos: 0
+  }));
+}
+
+function recalcularEstadisticasCliente() {
+  const tbody = document.getElementById('estadisticasTbody');
+  if (!tbody) return;
+
+  const equipos = leerEquiposEstadisticasCliente();
+  if (!equipos.length) return;
+
+  const mapa = new Map(equipos.map(equipo => [String(equipo.id_equipo), equipo]));
+
+  document.querySelectorAll('td[data-equipo-a-id][data-equipo-b-id]').forEach(partido => {
+    const equipoA = mapa.get(String(partido.dataset.equipoAId));
+    const equipoB = mapa.get(String(partido.dataset.equipoBId));
+
+    if (equipoA) equipoA.pj_total += 1;
+    if (equipoB) equipoB.pj_total += 1;
+
+    const estadoSelect = document.querySelector(`.estado-select[data-id="${partido.dataset.id}"]`);
+    const estado = estadoSelect ? estadoSelect.value : partido.dataset.estado;
+    if (estado !== 'finalizado') return;
+
+    const golesA = Number.parseInt(partido.dataset.golesA || '0', 10) || 0;
+    const golesB = Number.parseInt(partido.dataset.golesB || '0', 10) || 0;
+
+    if (equipoA) {
+      equipoA.pj += 1;
+      equipoA.gf += golesA;
+      equipoA.gc += golesB;
+    }
+    if (equipoB) {
+      equipoB.pj += 1;
+      equipoB.gf += golesB;
+      equipoB.gc += golesA;
+    }
+
+    if (golesA > golesB) {
+      if (equipoA) {
+        equipoA.pg += 1;
+        equipoA.puntos += 3;
+      }
+      if (equipoB) equipoB.pp += 1;
+    } else if (golesB > golesA) {
+      if (equipoB) {
+        equipoB.pg += 1;
+        equipoB.puntos += 3;
+      }
+      if (equipoA) equipoA.pp += 1;
+    } else {
+      if (equipoA) {
+        equipoA.pe += 1;
+        equipoA.puntos += 1;
+      }
+      if (equipoB) {
+        equipoB.pe += 1;
+        equipoB.puntos += 1;
+      }
+    }
+  });
+
+  equipos.sort((a, b) => {
+    if (b.puntos !== a.puntos) return b.puntos - a.puntos;
+    const difA = a.gf - a.gc;
+    const difB = b.gf - b.gc;
+    if (difB !== difA) return difB - difA;
+    if (b.gf !== a.gf) return b.gf - a.gf;
+    return a.nombre.localeCompare(b.nombre);
+  });
+
+  tbody.innerHTML = equipos.map((item, index) => `
+    <tr data-equipo-id="${escaparHtml(item.id_equipo)}"
+        data-nombre="${escaparHtml(item.nombre)}"
+        data-icono="${escaparHtml(item.icono)}"
+        data-grupo-nombre="${escaparHtml(item.nombre_grupo)}">
+      <td>
+        <div class="estadisticas-equipo">
+          <span class="estadisticas-pos">${index + 1}</span>
+          <img src="${escaparHtml(item.icono)}" alt="" class="estadisticas-icono">
+          <strong class="estadisticas-nombre" title="${escaparHtml(item.nombre)}">${escaparHtml(item.nombre)}</strong>
+        </div>
+      </td>
+      <td><small>${escaparHtml(item.nombre_grupo)}</small></td>
+      <td>${item.pj}/${item.pj_total}</td>
+      <td>${item.pg}</td>
+      <td>${item.pe}</td>
+      <td>${item.pp}</td>
+      <td>${item.gf}</td>
+      <td>${item.gc}</td>
+      <td>${item.gf - item.gc}</td>
+      <td><strong>${item.puntos}</strong></td>
+    </tr>
+  `).join('');
+}
+
+async function abrirCargaEquipoLibre(torneoId, numeroFecha, equipoId, boton = null) {
+  try {
+    cargaEquipoPartidoBotonActual = boton;
+    const response = await fetch(`/partidos/libre/torneos/${torneoId}/fecha/${numeroFecha}/equipo/${equipoId}/carga`);
+    const data = await response.json();
+    if (!data.success) {
+      mostrarAvisoApp(data.message || 'No se pudo preparar la carga de fecha libre', 'Carga de fecha libre');
+      return;
+    }
+
+    cargaEquipoPartidoActual = {
+      modo: 'libre',
+      torneoId,
+      numeroFecha,
+      equipoId,
+      equipoNombre: data.equipo.nombre,
+      fechaCalendario: data.partido.fecha || null
+    };
+    cargaItemsDisponibles = data.items || [];
+    cargaReglaTarjetasActual = { acumula_amarillas: false };
+
+    document.getElementById('cargaPartidoTitulo').textContent = `${data.equipo.nombre} - Fecha ${data.partido.numero_fecha || '-'} libre`;
+    document.getElementById('cargaPartidoSubtitulo').textContent = 'Equipo libre sin encuentro programado';
+    document.getElementById('cargaDeudaAnterior').value = formatoMonto(data.deudaAnterior);
+    document.getElementById('cargaMontoAportado').value = formatoMonto(data.montoAportado);
+    document.getElementById('cargaItemsTbody').innerHTML = '';
+
+    renderCargaJugadores([]);
+
+    if (data.itemsCargados && data.itemsCargados.length > 0) {
+      data.itemsCargados.forEach(item => agregarFilaItemCarga(item));
+    }
+
+    recalcularCargaEquipoPartido();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalCargaEquipoPartido')).show();
+  } catch (error) {
+    console.error(error);
+    mostrarAvisoApp('Error al abrir la carga de fecha libre', 'Carga de fecha libre');
+  }
+}
+
+function marcarBotonCargaRegistrada() {
+  if (!cargaEquipoPartidoBotonActual) return;
+  cargaEquipoPartidoBotonActual.classList.remove('btn-warning');
+  cargaEquipoPartidoBotonActual.classList.add('btn-success');
+  cargaEquipoPartidoBotonActual.title = 'Carga registrada';
+}
+
+function aplicarSancionesEnListaJugadores(jugadoresSancionados = []) {
+  jugadoresSancionados.forEach(jugador => {
+    const row = document.querySelector(`#jugadores tbody tr[data-jugador-id="${jugador.id_jugador}"]`);
+    if (!row) return;
+
+    row.classList.remove('table-secondary');
+    row.classList.add('table-warning');
+
+    const estadoInput = row.querySelector('.jugador-estado-vinculo-input');
+    if (estadoInput) estadoInput.checked = false;
+
+    const observacionesCell = row.querySelector('.jugador-observaciones-cell');
+    if (observacionesCell) {
+      observacionesCell.textContent = jugador.observaciones || '';
+    }
+
+    const equipoEstado = row.querySelector('.jugador-equipo-estado');
+    if (equipoEstado) {
+      equipoEstado.classList.remove('text-primary', 'text-muted');
+      equipoEstado.classList.add('text-warning');
+      if (!/\(Inactivo\)/.test(equipoEstado.textContent)) {
+        equipoEstado.textContent = `${equipoEstado.textContent.trim()} (Inactivo)`;
+      }
+    }
+  });
+}
+
+function actualizarFinanzasDesdeCarga(resumen = {}) {
+  if (!cargaEquipoPartidoActual) return;
+
+  const equipoId = String(cargaEquipoPartidoActual.equipoId);
+  const equipo = finanzasResumen.find(item => String(item.id_equipo) === equipoId);
+  if (!equipo) return;
+
+  const deudaInicial = Number(resumen.deudaAnterior || 0);
+  const totalItems = Number(resumen.totalItems || 0);
+  const entrega = Number(resumen.montoAportado || 0);
+  const saldo = Number(resumen.saldo || 0);
+  const esLibre = cargaEquipoPartidoActual.modo === 'libre';
+  const concepto = esLibre
+    ? `Fecha libre #${cargaEquipoPartidoActual.numeroFecha} - ${cargaEquipoPartidoActual.equipoNombre}`
+    : `Encuentro #${cargaEquipoPartidoActual.partidoId} - ${cargaEquipoPartidoActual.equipoNombre}`;
+
+  equipo.saldo_actual = saldo;
+  equipo.adeuda = saldo > 0;
+  equipo.total_items = (equipo.movimientos || []).reduce((total, mov) => total + Number(mov.total_items || 0), 0);
+  equipo.total_entregado = (equipo.movimientos || []).reduce((total, mov) => total + Number(mov.entrega || 0), 0);
+
+  const movimientos = equipo.movimientos || [];
+  const existente = movimientos.find(mov => String(mov.concepto || '') === concepto);
+  const movimiento = {
+    id_finanza: existente?.id_finanza || `tmp-${Date.now()}`,
+    concepto,
+    tipo: esLibre ? 'fecha_libre' : 'partido',
+    fecha_registro: new Date().toISOString().slice(0, 10),
+    numero_fecha: cargaEquipoPartidoActual.numeroFecha || null,
+    fecha_calendario: cargaEquipoPartidoActual.fechaCalendario || null,
+    nombre_grupo: equipo.nombre_grupo || null,
+    nombre_grupo_display: equipo.nombre_grupo || null,
+    deuda_inicial: deudaInicial,
+    total_items: totalItems,
+    entrega,
+    saldo,
+    items: obtenerCargaItemsPayload().map(item => ({
+      nombre: item.nombre,
+      cantidad: Number(item.cantidad || 0),
+      monto: Number(item.monto || 0),
+      total: Number(item.monto || 0) * Number(item.cantidad || 0),
+      observaciones: item.observaciones || ''
+    }))
+  };
+
+  if (existente) {
+    Object.assign(existente, movimiento);
+  } else {
+    movimientos.push(movimiento);
+    equipo.movimientos = movimientos;
+  }
+
+  equipo.total_items = movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0);
+  equipo.total_entregado = movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0);
+
+  const row = document.querySelector(`#finanzas tbody tr[data-finanzas-equipo-id="${equipoId}"]`);
+  if (!row) return;
+
+  const estadoCell = row.querySelector('.finanzas-estado-cell');
+  if (estadoCell) {
+    estadoCell.innerHTML = equipo.adeuda
+      ? '<span class="fw-bold text-danger" title="Equipo con deuda">‼️‼️</span>'
+      : '<span class="badge text-bg-success">Al dia</span>';
+  }
+
+  const saldoCell = row.querySelector('.finanzas-saldo-cell');
+  if (saldoCell) {
+    saldoCell.textContent = formatoMontoFinanzas(saldo);
+    saldoCell.classList.toggle('text-danger', equipo.adeuda);
+    saldoCell.classList.toggle('text-dark', !equipo.adeuda);
+  }
+}
+
+function obtenerCargaJugadoresPayload() {
+  return Array.from(document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]')).map(tr => ({
+    id_jugador: tr.dataset.jugadorId,
+    goles: tr.querySelector('.carga-jugador-goles')?.value || 0,
+    tarjetas_amarillas: tr.querySelector('.carga-jugador-amarillas')?.value || 0,
+    tarjetas_rojas: tr.querySelector('.carga-jugador-rojas')?.value || 0,
+    partidos_suspendidos: tr.querySelector('.carga-jugador-suspendidos')?.value || 0,
+    suspension_observaciones: tr.querySelector('.carga-jugador-observaciones')?.value || '',
+    accion_acumulacion: tr.dataset.accionAcumulacion || ''
+  }));
+}
+
+function obtenerCargaItemsPayload() {
+  return Array.from(document.querySelectorAll('#cargaItemsTbody tr')).map(tr => ({
+    nombre: tr.querySelector('.carga-item-nombre')?.value || '',
+    monto: valorNumeroInput(tr.querySelector('.carga-item-monto')?.value || 0),
+    cantidad: tr.querySelector('.carga-item-cantidad')?.value || 0,
+    observaciones: tr.querySelector('.carga-item-observaciones')?.value || ''
+  })).filter(item => item.nombre);
+}
+
+async function guardarCargaEquipoPartido() {
+  if (!cargaEquipoPartidoActual) return;
+  actualizarAcumulacionesAmarillas();
+  recalcularCargaEquipoPartido();
+  await resolverDecisionesAcumulacion();
+
+  try {
+    const { partidoId, equipoId, modo, torneoId, numeroFecha } = cargaEquipoPartidoActual;
+    const url = modo === 'libre'
+      ? `/partidos/libre/torneos/${torneoId}/fecha/${numeroFecha}/equipo/${equipoId}/carga`
+      : `/partidos/${partidoId}/equipo/${equipoId}/carga`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jugadores: obtenerCargaJugadoresPayload(),
+        items: obtenerCargaItemsPayload(),
+        monto_aportado: valorNumeroInput(document.getElementById('cargaMontoAportado').value)
+      })
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      mostrarAvisoApp(data.message || 'No se pudo guardar la carga', 'Carga del encuentro');
+      return;
+    }
+
+    cerrarModalBootstrapSeguro('modalCargaEquipoPartido');
+    marcarBotonCargaRegistrada();
+    aplicarSancionesEnListaJugadores(data.jugadoresSancionados || []);
+    actualizarFinanzasDesdeCarga(data.resumen || {});
+    await sincronizarFinanzasDesdeServidor();
+    mostrarAvisoApp('Carga del encuentro guardada correctamente', 'Carga guardada');
+  } catch (error) {
+    console.error(error);
+    mostrarAvisoApp('Error al guardar la carga del encuentro', 'Carga del encuentro');
+  }
+}
+
+function confirmarToggleEquipo(input) {
+  const form = input.form;
+  const confirmarInput = form.querySelector('input[name="confirmar_desactivacion"]');
+  const partidosPendientes = Number(input.dataset.partidosPendientes || 0);
+
+  if (!input.checked && partidosPendientes > 0) {
+    const ok = confirm(
+      'Este equipo tiene cargados partidos en curso, pendientes o en proceso. Desea desactivar?\n\n' +
+      'Los encuentros quedaran disparejos para el equipo contrario en cada fecha.'
+    );
+
+    if (!ok) {
+      input.checked = true;
+      return;
+    }
+
+    confirmarInput.value = '1';
+  }
+
+  form.submit();
+}
+
+</script>
+
+<style>
+.card.border-left-primary {
+  border-left: 4px solid #007bff;
+}
+
+.modal-header.bg-primary {
+  background-color: #007bff !important;
+}
+
+#alertaValidacion {
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.partido-inhabilitado td {
+  color: #6c757d;
+}
+
+.partidos-equipo {
+  display: grid;
+  grid-template-columns: 24px minmax(0, max-content) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.partidos-equipo-icono {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.partidos-equipo-nombre {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partidos-equipo-carga {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carga-partido-table th,
+.carga-partido-table td {
+  vertical-align: middle;
+}
+
+.carga-numero {
+  max-width: 74px;
+}
+
+.carga-monto {
+  max-width: 110px;
+}
+
+.carga-resumen {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.regla-tarjeta-opcion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.regla-tarjeta-opcion .form-check-input {
+  width: 2.4rem;
+  height: 1.25rem;
+  margin: 0;
+}
+
+.estadisticas-equipo {
+  display: grid;
+  grid-template-columns: 2ch 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.estadisticas-pos {
+  color: #6c757d;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.estadisticas-icono {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.estadisticas-nombre {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.torneo-portada {
+  width: 100%;
+  max-width: 860px;
+  max-height: 260px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow: hidden;
+  background: #0b1f3a;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.torneo-portada img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+
+.portada-preview {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.tab-pane-spaced {
+  padding-top: 22px;
+}
+
+#finanzas .finanzas-panel {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  margin: 0 auto;
+  text-align: left;
+  padding: 1rem;
+}
+
+#finanzas .finanzas-table {
+  min-width: 760px;
+}
+
+#finanzas .finanzas-equipo-col {
+  min-width: 210px;
+}
+
+#finanzas .finanzas-grupo-col {
+  width: 120px;
+}
+
+#finanzas .finanzas-estado-col {
+  width: 110px;
+}
+
+#finanzas .finanzas-saldo-col {
+  width: 150px;
+}
+
+#finanzas .finanzas-acciones-col {
+  width: 130px;
+}
+
+.finanzas-public-only {
+  display: none;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-admin-only {
+  display: none !important;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-public-only {
+  display: inline-flex;
+}
+
+.jugadores-panel {
+  width: 100%;
+  max-width: none;
+  text-align: left;
+}
+
+.jugadores-buscador .form-control {
+  flex: 1 1 auto;
+  min-width: 220px;
+}
+
+.jugadores-buscador .btn {
+  flex: 0 0 auto;
+}
+
+.partidos-public-only {
+  display: none;
+}
+
+#partidos.partidos-vista-publica .partidos-admin-only {
+  display: none !important;
+}
+
+#partidos.partidos-vista-publica .partidos-public-only {
+  display: inline-flex;
+}
+
+#partidos.partidos-vista-publica .editar-marcador-btn {
+  cursor: default !important;
+  pointer-events: none;
+}
+
+#jugadores.jugadores-vista-publica .jugadores-admin-only {
+  display: none !important;
+}
+
+#usuarios.usuarios-vista-publica .usuarios-admin-only {
+  display: none !important;
+}
+</style>
+
+<div class="modal fade" id="modalPersonalizarTorneo" tabindex="-1" aria-labelledby="modalPersonalizarTorneoTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalPersonalizarTorneoTitulo">Personalizar torneo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="bloquePortadaActual" class="d-none">
+          <img id="portadaActualPreview" src="" alt="Portada actual" class="portada-preview mb-3">
+        </div>
+
+        <form id="formPortadaTorneo" action="" method="POST" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="portadaTorneo" class="form-label">Portada</label>
+            <input type="file" class="form-control" id="portadaTorneo" name="portada" accept="image/*" required>
+          </div>
+          <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-upload"></i> Guardar portada
+            </button>
+          </div>
+        </form>
+
+        <hr>
+        <form id="formEliminarPortadaTorneo" action="" method="POST"
+              onsubmit="return confirm('Eliminar la portada de este torneo?')">
+          <button type="submit" class="btn btn-outline-danger w-100">
+            <i class="bi bi-trash"></i> Eliminar portada
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalEditarHorario" tabindex="-1" aria-labelledby="modalHorarioTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form action="" method="POST" id="formEditarHorario">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalHorarioTitulo">Editar horario</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="torneo_id" id="horarioTorneoId">
+          <input type="hidden" id="horarioPartidoId">
+          <div class="mb-3">
+            <label for="horarioFecha" class="form-label">Fecha</label>
+            <input type="date" class="form-control" id="horarioFecha" name="fecha">
+          </div>
+          <div class="mb-3">
+            <label for="horarioHora" class="form-label">Hora</label>
+            <input type="time" class="form-control" id="horarioHora" name="hora">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal editar marcador -->
+<div class="modal fade" id="modalEditarMarcador" tabindex="-1" aria-labelledby="marcadorTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title" id="marcadorTitulo">Editar marcador</h5>
+        <button type="button" class="btn-close" onclick="cerrarModalBootstrapSeguro('modalEditarMarcador')" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="marcadorPartidoId">
+        <div class="row g-3">
+          <div class="col-5">
+            <label for="marcadorGolesA" class="form-label">Goles Equipo A</label>
+            <input type="text" class="form-control form-control-lg marcador-goles-input" id="marcadorGolesA" inputmode="numeric" pattern="0|[1-9][0-9]*" maxlength="2" autocomplete="off">
+          </div>
+          <div class="col-2 d-flex align-items-end justify-content-center pb-3">
+            <span style="font-size: 1.5rem; font-weight: bold;">-</span>
+          </div>
+          <div class="col-5">
+            <label for="marcadorGolesB" class="form-label">Goles Equipo B</label>
+            <input type="text" class="form-control form-control-lg marcador-goles-input" id="marcadorGolesB" inputmode="numeric" pattern="0|[1-9][0-9]*" maxlength="2" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="cerrarModalBootstrapSeguro('modalEditarMarcador')">Cancelar</button>
+        <button type="button" class="btn btn-warning" onclick="guardarMarcador()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+<!-- Modal carga de equipo por encuentro -->
+<div class="modal fade" id="modalCargaEquipoPartido" tabindex="-1" aria-labelledby="cargaPartidoTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <div>
+          <h5 class="modal-title" id="cargaPartidoTitulo">Carga del encuentro</h5>
+          <small id="cargaPartidoSubtitulo" class="text-white-50"></small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" onclick="cerrarModalBootstrapSeguro('modalCargaEquipoPartido')" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-3">
+            <label class="form-label fw-bold text-dark">Deuda anterior</label>
+            <input type="text" class="form-control" id="cargaDeudaAnterior" readonly>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold text-dark">Total items</label>
+            <input type="text" class="form-control" id="cargaTotalItems" readonly>
+          </div>
+          <div class="col-md-3">
+            <label for="cargaMontoAportado" class="form-label fw-bold text-dark">Entrega del delegado</label>
+            <input type="text" class="form-control campo-dinero" id="cargaMontoAportado" inputmode="numeric" oninput="formatearCampoDinero(this); recalcularCargaEquipoPartido();">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold text-dark">Saldo</label>
+            <input type="text" class="form-control" id="cargaSaldoFinal" readonly>
+          </div>
+        </div>
+
+        <ul class="nav nav-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cargaJugadoresTab" type="button" role="tab">Jugadores</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cargaItemsTab" type="button" role="tab">Items y finanzas</button>
+          </li>
+        </ul>
+
+        <div class="tab-content pt-3">
+          <div class="tab-pane fade show active" id="cargaJugadoresTab" role="tabpanel">
+            <div class="d-flex justify-content-end mb-2">
+              <div class="input-group input-group-sm" style="max-width: 310px;">
+                <input type="text"
+                       class="form-control"
+                       id="buscarCargaJugadores"
+                       placeholder="nombre, apellido, camiseta o documento"
+                       autocomplete="off">
+                <button type="button" class="btn btn-outline-secondary" id="btnBuscarCargaJugadores" title="Buscar jugador">
+                  <i class="bi bi-search"></i>
+                </button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover carga-partido-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Jugador</th>
+                    <th>Goles</th>
+                    <th>Amarillas</th>
+                    <th>Rojas</th>
+                    <th>Susp. Fechas</th>
+                    <th>Motivo suspension</th>
+                  </tr>
+                </thead>
+                <tbody id="cargaJugadoresTbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="cargaItemsTab" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong>Items del encuentro</strong>
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarFilaItemCarga()">
+                <i class="bi bi-plus-circle"></i> Agregar item
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover carga-partido-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Item</th>
+                    <th>Monto</th>
+                    <th>Cant.</th>
+                    <th>Observacion</th>
+                    <th class="text-end">Total</th>
+                    <th>Agregado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="cargaItemsTbody"></tbody>
+              </table>
+            </div>
+            <div class="carga-resumen small">
+              El saldo se calcula como deuda anterior + items del encuentro - entrega del delegado.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="cerrarModalBootstrapSeguro('modalCargaEquipoPartido')">Cancelar</button>
+        <button type="button" class="btn btn-dark" onclick="guardarCargaEquipoPartido()">
+          <i class="bi bi-save"></i> Registrar carga
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade" id="modalDetalleFinanzas" tabindex="-1" aria-labelledby="finanzasDetalleTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <div>
+          <h5 class="modal-title" id="finanzasDetalleTitulo">Detalle financiero</h5>
+          <small id="finanzasDetalleSubtitulo" class="text-white-50"></small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body text-dark">
+        <div id="finanzasDetalleAlerta" class="alert alert-danger py-2 d-none">
+          <strong>‼️‼️ Equipo con deuda pendiente.</strong>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-4">
+            <div class="border rounded p-2 bg-light">
+              <div class="small text-muted">Total items/gastos</div>
+              <div class="fs-5 fw-bold" id="finanzasDetalleTotalItems">0</div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="border rounded p-2 bg-light">
+              <div class="small text-muted">Entregas en efectivo</div>
+              <div class="fs-5 fw-bold" id="finanzasDetalleTotalEntregado">0</div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="border rounded p-2 bg-light">
+              <div class="small text-muted">Deuda actual</div>
+              <div class="fs-5 fw-bold" id="finanzasDetalleSaldo">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Fecha fixture</th>
+                <th>Movimiento</th>
+                <th class="text-end">Deuda anterior</th>
+                <th class="text-end">Items/gastos</th>
+                <th class="text-end">Entrega</th>
+                <th class="text-end">Saldo</th>
+              </tr>
+            </thead>
+            <tbody id="finanzasDetalleTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-dark" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal interno de avisos / confirmaciones -->
+<div class="modal fade" id="modalAvisoApp" tabindex="-1" aria-labelledby="modalAvisoAppTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="modalAvisoAppTitulo">Atencion</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body text-dark">
+        <p class="mb-0 text-dark" id="modalAvisoAppMensaje"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary d-none" id="modalAvisoAppCancelar">Cancelar</button>
+        <button type="button" class="btn btn-dark" id="modalAvisoAppAceptar">Aceptar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Modal cruce manual -->
+<div class="modal fade" id="modalCruceManual" tabindex="-1" aria-labelledby="cruceManualTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form action="/partidos" method="POST" id="formCruceManual">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title" id="cruceManualTitulo">Cruce manual</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="id_torneo" value="<%= torneo.id_torneo %>">
+          <input type="hidden" name="numero_fecha" id="manualNumeroFecha">
+          <input type="hidden" name="ida_vuelta_manual" id="manualIdaVuelta" value="0">
+          <input type="hidden" name="redirect_url" id="manualRedirectUrl" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId : '' %>#partidos">
+
+          <div class="mb-3">
+            <label for="manualGrupoId" class="form-label">Grupo</label>
+            <select class="form-select" name="id_grupo" id="manualGrupoId">
+              <% (grupos || []).forEach(grupo => { %>
+                <option value="<%= grupo.id_grupo %>"><%= grupo.nombre_grupo %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-6">
+              <label for="manualEquipoA" class="form-label">Equipo A</label>
+              <select class="form-select" name="equipo_a" id="manualEquipoA"></select>
+            </div>
+            <div class="col-6">
+              <label for="manualEquipoB" class="form-label">Equipo B</label>
+              <select class="form-select" name="equipo_b" id="manualEquipoB"></select>
+            </div>
+          </div>
+
+          <small class="text-muted d-block mt-3">
+            Solo se muestran equipos del grupo seleccionado.
+          </small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear cruce</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal item -->
+<div class="modal fade" id="modalReglaTarjetas" tabindex="-1" aria-labelledby="modalReglaTarjetasTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form action="/torneos/<%= torneo.id_torneo %>/regla-tarjetas" method="POST">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title" id="modalReglaTarjetasTitulo">Regla de tarjetas</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <% const regla = reglaTarjetas || {}; %>
+          <% if (!regla.tabla_configurada) { %>
+            <div class="alert alert-warning py-2">
+              Falta aplicar la tabla de configuracion para guardar esta regla.
+            </div>
+          <% } %>
+
+          <div class="regla-tarjeta-opcion">
+            <div>
+              <label class="form-label fw-bold mb-0" for="reglaAcumulaAmarillas">Suspension automatica por acumulacion</label>
+              <div class="form-text">Si un jugador llega al limite de amarillas, el sistema propondra deshabilitarlo/suspenderlo.</div>
+            </div>
+            <div class="form-check form-switch m-0">
+              <input type="hidden" name="acumula_amarillas" value="0">
+              <input class="form-check-input" type="checkbox" id="reglaAcumulaAmarillas" name="acumula_amarillas" value="1" <%= regla.acumula_amarillas ? 'checked' : '' %>>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label for="reglaAmarillasSuspension" class="form-label text-dark">Amarillas para suspender</label>
+              <input type="number" class="form-control" id="reglaAmarillasSuspension" name="amarillas_para_suspension" min="1" step="1" value="<%= regla.amarillas_para_suspension || 5 %>" required>
+            </div>
+            <div class="col-md-6">
+              <label for="reglaFechasSuspension" class="form-label text-dark">Fechas de suspension</label>
+              <input type="number" class="form-control" id="reglaFechasSuspension" name="fechas_suspension_acumulacion" min="1" step="1" value="<%= regla.fechas_suspension_acumulacion || 1 %>" required>
+            </div>
+          </div>
+
+          <div class="regla-tarjeta-opcion mt-3">
+            <div>
+              <label class="form-label fw-bold mb-0" for="reglaReiniciar">Reiniciar conteo</label>
+              <div class="form-text">Vuelve a contar desde cero despues de registrar la sancion por acumulacion.</div>
+            </div>
+            <div class="form-check form-switch m-0">
+              <input type="hidden" name="reiniciar_al_sancionar" value="0">
+              <input class="form-check-input" type="checkbox" id="reglaReiniciar" name="reiniciar_al_sancionar" value="1" <%= regla.reiniciar_al_sancionar !== false ? 'checked' : '' %>>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar regla</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalItem" tabindex="-1" aria-labelledby="itemModalTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formItem" action="/items" method="POST">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="itemModalTitulo">Nuevo item</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="itemId" name="id_item">
+          <input type="hidden" id="itemTorneoId" name="id_torneo" value="<%= torneo.id_torneo %>">
+          <input type="hidden" id="itemEntityId" name="entity_id" value="<%= torneo.entity_id %>">
+          <div class="mb-3">
+            <label for="itemNombre" class="form-label text-dark fw-bold">Nombre <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="itemNombre" name="nombre" required>
+          </div>
+          <div class="mb-3">
+            <label for="itemDescripcion" class="form-label text-dark fw-bold">Descripción</label>
+            <textarea class="form-control" id="itemDescripcion" name="descripcion" rows="3"></textarea>
+          </div>
+          <div class="mb-3">
+            <label for="itemMonto" class="form-label text-dark fw-bold">Monto <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="itemMonto" name="monto" min="0" step="0.01" inputmode="decimal" required>
+            <div class="form-text">Solo valores positivos.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+  <!-- pestaña Partidos -->
+  <div class="tab-pane fade" id="partidos">
+  <div class="card-partidos p-3 shadow">
+    <p>
+
+
+    </p>
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label text-white mb-1">Filtrar por grupo</label>
+        <select class="form-select form-select-sm" onchange="window.location = '<%= '/torneos/gestionar/' + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#partidos'">
+          <option value="">Vista general</option>
+          <% (grupos || []).forEach(grupo => { %>
+            <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
+              <%= grupo.nombre_grupo %>
+            </option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label text-white mb-1" for="filtroPartidosFechaCalendario">Filtrar por fecha calendario</label>
+        <div class="input-group input-group-sm">
+          <input type="date"
+                 class="form-control"
+                 id="filtroPartidosFechaCalendario"
+                 value="<%= fechaCalendarioSeleccionada || '' %>">
+          <button type="button" class="btn btn-outline-light" id="btnFiltrarPartidosFecha">
+            <i class="bi bi-calendar-check"></i> Ver dia
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="btnLimpiarPartidosFecha" title="Limpiar fecha">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+      <% if (fechaCalendarioSeleccionada) { %>
+        <div class="col-md-4">
+          <span class="badge text-bg-warning">
+            Mostrando todos los grupos del <%= fechaCalendarioSeleccionada.split('-').reverse().join('/') %>
+          </span>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">Partidos</h3>
+      <% if (rol_id == 3 || rol_id == 99) { %>
+        <div class="btn-group btn-group-sm" role="group">
+          <% const proximaFechaPartidos = ((partidosPorFecha || []).reduce((max, fecha) => Math.max(max, Number(fecha.numero_fecha || 0)), 0) || 0) + 1; %>
+          <button type="button"
+                  class="btn btn-outline-success partidos-admin-only"
+                  onclick="abrirModalCruceManual(<%= proximaFechaPartidos %>, '<%= grupoSeleccionadoId || '' %>')"
+                  title="Agregar fecha adicional">
+            <i class="bi bi-calendar-plus"></i> Agregar fecha
+          </button>
+          <button type="button" class="btn btn-outline-light" id="btnVistaPublicaPartidos" title="Vista usuario">
+            <i class="bi bi-eye"></i> Vista usuario
+          </button>
+          <button type="button" class="btn btn-outline-warning d-none" id="btnVistaAdminPartidos" title="Habilitar administracion">
+            <i class="bi bi-tools"></i> Habilitar admin
+          </button>
+        </div>
+      <% } %>
+    </div>
+
+    <% if (torneo.portada) { %>
+      <div class="torneo-portada mb-3">
+        <img src="<%= torneo.portada %>" alt="Portada de <%= torneo.nombre_torneo %>">
+      </div>
+    <% } %>
+
+      <% if (partidosPorFecha && partidosPorFecha.length > 0) { %>
+        <ul class="nav nav-pills mb-3" id="fechasTab" role="tablist">
+          <% partidosPorFecha.forEach((fecha, index) => { %>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link <%= index === 0 ? 'active' : '' %>"
+                      id="fecha-<%= fecha.numero_fecha %>-tab"
+                      data-bs-toggle="pill"
+                      data-bs-target="#fecha-<%= fecha.numero_fecha %>"
+                      type="button"
+                      role="tab"
+                      aria-controls="fecha-<%= fecha.numero_fecha %>"
+                      aria-selected="<%= index === 0 ? 'true' : 'false' %>">
+                Fecha <%= fecha.numero_fecha %>
+                <% if (fecha.fecha_general) { %>
+                  <% const fechaGeneralVisible = String(fecha.fecha_general).slice(0, 10).split('-').reverse().join('/'); %>
+                  - <%= fechaGeneralVisible %>
+                <% } %>
+              </button>
+            </li>
+          <% }) %>
+        </ul>
+
+        <div class="tab-content">
+          <% partidosPorFecha.forEach((fecha, index) => { %>
+            <div class="tab-pane fade <%= index === 0 ? 'show active' : '' %>"
+                 id="fecha-<%= fecha.numero_fecha %>"
+                 role="tabpanel"
+                 aria-labelledby="fecha-<%= fecha.numero_fecha %>-tab">
+
+              <!-- Formulario para asignar fecha y horarios comunes -->
+              <form id="formFechaComun-<%= fecha.numero_fecha %>" class="mb-4 partidos-admin-only">
+                <input type="hidden" name="numero_fecha" value="<%= fecha.numero_fecha %>">
+                <input type="hidden" name="torneo_id" value="<%= torneo.id_torneo %>">
+                <div class="row g-3 align-items-end">
+                  <div class="col-md-3">
+                    <label class="form-label fw-bold">📅 Fecha común</label>
+                    <input type="date" class="form-control" id="fechaComun-<%= fecha.numero_fecha %>" name="fecha_comun" value="<%= fecha.fecha_general ? fecha.fecha_general : '' %>">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label fw-bold">⏰ Hora inicial</label>
+                    <input type="time" class="form-control" id="horaInicial-<%= fecha.numero_fecha %>" name="hora_inicial" placeholder="14:00">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label fw-bold">⏱️ Intervalo (min)</label>
+                    <input type="number" class="form-control" id="intervalo-<%= fecha.numero_fecha %>" name="intervalo_minutos" placeholder="20" min="5" max="120">
+                  </div>
+                  <div class="col-md-3">
+                    <button type="button"
+                            class="btn btn-outline-warning w-100 mb-2 abrir-cruce-manual-btn"
+                            data-numero-fecha="<%= fecha.numero_fecha %>"
+                            data-grupo-id="<%= fecha.partidos && fecha.partidos.length > 0 ? fecha.partidos[0].id_grupo || '' : '' %>">
+                      <i class="bi bi-diagram-3"></i> Cruce manual
+                    </button>
+                    <button type="button" class="btn btn-success w-100 guardar-horarios-btn" data-numero-fecha="<%= fecha.numero_fecha %>">
+                      <i class="bi bi-check-circle"></i> Guardar cambios
+                    </button>
+                  </div>
+                  <div class="col-md-2">
+                    <small class="text-muted">
+                      Asigna fecha y horarios espaciados a todos los partidos de esta fecha
+                    </small>
+                  </div>
+                </div>
+              </form>
+
+              <% if (fecha.partidos && fecha.partidos.length > 0) { %>
+                <% const fechaTieneFinalizados = fecha.partidos.some(partido => String(partido.estado || '').trim().toLowerCase() === 'finalizado'); %>
+                <% if (fechaTieneFinalizados) { %>
+                  <button type="button"
+                          class="btn btn-outline-danger btn-sm mb-3 partidos-admin-only"
+                          disabled
+                          title="No se puede eliminar una fecha con partidos finalizados">
+                    <i class="bi bi-calendar-x"></i> Eliminar fecha
+                  </button>
+                <% } else { %>
+                  <form action="/partidos/torneos/<%= torneo.id_torneo %>/fecha/<%= fecha.numero_fecha %>/eliminar"
+                        method="POST"
+                        class="mb-3 partidos-admin-only"
+                        onsubmit="return confirm('¿Eliminar todos los encuentros de la fecha <%= fecha.numero_fecha %>?');">
+                    <% if (grupoSeleccionadoId) { %>
+                      <input type="hidden" name="id_grupo" value="<%= grupoSeleccionadoId %>">
+                    <% } %>
+                    <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha : '?fecha=' + fecha.numero_fecha %>#partidos">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                      <i class="bi bi-calendar-x"></i> Eliminar fecha
+                    </button>
+                  </form>
+                <% } %>
+              <% } %>
+
+              <% if (fecha.equipos_libres && fecha.equipos_libres.length > 0) { %>
+                <div class="alert alert-warning py-2 mb-3">
+                  <strong>Equipo(s) libre(s):</strong>
+                  <% fecha.equipos_libres.forEach((libre, indexLibre) => { %>
+                    <span class="badge bg-secondary me-1 d-inline-flex align-items-center gap-1">
+                      <img src="<%= libre.icono || '/images/default_team.png' %>" alt="" style="width: 18px; height: 18px; object-fit: contain;">
+                      <span><%= libre.nombre_grupo %>: <%= libre.nombre_equipo %></span>
+                      <button type="button"
+                              class="btn btn-sm py-0 px-1 partidos-admin-only <%= libre.carga_registrada ? 'btn-success' : 'btn-warning' %>"
+                              title="<%= libre.carga_registrada ? 'Carga registrada' : 'Carga pendiente' %>"
+                              onclick="abrirCargaEquipoLibre(<%= torneo.id_torneo %>, <%= fecha.numero_fecha %>, <%= libre.id_equipo %>, this)">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                    </span>
+                  <% }) %>
+                </div>
+              <% } %>
+
+              <!-- Tabla de partidos más ancha -->
+              <div class="table-responsive" style="overflow-x: auto;">
+                <table class="table table-hover align-middle table-sm" style="font-size: 0.85rem;">
+                  <thead class="table-dark">
+                    <tr>
+                      <th style="width: 20%;">Equipo A</th>
+                      <th style="width: 10%; text-align: center;">Marcador</th>
+                      <th style="width: 20%;">Equipo B</th>
+                      <th style="width: 8%;">Grupo</th>
+                      <th style="width: 8%;">Fecha</th>
+                      <th style="width: 7%;">Hora</th>
+                      <th style="width: 10%;">Estado</th>
+                      <th class="partidos-admin-only" style="width: 17%; text-align: center;">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% if (!fecha.partidos || fecha.partidos.length === 0) { %>
+                      <tr>
+                        <td colspan="8" class="text-center text-muted py-3">
+                          Fecha sin encuentros programados. Use Cruce manual para agregar partidos en esta fecha.
+                        </td>
+                      </tr>
+                    <% } %>
+                    <% fecha.partidos.forEach(partido => { %>
+                      <tr class="<%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>">
+                        <td>
+                          <div class="partidos-equipo">
+                            <img src="<%= partido.icono_equipo_a || '/images/default_team.png' %>" alt="" class="partidos-equipo-icono">
+                            <strong class="partidos-equipo-nombre" title="<%= partido.nombre_equipo_a || 'Equipo A' %>"><%= partido.nombre_equipo_a || 'Equipo A' %></strong>
+                            <% if (partido.estado_equipo_a === false) { %>
+                              <span class="badge text-bg-secondary">inhabilitada</span>
+                            <% } %>
+                            <button type="button"
+                                    class="btn btn-sm partidos-equipo-carga partidos-admin-only <%= partido.carga_equipo_a_registrada ? 'btn-success' : 'btn-warning' %>"
+                                    title="<%= partido.carga_equipo_a_registrada ? 'Carga registrada' : 'Carga pendiente' %>"
+                                    onclick="abrirCargaEquipoPartido(<%= partido.id_partido %>, <%= partido.equipo_a %>, this)">
+                              <i class="bi bi-pencil"></i>
+                            </button>
+                          </div>
+                        </td>
+                        <td class="text-center fw-bold editar-marcador-btn" style="cursor: pointer;" 
+                            data-id="<%= partido.id_partido %>"
+                            data-equipo-a-id="<%= partido.equipo_a %>"
+                            data-equipo-b-id="<%= partido.equipo_b %>"
+                            data-equipo-a="<%= partido.nombre_equipo_a || '' %>"
+                            data-equipo-b="<%= partido.nombre_equipo_b || '' %>"
+                            data-grupo-id="<%= partido.id_grupo || '' %>"
+                            data-estado="<%= partido.estado || 'programado' %>"
+                            data-goles-a="<%= partido.goles_a || 0 %>"
+                            data-goles-b="<%= partido.goles_b || 0 %>">
+                          <span style="font-weight: bold;"><%= partido.goles_a ?? 0 %> - <%= partido.goles_b ?? 0 %></span>
+                        </td>
+                        <td>
+                          <div class="partidos-equipo">
+                            <img src="<%= partido.icono_equipo_b || '/images/default_team.png' %>" alt="" class="partidos-equipo-icono">
+                            <strong class="partidos-equipo-nombre" title="<%= partido.nombre_equipo_b || 'Equipo B' %>"><%= partido.nombre_equipo_b || 'Equipo B' %></strong>
+                            <% if (partido.estado_equipo_b === false) { %>
+                              <span class="badge text-bg-secondary">inhabilitada</span>
+                            <% } %>
+                            <button type="button"
+                                    class="btn btn-sm partidos-equipo-carga partidos-admin-only <%= partido.carga_equipo_b_registrada ? 'btn-success' : 'btn-warning' %>"
+                                    title="<%= partido.carga_equipo_b_registrada ? 'Carga registrada' : 'Carga pendiente' %>"
+                                    onclick="abrirCargaEquipoPartido(<%= partido.id_partido %>, <%= partido.equipo_b %>, this)">
+                              <i class="bi bi-pencil"></i>
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <small>
+                            <%= partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo' %>
+                            <% if (partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') { %>
+                              - <%= partido.observaciones %>
+                            <% } %>
+                          </small>
+                        </td>
+                        <td><small><%= partido.fecha_formateada || '-' %></small></td>
+                        <td><small><strong><%= partido.hora || '-' %></strong></small></td>
+                        <td>
+                          <select class="form-select form-select-sm estado-select partidos-admin-only" data-id="<%= partido.id_partido %>">
+                            <option value="programado" <%= partido.estado === 'programado' ? 'selected' : '' %>>Programado</option>
+                            <option value="suspendido" <%= partido.estado === 'suspendido' ? 'selected' : '' %>>Suspendido</option>
+                            <option value="finalizado" <%= partido.estado === 'finalizado' ? 'selected' : '' %>>Finalizado</option>
+                          </select>
+                          <span class="partidos-public-only badge text-bg-light"><%= partido.estado || 'programado' %></span>
+                        </td>
+                        <td class="partidos-admin-only" style="text-align: center;">
+                          <div class="btn-group btn-group-sm" role="group">
+                            <!-- Botón guardar estado/marcador -->
+                            <button type="button" class="btn btn-outline-success btn-guardar-match"
+                                    data-id="<%= partido.id_partido %>"
+                                    title="Guardar cambios"
+                                    style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                            <i class="bi bi-save"></i>
+                            </button>
+
+                            <% if (partido.estado === 'finalizado') { %>
+                              <button type="button" class="btn btn-outline-secondary" disabled
+                                      title="No se puede intercambiar un partido finalizado"
+                                      style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <i class="bi bi-arrow-left-right"></i>
+                              </button>
+                            <% } else { %>
+                              <form action="/partidos/<%= partido.id_partido %>/intercambiar" method="POST"
+                                    class="form-intercambiar-equipos"
+                                    style="display:inline-block;">
+                                <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha : '?fecha=' + fecha.numero_fecha %>#partidos">
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        title="Intercambiar Equipo A y Equipo B"
+                                        style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                  <i class="bi bi-arrow-left-right"></i>
+                                </button>
+                              </form>
+                            <% } %>
+
+                            <!-- Botón editar horario -->
+                            <% if (partido.estado === 'finalizado') { %>
+                              <button type="button" class="btn btn-outline-primary" disabled
+                                      title="No se puede editar un partido finalizado"
+                                      style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <i class="bi bi-pencil"></i>
+                              </button>
+                            <% } else { %>
+                              <button type="button" class="btn btn-outline-primary editar-horario-btn"
+                                      data-id="<%= partido.id_partido %>"
+                                      data-equipo-a="<%= partido.nombre_equipo_a || '' %>"
+                                      data-equipo-b="<%= partido.nombre_equipo_b || '' %>"
+                                      data-fecha="<%= partido.fecha_input || partido.fecha || '' %>"
+                                      data-hora="<%= partido.hora || '' %>"
+                                      data-torneo-id="<%= torneo.id_torneo %>"
+                                      title="Editar horario"
+                                      style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <i class="bi bi-pencil"></i>
+                              </button>
+                            <% } %>
+                            
+                            <!-- Botón administración -->
+                            <button type="button" class="btn btn-outline-secondary"
+                                    title="Administración"
+                                    style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                              <i class="bi bi-gear-fill"></i>
+                            </button>
+
+                            <% if (partido.estado === 'finalizado') { %>
+                              <button type="button" class="btn btn-outline-danger" disabled
+                                      title="No se puede eliminar un partido finalizado"
+                                      style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <i class="bi bi-trash"></i>
+                              </button>
+                            <% } else { %>
+                              <form action="/partidos/<%= partido.id_partido %>/eliminar" method="POST"
+                                    class="form-eliminar-encuentro"
+                                    style="display:inline-block;">
+                                <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha : '?fecha=' + fecha.numero_fecha %>#partidos">
+                                <button type="submit" class="btn btn-outline-danger"
+                                        title="Eliminar encuentro"
+                                        style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                  <i class="bi bi-trash"></i>
+                                </button>
+                              </form>
+                            <% } %>
+                          </div>
+                        </td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info">No hay partidos generados aún para este torneo.</div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- pestaña Estadísticas -->
+  <% if (rol_id != 1) { %>
+  <div class="tab-pane fade" id="finanzas">
+    <div class="p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="text-white mb-0">Finanzas</h3>
+        <% if (rol_id == 3 || rol_id == 99) { %>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-light" id="btnVistaPublicaFinanzas" title="Vista usuario">
+              <i class="bi bi-eye"></i> Vista usuario
+            </button>
+            <button type="button" class="btn btn-outline-warning d-none" id="btnVistaAdminFinanzas" title="Habilitar administracion">
+              <i class="bi bi-tools"></i> Habilitar admin
+            </button>
+          </div>
+        <% } %>
+      </div>
+      <div class="card bg-light bg-opacity-75 shadow finanzas-panel">
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0 finanzas-table">
+              <thead class="table-light">
+                <tr>
+                  <th class="finanzas-equipo-col">Equipo</th>
+                  <th class="finanzas-grupo-col">Grupo</th>
+                  <th class="text-center finanzas-estado-col">Estado</th>
+                  <th class="text-end finanzas-saldo-col finanzas-admin-only">Saldo actual</th>
+                  <th class="text-end finanzas-acciones-col finanzas-admin-only">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="finanzasResumenTbody">
+                <% if (finanzasResumen && finanzasResumen.length > 0) { %>
+                  <% finanzasResumen.forEach(equipoFinanza => { %>
+                    <tr data-finanzas-equipo-id="<%= equipoFinanza.id_equipo %>">
+                      <td>
+                        <div class="d-flex align-items-center gap-2">
+                          <img src="<%= equipoFinanza.icono || '/images/default_team.png' %>"
+                               alt=""
+                               style="width:28px;height:28px;object-fit:cover;border-radius:50%;">
+                          <strong class="text-dark"><%= equipoFinanza.nombre %></strong>
+                        </div>
+                      </td>
+                      <td class="text-dark"><%= equipoFinanza.nombre_grupo || 'Sin grupo' %></td>
+                      <td class="text-center finanzas-estado-cell">
+                        <% if (equipoFinanza.adeuda) { %>
+                          <span class="fw-bold text-danger" title="Equipo con deuda">‼️‼️</span>
+                        <% } else { %>
+                          <span class="badge text-bg-success">Al dia</span>
+                        <% } %>
+                      </td>
+                      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell <%= equipoFinanza.adeuda ? 'text-danger' : 'text-dark' %>">
+                        <%= Number(equipoFinanza.saldo_actual || 0).toLocaleString('es-PY') %>
+                      </td>
+                      <td class="text-end finanzas-admin-only">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-dark"
+                                onclick="abrirDetalleFinanzas('<%= equipoFinanza.id_equipo %>')">
+                          Detalles
+                        </button>
+                      </td>
+                    </tr>
+                  <% }) %>
+                <% } else { %>
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-3">No hay equipos cargados para este torneo.</td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+  </div>
+</div>
+  <% } %>
+
+  <div class="tab-pane fade" id="estadisticas">
+    <div class="p-3">
+      <h3 class="text-white mb-3">Estadisticas</h3>
+
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-4">
+          <label class="form-label text-white mb-1">Filtrar por grupo</label>
+          <select class="form-select form-select-sm" onchange="window.location = '<%= '/torneos/gestionar/' + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#estadisticas'">
+            <option value="">Vista general</option>
+            <% (grupos || []).forEach(grupo => { %>
+              <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
+                <%= grupo.nombre_grupo %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+
+      <% if (torneo.portada) { %>
+        <div class="torneo-portada mb-3">
+          <img src="<%= torneo.portada %>" alt="Portada de <%= torneo.nombre_torneo %>">
+        </div>
+      <% } %>
+
+      <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#estadisticasTablaPosiciones" type="button" role="tab">
+            Tabla de posiciones
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#estadisticasRankingGoles" type="button" role="tab">
+            Ranking de goles
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="estadisticasTablaPosiciones" role="tabpanel">
+          <div class="table-responsive mb-4">
+            <table class="table table-sm table-striped table-hover align-middle bg-white">
+              <thead class="table-dark">
+                <tr>
+                  <th style="width: 38%;">Equipo</th>
+                  <th>Grupo</th>
+                  <th>PJ</th>
+                  <th>G</th>
+                  <th>E</th>
+                  <th>P</th>
+                  <th>GF</th>
+                  <th>GC</th>
+                  <th>DF</th>
+                  <th>PTS</th>
+                </tr>
+              </thead>
+              <tbody id="estadisticasTbody">
+                <% ((grupoSeleccionadoId ? estadisticasFiltradas : estadisticasGeneral) || []).forEach((item, index) => { %>
+                  <tr data-equipo-id="<%= item.id_equipo %>"
+                      data-nombre="<%= item.nombre %>"
+                      data-icono="<%= item.icono || '/images/default_team.png' %>"
+                      data-grupo-nombre="<%= item.nombre_grupo %>">
+                    <td>
+                      <div class="estadisticas-equipo">
+                        <span class="estadisticas-pos"><%= index + 1 %></span>
+                        <img src="<%= item.icono || '/images/default_team.png' %>" alt="" class="estadisticas-icono">
+                        <strong class="estadisticas-nombre" title="<%= item.nombre %>"><%= item.nombre %></strong>
+                      </div>
+                    </td>
+                    <td><small><%= item.nombre_grupo %></small></td>
+                    <td><%= item.pj %>/<%= item.pj_total %></td>
+                    <td><%= item.pg %></td>
+                    <td><%= item.pe %></td>
+                    <td><%= item.pp %></td>
+                    <td><%= item.gf %></td>
+                    <td><%= item.gc %></td>
+                    <td><%= item.gf - item.gc %></td>
+                    <td><strong><%= item.puntos %></strong></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="estadisticasRankingGoles" role="tabpanel">
+          <div class="table-responsive mb-4">
+            <table class="table table-sm table-striped table-hover align-middle bg-white">
+              <thead class="table-dark">
+                <tr>
+                  <th>Nombre</th>
+                  <th>Equipo actual</th>
+                  <th class="text-end">Goles marcados</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (rankingGoles && rankingGoles.length > 0) { %>
+                  <% rankingGoles.forEach(jugador => { %>
+                    <tr>
+                      <td><strong><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') %></strong></td>
+                      <td><%= jugador.equipo || 'Libre' %></td>
+                      <td class="text-end fw-bold"><%= jugador.goles %></td>
+                    </tr>
+                  <% }) %>
+                <% } else { %>
+                  <tr>
+                    <td colspan="3" class="text-center text-muted py-3">Todavia no hay goles cargados para este torneo.</td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+  </div>
+</div>
+
+  <!-- pestaña Items -->
+  <div class="tab-pane fade" id="items">
+    <div class="p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="text-white mb-0">Items</h3>
+        <div class="btn-group">
+          <button type="button" class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#modalReglaTarjetas">
+            <i class="bi bi-shield-exclamation"></i> Regla tarjetas
+          </button>
+          <button type="button" class="btn btn-primary btn-item-nuevo">
+            <i class="bi bi-plus-circle"></i> Nuevo item
+          </button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle bg-white">
+          <thead class="table-dark">
+            <tr>
+              <th>Nombre</th>
+              <th>Descripción</th>
+              <th>Monto</th>
+              <th style="width: 160px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% (items || []).forEach(item => { %>
+              <tr>
+                <td><strong><%= item.nombre %></strong></td>
+                <td><%= item.descripcion || '-' %></td>
+                <td><%= Number(item.monto).toFixed(2) %></td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button type="button"
+                            class="btn btn-outline-primary btn-item-editar"
+                            data-id="<%= item.id_item %>"
+                            data-nombre="<%= item.nombre %>"
+                            data-descripcion="<%= item.descripcion || '' %>"
+                            data-monto="<%= item.monto %>">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <form action="/items/<%= item.id_item %>/eliminar" method="POST" onsubmit="return confirm('¿Eliminar este item?')" style="display:inline-block;">
+                      <button type="submit" class="btn btn-outline-danger">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- pestaña Equipos -->
+  <% if (rol_id == 3 || rol_id == 99) { %>
+  <div class="tab-pane fade" id="usuarios">
+    <div class="p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="text-white mb-0">Usuarios</h3>
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-light" id="btnVistaPublicaUsuarios" title="Vista usuario">
+            <i class="bi bi-eye"></i> Vista usuario
+          </button>
+          <button type="button" class="btn btn-outline-warning d-none" id="btnVistaAdminUsuarios" title="Habilitar administracion">
+            <i class="bi bi-tools"></i> Habilitar admin
+          </button>
+        </div>
+      </div>
+
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-4">
+          <label class="form-label text-white mb-1" for="buscarUsuariosAdmin">Buscar</label>
+          <div class="input-group">
+            <input type="text" class="form-control text-uppercase" id="buscarUsuariosAdmin" placeholder="nombre - equipo - documento">
+            <button type="button" class="btn btn-outline-light" id="btnBuscarUsuariosAdmin" title="Buscar usuarios">
+              <i class="bi bi-search"></i>
+            </button>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label text-white mb-1" for="filtroUsuariosRol">Rol</label>
+          <select class="form-select" id="filtroUsuariosRol">
+            <option value="">Todos los roles</option>
+            <option value="1">Espectador</option>
+            <% if (rol_id == 99) { %>
+              <option value="2">Delegado</option>
+            <% } %>
+            <option value="3">Admin</option>
+            <% if (rol_id == 99) { %>
+              <option value="99">Super admin</option>
+            <% } %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label text-white mb-1" for="filtroUsuariosEstado">Estado</label>
+          <select class="form-select" id="filtroUsuariosEstado">
+            <option value="">Todos</option>
+            <option value="1" selected>Activos</option>
+            <option value="0">Inactivos</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label text-white mb-1" for="filtroUsuariosTorneo">Torneo</label>
+          <select class="form-select" id="filtroUsuariosTorneo">
+            <option value="">Todos los torneos</option>
+            <% (torneosUsuarios || []).forEach(t => { %>
+              <option value="<%= t.id_torneo %>"><%= t.nombre_torneo %> - <%= t.temporada || '' %></option>
+            <% }) %>
+          </select>
+        </div>
+      </div>
+
+      <div class="text-white small mb-2">
+        Usuarios visibles: <strong id="usuariosAdminVisibles">0</strong> / <span id="usuariosAdminTotal"><%= (usuariosAdmin || []).length %></span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle bg-white" id="tablaUsuariosAdmin">
+          <thead class="table-dark">
+            <tr>
+              <th style="width: 56px;">#</th>
+              <th>Usuario</th>
+              <th>Documento</th>
+              <th>Rol</th>
+              <th class="usuarios-admin-only">Estado</th>
+              <th>Torneo</th>
+              <th>Equipo</th>
+              <th class="usuarios-admin-only" style="width: 360px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% (usuariosAdmin || []).forEach(u => { %>
+              <% const vinculosUsuario = Array.isArray(u.vinculos) ? u.vinculos : []; %>
+              <% const torneosUsuario = vinculosUsuario.map(v => v.id_torneo).filter(Boolean).join(','); %>
+              <% const textoTorneosUsuario = vinculosUsuario.map(v => v.torneo).filter(Boolean).join(' '); %>
+              <% const textoEquiposUsuario = vinculosUsuario.map(v => v.equipo).filter(Boolean).join(' '); %>
+              <tr data-nombre="<%= u.nombre || '' %>"
+                  data-documento="<%= u.documento || '' %>"
+                  data-rol="<%= Number(u.rol_id || 0) %>"
+                  data-estado="<%= u.estado ? '1' : '0' %>"
+                  data-equipos="<%= textoEquiposUsuario %>"
+                  data-torneos-texto="<%= textoTorneosUsuario %>"
+                  data-torneos="<%= torneosUsuario %>">
+                <td class="usuarios-admin-indice"></td>
+                <td>
+                  <strong><%= u.nombre %></strong>
+                  <% if (u.correo) { %>
+                    <br><small class="text-muted"><%= u.correo %></small>
+                  <% } %>
+                </td>
+                <td><%= u.documento %></td>
+                <td>
+                  <span class="badge <%= Number(u.rol_id) === 99 ? 'text-bg-danger' : (Number(u.rol_id) === 3 ? 'text-bg-primary' : 'text-bg-secondary') %>">
+                    <%= u.rol_nombre %>
+                  </span>
+                </td>
+                <td class="usuarios-admin-only">
+                  <span class="badge <%= u.estado ? 'text-bg-success' : 'text-bg-secondary' %>">
+                    <%= u.estado ? 'Activo' : 'Inactivo' %>
+                  </span>
+                </td>
+                <td>
+                  <% if (vinculosUsuario.length > 0) { %>
+                    <% vinculosUsuario.forEach(v => { %>
+                      <span class="badge text-bg-light border me-1 mb-1"><%= v.torneo || 'Sin torneo' %></span>
+                    <% }) %>
+                  <% } else { %>
+                    <span class="text-muted">Sin vinculo</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (vinculosUsuario.length > 0) { %>
+                    <% vinculosUsuario.forEach(v => { %>
+                      <div>
+                        <strong><%= v.equipo || 'Sin equipo' %></strong>
+                        <small class="text-muted">(<%= v.rol_equipo || 'delegado' %><%= v.estado_vinculo ? '' : ', inactivo' %>)</small>
+                      </div>
+                    <% }) %>
+                  <% } else { %>
+                    <span class="text-muted">Sin equipo</span>
+                  <% } %>
+                </td>
+                <td class="usuarios-admin-only">
+                  <div class="d-flex flex-wrap gap-1">
+                    <form action="/torneos/<%= torneo.id_torneo %>/usuarios/<%= u.id_usuario %>/toggle" method="POST">
+                      <button type="submit" class="btn btn-sm <%= u.estado ? 'btn-outline-warning' : 'btn-outline-success' %>">
+                        <i class="bi <%= u.estado ? 'bi-person-slash' : 'bi-person-check' %>"></i>
+                        <%= u.estado ? 'Desactivar' : 'Activar' %>
+                      </button>
+                    </form>
+                    <% if (rol_id == 99 || Number(u.rol_id) !== 99) { %>
+                      <form action="/torneos/<%= torneo.id_torneo %>/usuarios/<%= u.id_usuario %>/permisos" method="POST"
+                            class="d-flex gap-1"
+                            onsubmit="return confirm('Cambiar permisos de este usuario?')">
+                        <select name="rol_id" class="form-select form-select-sm" aria-label="Cambiar permisos">
+                          <option value="1" <%= Number(u.rol_id) === 1 ? 'selected' : '' %>>Espectador</option>
+                          <% if (rol_id == 99) { %>
+                            <option value="2" <%= Number(u.rol_id) === 2 ? 'selected' : '' %>>Delegado</option>
+                          <% } %>
+                          <option value="3" <%= Number(u.rol_id) === 3 ? 'selected' : '' %>>Admin</option>
+                          <% if (rol_id == 99) { %>
+                            <option value="99" <%= Number(u.rol_id) === 99 ? 'selected' : '' %>>Super admin</option>
+                          <% } %>
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                          <i class="bi bi-shield-check"></i> Cambiar permisos
+                        </button>
+                      </form>
+                    <% } else { %>
+                      <span class="text-muted small">Super admin protegido</span>
+                    <% } %>
+                    <% if (rol_id == 99 || Number(u.rol_id) !== 99) { %>
+                      <form action="/torneos/<%= torneo.id_torneo %>/usuarios/<%= u.id_usuario %>/reset-password" method="POST"
+                            onsubmit="confirmarResetPassword(event)">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                          <i class="bi bi-key"></i> Resetear clave
+                        </button>
+                      </form>
+                    <% } %>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <% } %>
+
+  <div class="tab-pane fade tab-pane-spaced" id="equipos">
+  <div class="card bg-light bg-opacity-75 p-3 shadow">
+    <h3>Equipos</h3>
+
+    <% if (torneo.Equipos && torneo.Equipos.length > 0) { %>
+      <ul class="list-group">
+        <% torneo.Equipos.forEach(equipo => { %>
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span class="<%= !equipo.estado ? 'text-muted' : '' %>">
+              <%= equipo.nombre %>
+            </span>
+
+            <div class="d-flex align-items-center">
+              <!-- Switch activar/desactivar -->
+              <% if (rol_id == 3 || rol_id == 99) { %>
+                <form action="/equipos/toggle/<%= equipo.id_equipo %>" method="POST" class="me-3 form-toggle-equipo">
+                  <input type="hidden" name="confirmar_desactivacion" value="0">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" 
+                           data-equipo-nombre="<%= equipo.nombre %>"
+                           data-partidos-pendientes="<%= equipo.partidos_pendientes || 0 %>"
+                           onchange="confirmarToggleEquipo(this)" 
+                           <%= equipo.estado ? 'checked' : '' %>>
+                  </div>
+                </form>
+              <% } %>
+
+              <!-- Icono ojo para ver alineaciones -->
+              <a href="/equipos/ver/<%= equipo.id_equipo %>?returnUrl=<%= encodeURIComponent('/torneos/gestionar/' + torneo.id_torneo + '#equipos') %>" 
+                 class="btn btn-sm btn-info me-2">
+                <i class="bi bi-eye-fill"></i> <!-- Bootstrap icon ojo -->
+              </a>
+
+              <!-- Icono engranaje para administrar -->
+              <% const puedeAdministrarEquipo = (rol_id == 3 || rol_id == 99 || (rol_id == 2 && equipo.es_equipo_delegado)); %>
+              <% if (equipo.estado && puedeAdministrarEquipo) { %>
+                <a href="/equipos/administrar/<%= equipo.id_equipo %>" 
+                   class="btn btn-sm btn-secondary">
+                  <i class="bi bi-gear-fill"></i> <!-- Bootstrap icon engranaje -->
+                </a>
+              <% } else if (rol_id == 2 && !equipo.es_equipo_delegado) { %>
+                <button class="btn btn-sm btn-outline-secondary" disabled title="Solo puede administrar su equipo vinculado">
+                  <i class="bi bi-lock"></i>
+                </button>
+              <% } else { %>
+                <button class="btn btn-sm btn-secondary" disabled>
+                  <i class="bi bi-gear-fill"></i>
+                </button>
+              <% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
+    <% } else { %>
+      <p class="text-muted">No hay equipos creados aún.</p>
+    <% } %>
+  </div>
+  </div>
+
+
+
+  <!-- pestaña jugadores -->
+  <div class="tab-pane fade tab-pane-spaced" id="jugadores">
+  <div class="card bg-light bg-opacity-75 p-3 shadow jugadores-panel">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">Jugadores</h3>
+      <% if (rol_id == 3 || rol_id == 99) { %>
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-primary" id="btnVistaPublicaJugadores" title="Vista usuario">
+            <i class="bi bi-eye"></i> Vista usuario
+          </button>
+          <button type="button" class="btn btn-outline-warning d-none" id="btnVistaAdminJugadores" title="Habilitar administracion">
+            <i class="bi bi-tools"></i> Habilitar admin
+          </button>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Buscadores -->
+    <div class="row mb-3">
+      <div class="col-12">
+        <div class="d-flex gap-2 jugadores-buscador">
+          <input type="text" class="form-control text-uppercase"
+                 placeholder="nombre - documento - equipo" id="buscarJugadores">
+          <button type="button" class="btn btn-outline-primary" id="btnBuscarJugadores" title="Buscar jugadores">
+            <i class="bi bi-search"></i>
+          </button>
+
+          <!-- Botón Nuevo jugador -->
+          <a href="/jugadores/nuevo?entity_id=<%= torneo.entity_id %>&torneo_id=<%= torneo.id_torneo %>" 
+             class="btn btn-primary <%= rol_id == 2 ? '' : 'jugadores-admin-only' %>">
+            <i class="bi bi-person-plus"></i> Nuevo
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla de jugadores -->
+    <table class="table table-striped table-hover align-middle shadow-sm">
+      <thead class="table-dark">
+        <tr>
+          <th>Nombre</th>
+          <th>Apellido</th>
+          <th>Documento</th>
+          <th>Fecha Nac.</th>
+          <th>Edad / Meses</th>
+          <th>Estado</th>
+          <th>Observaciones</th>
+          <th>Equipo</th>
+          <th class="jugadores-admin-only">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% jugadores.forEach(j => { %>
+          <tr class="<%= j.estado_vinculo === 'Activo' ? '' : (j.estado_vinculo === 'Inactivo' ? 'table-warning' : 'table-secondary') %>"
+              data-jugador-id="<%= j.id_jugador %>"
+              data-documento="<%= j.documento || '' %>"
+              data-equipo="<%= j.equipo || '' %>"
+              data-nombre="<%= [j.nombre, j.apellido].filter(Boolean).join(' ') %>">
+            <td>
+              <%= j.nombre %>
+              <% if (j.capitan) { %>
+                <span class="badge text-bg-warning ms-1">c</span>
+              <% } %>
+            </td>
+            <td><%= j.apellido %></td>
+            <td><%= j.documento %></td>
+            <td>
+              <% if (j.fecha_nacimiento_fmt) { %>
+                <% const partesFechaNacimiento = String(j.fecha_nacimiento_fmt).slice(0, 10).split('-'); %>
+                <%= partesFechaNacimiento.length === 3 ? `${partesFechaNacimiento[2]}/${partesFechaNacimiento[1]}/${partesFechaNacimiento[0]}` : j.fecha_nacimiento_fmt %>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+            <td>
+              <span class="badge bg-primary"><%= j.edad %> años</span>
+              <span class="badge bg-info text-dark"><%= j.meses %> meses</span>
+            </td>
+            <td>
+              <span class="badge <%= j.estado_vinculo_bool ? 'text-bg-primary' : 'text-bg-warning' %>">
+                <%= j.estado_vinculo_bool ? 'Activo' : 'Inactivo' %>
+              </span>
+              <input class="jugador-estado-vinculo-input d-none" type="checkbox"
+                     <%= j.estado_vinculo_bool ? 'checked' : '' %>
+                     disabled>
+            </td>
+
+
+
+
+            <td class="jugador-observaciones-cell"><%= j.observaciones || '' %></td>
+            <td>
+              <span class="jugador-equipo-estado <%= j.estado_vinculo === 'Activo' ? 'text-primary' : (j.estado_vinculo === 'Inactivo' ? 'text-warning' : 'text-muted') %>">
+                <%= j.equipo %> <%= j.estado_vinculo === 'Inactivo' ? '(Inactivo)' : '' %>
+              </span>
+              <% if (j.numero_camiseta) { %>
+                <span class="badge text-bg-dark ms-1">#<%= j.numero_camiseta %></span>
+              <% } %>
+              <br>
+              <small class="text-muted"><%= j.tipo_vinculo %></small>
+            </td>
+            <td class="jugadores-admin-only">
+              <div class="btn-group">
+                <a href="/jugadores/editar/<%= j.id_jugador %>" 
+                   class="btn btn-sm btn-outline-secondary" title="Editar">
+                  <i class="bi bi-pencil"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <form action="/equipos/asignarJugadores" method="POST">
+  <input type="hidden" name="id_equipo" id="id_equipo_jugadores">
+
+  <div class="modal fade" id="modalAsignarJugador" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title">Asignar Jugadores</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <%- include('../partials/listaJugadores', { jugadores: jugadores }) %>
+
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-success">Guardar</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+  </div>
+  </form>
+  <form action="/equipos/asignarDelegados" method="POST">
+  <input type="hidden" name="id_equipo" id="id_equipo_delegados">
+
+  <div class="modal fade" id="modalAsignarDelegado" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title">Asignar Delegados</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <%- include('../partials/listaUsuarios', { usuarios: usuarios, id_torneo: id_torneo }) %>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-success">Guardar</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+
+<script>
+document.querySelectorAll('.form-agregar-equipo').forEach(form => {
+  form.addEventListener('submit', async event => {
+    if (form.dataset.confirmadoMudanza === '1') return;
+
+    event.preventDefault();
+    const formData = new FormData(form);
+    const params = new URLSearchParams(formData);
+
+    try {
+      const response = await fetch('/equipos/validarMudanza', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+      });
+      const data = await response.json();
+
+      if (!data.ok) {
+        alert(data.message || 'No se pudo validar el equipo.');
+        return;
+      }
+
+      if (data.requiereConfirmacion) {
+        if (!confirm(data.message)) return;
+
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'confirmar_mudanza';
+        input.value = '1';
+        form.appendChild(input);
+      }
+
+      form.dataset.confirmadoMudanza = '1';
+      form.submit();
+    } catch (error) {
+      console.error('Error al validar mudanza:', error);
+      alert('Error al validar el equipo.');
+    }
+  });
+});
+
+function aplicarBusquedaJugadores() {
+  const inputBusqueda = document.getElementById('buscarJugadores');
+  const busqueda = (inputBusqueda?.value || '').trim().toUpperCase();
+  sessionStorage.setItem('jugadoresFiltroBusqueda', inputBusqueda?.value || '');
+
+  document.querySelectorAll('#jugadores tbody tr').forEach(row => {
+    const nombreFila = (row.dataset.nombre || '').toUpperCase();
+    const documentoFila = (row.dataset.documento || '').toUpperCase();
+    const equipoFila = (row.dataset.equipo || '').toUpperCase();
+    const coincide = !busqueda
+      || nombreFila.includes(busqueda)
+      || documentoFila.includes(busqueda)
+      || equipoFila.includes(busqueda);
+
+    row.classList.toggle('d-none', !coincide);
+  });
+}
+
+document.getElementById('btnBuscarJugadores')?.addEventListener('click', aplicarBusquedaJugadores);
+document.getElementById('buscarJugadores')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') aplicarBusquedaJugadores();
+});
+const filtroJugadoresGuardado = sessionStorage.getItem('jugadoresFiltroBusqueda');
+if (filtroJugadoresGuardado !== null) {
+  const inputBuscarJugadores = document.getElementById('buscarJugadores');
+  if (inputBuscarJugadores) {
+    inputBuscarJugadores.value = filtroJugadoresGuardado;
+    aplicarBusquedaJugadores();
+  }
+}
+
+function aplicarFiltrosUsuariosAdmin() {
+  const busqueda = (document.getElementById('buscarUsuariosAdmin')?.value || '').trim().toUpperCase();
+  const torneoId = document.getElementById('filtroUsuariosTorneo')?.value || '';
+  const rolId = document.getElementById('filtroUsuariosRol')?.value || '';
+  const estado = document.getElementById('filtroUsuariosEstado')?.value || '';
+  let visibles = 0;
+
+  document.querySelectorAll('#tablaUsuariosAdmin tbody tr').forEach(row => {
+    const nombreFila = (row.dataset.nombre || '').toUpperCase();
+    const documentoFila = (row.dataset.documento || '').toUpperCase();
+    const rolFila = row.dataset.rol || '';
+    const estadoFila = row.dataset.estado || '';
+    const equiposFila = (row.dataset.equipos || '').toUpperCase();
+    const torneosTextoFila = (row.dataset.torneosTexto || '').toUpperCase();
+    const torneosFila = (row.dataset.torneos || '').split(',').filter(Boolean);
+    const coincideBusqueda = !busqueda
+      || nombreFila.includes(busqueda)
+      || documentoFila.includes(busqueda)
+      || equiposFila.includes(busqueda)
+      || torneosTextoFila.includes(busqueda);
+    const coincideTorneo = !torneoId || torneosFila.includes(torneoId);
+    const coincideRol = !rolId || rolFila === rolId;
+    const coincideEstado = !estado || estadoFila === estado;
+    const visible = coincideBusqueda && coincideTorneo && coincideRol && coincideEstado;
+
+    row.classList.toggle('d-none', !visible);
+    if (visible) {
+      visibles += 1;
+      const indice = row.querySelector('.usuarios-admin-indice');
+      if (indice) indice.textContent = visibles;
+    }
+  });
+
+  const contador = document.getElementById('usuariosAdminVisibles');
+  if (contador) contador.textContent = visibles;
+}
+
+document.getElementById('btnBuscarUsuariosAdmin')?.addEventListener('click', aplicarFiltrosUsuariosAdmin);
+document.getElementById('buscarUsuariosAdmin')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') aplicarFiltrosUsuariosAdmin();
+});
+document.getElementById('filtroUsuariosTorneo')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
+document.getElementById('filtroUsuariosRol')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
+document.getElementById('filtroUsuariosEstado')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
+aplicarFiltrosUsuariosAdmin();
+
+function aplicarFiltroPartidosFechaCalendario() {
+  const fecha = document.getElementById('filtroPartidosFechaCalendario')?.value || '';
+  const url = new URL(window.location.href);
+
+  url.searchParams.delete('grupo_id');
+  url.searchParams.delete('fecha');
+  if (fecha) {
+    url.searchParams.set('fecha_calendario', fecha);
+  } else {
+    url.searchParams.delete('fecha_calendario');
+  }
+
+  window.location = `${url.pathname}${url.search}#partidos`;
+}
+
+document.getElementById('btnFiltrarPartidosFecha')?.addEventListener('click', aplicarFiltroPartidosFechaCalendario);
+document.getElementById('filtroPartidosFechaCalendario')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') aplicarFiltroPartidosFechaCalendario();
+});
+document.getElementById('btnLimpiarPartidosFecha')?.addEventListener('click', () => {
+  const input = document.getElementById('filtroPartidosFechaCalendario');
+  if (input) input.value = '';
+  aplicarFiltroPartidosFechaCalendario();
+});
+
+function activarVistaPublicaPartidos() {
+  const panel = document.getElementById('partidos');
+  panel?.classList.add('partidos-vista-publica');
+  document.getElementById('btnVistaPublicaPartidos')?.classList.add('d-none');
+  document.getElementById('btnVistaAdminPartidos')?.classList.remove('d-none');
+  sessionStorage.setItem('partidosModoAdmin', '0');
+}
+
+function activarVistaAdminPartidos() {
+  const panel = document.getElementById('partidos');
+  panel?.classList.remove('partidos-vista-publica');
+  document.getElementById('btnVistaAdminPartidos')?.classList.add('d-none');
+  document.getElementById('btnVistaPublicaPartidos')?.classList.remove('d-none');
+  sessionStorage.setItem('partidosModoAdmin', '1');
+}
+
+document.getElementById('btnVistaPublicaPartidos')?.addEventListener('click', activarVistaPublicaPartidos);
+document.getElementById('btnVistaAdminPartidos')?.addEventListener('click', activarVistaAdminPartidos);
+if (sessionStorage.getItem('partidosModoAdmin') === '1') {
+  activarVistaAdminPartidos();
+} else {
+  activarVistaPublicaPartidos();
+}
+
+function activarVistaPublicaJugadores() {
+  const panel = document.getElementById('jugadores');
+  panel?.classList.add('jugadores-vista-publica');
+  document.getElementById('btnVistaPublicaJugadores')?.classList.add('d-none');
+  document.getElementById('btnVistaAdminJugadores')?.classList.remove('d-none');
+  sessionStorage.setItem('jugadoresModoAdmin', '0');
+}
+
+function activarVistaAdminJugadores() {
+  const panel = document.getElementById('jugadores');
+  panel?.classList.remove('jugadores-vista-publica');
+  document.getElementById('btnVistaAdminJugadores')?.classList.add('d-none');
+  document.getElementById('btnVistaPublicaJugadores')?.classList.remove('d-none');
+  sessionStorage.setItem('jugadoresModoAdmin', '1');
+}
+
+document.getElementById('btnVistaPublicaJugadores')?.addEventListener('click', activarVistaPublicaJugadores);
+document.getElementById('btnVistaAdminJugadores')?.addEventListener('click', activarVistaAdminJugadores);
+if (sessionStorage.getItem('jugadoresModoAdmin') === '1') {
+  activarVistaAdminJugadores();
+} else {
+  activarVistaPublicaJugadores();
+}
+
+document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
+  tab.addEventListener('shown.bs.tab', event => {
+    const href = event.target?.getAttribute('href');
+
+    if (href !== '#partidos') {
+      sessionStorage.removeItem('partidosModoAdmin');
+      activarVistaPublicaPartidos();
+    } else if (sessionStorage.getItem('partidosModoAdmin') !== '1') {
+      activarVistaPublicaPartidos();
+    }
+
+    if (href !== '#jugadores') {
+      sessionStorage.removeItem('jugadoresModoAdmin');
+      sessionStorage.removeItem('jugadoresFiltroBusqueda');
+      activarVistaPublicaJugadores();
+    } else if (sessionStorage.getItem('jugadoresModoAdmin') !== '1') {
+      activarVistaPublicaJugadores();
+    }
+
+    if (href !== '#usuarios') {
+      sessionStorage.removeItem('usuariosModoAdmin');
+      activarVistaPublicaUsuarios();
+    } else if (sessionStorage.getItem('usuariosModoAdmin') !== '1') {
+      activarVistaPublicaUsuarios();
+    }
+  });
+});
+
+function activarVistaPublicaFinanzas() {
+  const panel = document.getElementById('finanzas');
+  panel?.classList.add('finanzas-vista-publica');
+  document.getElementById('btnVistaPublicaFinanzas')?.classList.add('d-none');
+  document.getElementById('btnVistaAdminFinanzas')?.classList.remove('d-none');
+}
+
+function activarVistaAdminFinanzas() {
+  const panel = document.getElementById('finanzas');
+  panel?.classList.remove('finanzas-vista-publica');
+  document.getElementById('btnVistaAdminFinanzas')?.classList.add('d-none');
+  document.getElementById('btnVistaPublicaFinanzas')?.classList.remove('d-none');
+}
+
+document.getElementById('btnVistaPublicaFinanzas')?.addEventListener('click', activarVistaPublicaFinanzas);
+document.getElementById('btnVistaAdminFinanzas')?.addEventListener('click', activarVistaAdminFinanzas);
+
+activarVistaPublicaFinanzas();
+
+function activarVistaPublicaUsuarios() {
+  const panel = document.getElementById('usuarios');
+  panel?.classList.add('usuarios-vista-publica');
+  document.getElementById('btnVistaPublicaUsuarios')?.classList.add('d-none');
+  document.getElementById('btnVistaAdminUsuarios')?.classList.remove('d-none');
+  sessionStorage.setItem('usuariosModoAdmin', '0');
+}
+
+function activarVistaAdminUsuarios() {
+  const panel = document.getElementById('usuarios');
+  panel?.classList.remove('usuarios-vista-publica');
+  document.getElementById('btnVistaAdminUsuarios')?.classList.add('d-none');
+  document.getElementById('btnVistaPublicaUsuarios')?.classList.remove('d-none');
+  sessionStorage.setItem('usuariosModoAdmin', '1');
+}
+
+document.getElementById('btnVistaPublicaUsuarios')?.addEventListener('click', activarVistaPublicaUsuarios);
+document.getElementById('btnVistaAdminUsuarios')?.addEventListener('click', activarVistaAdminUsuarios);
+if (sessionStorage.getItem('usuariosModoAdmin') === '1') {
+  activarVistaAdminUsuarios();
+} else {
+  activarVistaPublicaUsuarios();
+}
+</script>
+
+
+</div>

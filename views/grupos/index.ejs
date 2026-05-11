@@ -1,0 +1,82 @@
+<div class="row">
+  <% if (grupos && grupos.length > 0) { %>
+    <% grupos.forEach(grupo => { %>
+      <div class="col-md-6 mb-4">
+        <div class="card shadow">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <strong><%= grupo.nombre_grupo %></strong>
+            
+            <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
+              <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST" 
+                    onsubmit="return confirm('¿Seguro que quiere eliminar? Este grupo contiene equipos');">
+                <button type="submit" class="btn btn-sm btn-danger">✖</button>
+              </form>
+            <% } else { %>
+              <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST">
+                <button type="submit" class="btn btn-sm btn-danger">✖</button>
+              </form>
+            <% } %>
+          </div>
+
+          <div class="card-body">
+            <!-- Formulario para editar nombre personalizado -->
+            <form action="/grupos/editar/<%= grupo.id_grupo %>" method="POST" class="mb-3">
+              <label class="form-label">Nombre personalizado</label>
+              <input type="text" class="form-control text-uppercase"
+                     name="nombre_grupo"
+                     value="<%= grupo.nombre_grupo %>"
+                     required
+                     oninput="this.value = this.value.toUpperCase()">
+              <button type="submit" class="btn btn-sm btn-primary mt-2">Guardar</button>
+            </form>
+
+            <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
+              <h6>Equipos en este grupo:</h6>
+              <ul class="list-group">
+                <% grupo.Equipos.forEach(equipo => { %>
+                  <li class="list-group-item d-flex justify-content-between align-items-center 
+                             <%= !equipo.estado ? 'text-muted bg-light' : '' %>">
+                    
+                    <span><%= equipo.nombre %></span>
+
+                    <% if (equipo.estado) { %>
+                      <div class="btn-group">
+                        <form action="/equipos/editar/<%= equipo.id_equipo %>" method="POST" style="display:inline;">
+                          <input type="text" name="nombre_equipo" value="<%= equipo.nombre %>" 
+                                 class="form-control form-control-sm d-inline-block" style="width:150px;">
+                          <button type="submit" class="btn btn-sm btn-warning">Guardar</button>
+                        </form>
+                        <form action="/equipos/eliminar/<%= equipo.id_equipo %>" method="POST" style="display:inline;">
+                          <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                      </div>
+                    <% } else { %>
+                      <small>(Equipo desactivado)</small>
+                    <% } %>
+                  </li>
+                <% }) %>
+              </ul>
+            <% } else { %>
+              <p class="text-muted">No hay equipos asignados a este grupo.</p>
+            <% } %>
+
+            <!-- Formulario para agregar equipo -->
+            <form action="/equipos/crear" method="POST" class="mt-2">
+              <div class="input-group">
+                <input type="text" name="nombre_equipo" class="form-control text-uppercase" 
+                       placeholder="Nuevo equipo" required 
+                       oninput="this.value = this.value.toUpperCase()">
+                <input type="hidden" name="id_grupo" value="<%= grupo.id_grupo %>">
+                <input type="hidden" name="id_torneo" value="<%= torneo.id_torneo %>">
+                <button type="submit" class="btn btn-success">Agregar</button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      </div>
+    <% }) %>
+  <% } else { %>
+    <p class="text-muted">No hay grupos creados aún.</p>
+  <% } %>
+</div>

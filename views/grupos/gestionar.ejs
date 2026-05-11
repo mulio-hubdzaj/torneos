@@ -1,0 +1,397 @@
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Gestión del Grupo <%= grupo.nombre_grupo %></h1>
+    <button class="btn btn-primary" data-toggle="modal" data-target="#modalSorteoFase1">
+      <i class="fas fa-shuffle"></i> Sortear Encuentros
+    </button>
+  </div>
+
+  <% if (messages && messages.success && messages.success.length > 0) { %>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+      <%= messages.success[0] %>
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  <% } %>
+
+  <% if (messages && messages.error && messages.error.length > 0) { %>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      <%= messages.error[0] %>
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  <% } %>
+
+  <div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+      <h5 class="mb-0">Equipos en este grupo</h5>
+    </div>
+    <div class="card-body">
+      <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
+        <div class="row">
+          <% grupo.Equipos.forEach((equipo, index) => { %>
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="card border-left-primary shadow">
+                <div class="card-body">
+                  <h6 class="card-title">
+                    <i class="fas fa-shield-alt text-primary"></i>
+                    <%= equipo.nombre_equipo %>
+                  </h6>
+                  <small class="text-muted">ID: <%= equipo.id_equipo %></small>
+                </div>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+        <p class="text-muted mt-3">
+          Total de equipos: <strong><%= grupo.Equipos.length %></strong>
+        </p>
+      <% } else { %>
+        <div class="alert alert-info" role="alert">
+          <i class="fas fa-info-circle"></i> No hay equipos asignados aún.
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL FASE 1: CONFIRMACIÓN INICIAL -->
+<!-- ============================================ -->
+<div class="modal fade" id="modalSorteoFase1" tabindex="-1" role="dialog" aria-labelledby="modalLabel1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalLabel1">
+          <i class="fas fa-shuffle"></i> Sortear Encuentros
+        </h5>
+        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="lead">¿Desea sortear los equipos de este grupo?</p>
+        <p class="text-muted">
+          Esto generará automáticamente los encuentros entre todos los equipos del grupo
+          <strong><%= grupo.nombre_grupo %></strong>.
+        </p>
+        <div class="alert alert-info" role="alert">
+          <i class="fas fa-lightbulb"></i>
+          <strong>Total de equipos:</strong> <%= grupo.Equipos ? grupo.Equipos.length : 0 %>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">
+          <i class="fas fa-times"></i> Cancelar
+        </button>
+        <button type="button" class="btn btn-primary" onclick="abrirModalFase2()">
+          <i class="fas fa-arrow-right"></i> Continuar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- MODAL FASE 2: CONFIGURACIÓN DEL SORTEO -->
+<!-- ============================================ -->
+<div class="modal fade" id="modalSorteoFase2" tabindex="-1" role="dialog" aria-labelledby="modalLabel2" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalLabel2">
+          <i class="fas fa-cog"></i> Configurar Sorteo
+        </h5>
+        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="formSorteo">
+          <!-- Tipo de encuentro -->
+          <div class="form-group">
+            <label for="tipoEncuentro" class="font-weight-bold">
+              <i class="fas fa-question-circle"></i> Tipo de encuentro:
+            </label>
+            <div class="custom-control custom-radio mb-2">
+              <input 
+                type="radio" 
+                id="radioSimple" 
+                name="tipo" 
+                value="simple" 
+                class="custom-control-input" 
+                checked 
+                onchange="actualizarValidacion()"
+              >
+              <label class="custom-control-label" for="radioSimple">
+                <strong>Simple</strong> - Cada equipo juega una sola vez contra cada otro
+              </label>
+            </div>
+            <div class="custom-control custom-radio mb-3">
+              <input 
+                type="radio" 
+                id="radioIdaVuelta" 
+                name="tipo" 
+                value="ida_vuelta" 
+                class="custom-control-input" 
+                onchange="actualizarValidacion()"
+              >
+              <label class="custom-control-label" for="radioIdaVuelta">
+                <strong>Ida y Vuelta</strong> - Cada equipo juega dos veces contra cada otro
+              </label>
+            </div>
+            <div class="custom-control custom-radio mb-3">
+              <input 
+                type="radio" 
+                id="radioFijo" 
+                name="tipo" 
+                value="fijo" 
+                class="custom-control-input" 
+                onchange="actualizarValidacion()"
+              >
+              <label class="custom-control-label" for="radioFijo">
+                <strong>Fijo</strong> - Especificar número de fechas manualmente
+              </label>
+            </div>
+          </div>
+
+          <!-- Campo para número de fechas (solo visible cuando es fijo) -->
+          <div class="form-group" id="grupNumFechas" style="display: none;">
+            <label for="numFechas" class="font-weight-bold">
+              <i class="fas fa-calendar-alt"></i> Número de fechas:
+            </label>
+            <input 
+              type="number" 
+              id="numFechas" 
+              name="numFechas" 
+              class="form-control" 
+              min="1" 
+              max="50" 
+              placeholder="Ej: 3, 5, 10"
+              oninput="actualizarValidacion()"
+            >
+            <small class="text-muted d-block mt-1">
+              Ingrese un número entre 1 y <%= grupo.Equipos ? (grupo.Equipos.length * 2) : 50 %>
+            </small>
+          </div>
+
+          <!-- Validación de fechas -->
+          <div id="alertaValidacion" class="alert mt-3" style="display: none;" role="alert"></div>
+
+          <!-- Resumen estimado -->
+          <div class="card bg-light mt-3">
+            <div class="card-body">
+              <h6 class="card-title">
+                <i class="fas fa-chart-bar"></i> Resumen:
+              </h6>
+              <ul class="list-unstyled small">
+                <li>
+                  <strong>Equipos en el grupo:</strong> 
+                  <span id="resumenEquipos"><%= grupo.Equipos ? grupo.Equipos.length : 0 %></span>
+                </li>
+                <li>
+                  <strong>Partidos por equipo (estimado):</strong> 
+                  <span id="resumenPartidosEquipo">-</span>
+                </li>
+                <li>
+                  <strong>Total de partidos (estimado):</strong> 
+                  <span id="resumenTotalPartidos">-</span>
+                </li>
+                <li>
+                  <strong>Número de fechas:</strong> 
+                  <span id="resumenFechas">-</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">
+          <i class="fas fa-arrow-left"></i> Atrás
+        </button>
+        <button type="button" class="btn btn-success" id="btnConfirmarSorteo" onclick="confirmarSorteo()">
+          <i class="fas fa-check"></i> Confirmar Sorteo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ -->
+<!-- SCRIPTS -->
+<!-- ============================================ -->
+<script>
+const ID_TORNEO = '<%= grupo.id_torneo %>';
+const ID_GRUPO = '<%= grupo.id_grupo %>';
+const NUM_EQUIPOS = <%= grupo.Equipos ? grupo.Equipos.length : 0 %>;
+
+// Validar fechas según cantidad de equipos
+function validarFechas(numEquipos, fechasIngresadas) {
+  const maxSimple = numEquipos - 1;
+  const maxIdaVuelta = (numEquipos - 1) * 2;
+
+  let valido = false;
+  let mensaje = "";
+  let tipo = "";
+
+  if (fechasIngresadas > 0 && fechasIngresadas <= maxSimple) {
+    valido = true;
+    tipo = "success";
+    mensaje = `✅ Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ${fechasIngresadas} encuentros de forma balanceada.`;
+  } else if (fechasIngresadas === maxIdaVuelta) {
+    valido = true;
+    tipo = "success";
+    mensaje = `✅ Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ida y vuelta (${maxIdaVuelta} encuentros) de forma balanceada.`;
+  } else if (fechasIngresadas > 0) {
+    valido = true;
+    tipo = "warning";
+    mensaje = `⚠️ Atención: con ${numEquipos} equipos y ${fechasIngresadas} fechas, el torneo quedará disparejo. 
+    Se sugiere ${maxSimple} (simple) o ${maxIdaVuelta} (ida/vuelta). El sistema generará encuentros aleatorios.`;
+  } else {
+    valido = false;
+    tipo = "danger";
+    mensaje = `❌ Error: el número de fechas debe ser mayor a 0.`;
+  }
+
+  return { valido, mensaje, tipo };
+}
+
+// Actualizar validación en tiempo real
+function actualizarValidacion() {
+  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  const numFechas = document.getElementById('numFechas');
+  const grupNumFechas = document.getElementById('grupNumFechas');
+  const alertaValidacion = document.getElementById('alertaValidacion');
+
+  // Mostrar/ocultar campo de fechas
+  if (tipo === 'fijo') {
+    grupNumFechas.style.display = 'block';
+  } else {
+    grupNumFechas.style.display = 'none';
+  }
+
+  // Calcular fechas automáticamente
+  let fechas = 0;
+  if (tipo === 'simple') {
+    fechas = NUM_EQUIPOS - 1;
+  } else if (tipo === 'ida_vuelta') {
+    fechas = (NUM_EQUIPOS - 1) * 2;
+  } else if (tipo === 'fijo') {
+    fechas = parseInt(numFechas.value) || 0;
+  }
+
+  // Actualizar resumen
+  actualizarResumen(tipo, fechas);
+
+  // Validar si es fijo
+  if (tipo === 'fijo' && numFechas.value) {
+    const validacion = validarFechas(NUM_EQUIPOS, fechas);
+    alertaValidacion.innerHTML = validacion.mensaje;
+    alertaValidacion.className = `alert alert-${validacion.tipo} mt-3`;
+    alertaValidacion.style.display = 'block';
+  } else {
+    alertaValidacion.style.display = 'none';
+  }
+}
+
+// Actualizar resumen de estadísticas
+function actualizarResumen(tipo, fechas) {
+  const maxPartidosPorEquipo = (NUM_EQUIPOS - 1) * 2; // ida y vuelta máximo
+  const partidosPorEquipo = Math.min(NUM_EQUIPOS - 1, fechas);
+  const totalPartidos = Math.floor((NUM_EQUIPOS * partidosPorEquipo) / 2);
+
+  document.getElementById('resumenFechas').textContent = fechas || '-';
+  document.getElementById('resumenPartidosEquipo').textContent = partidosPorEquipo || '-';
+  document.getElementById('resumenTotalPartidos').textContent = totalPartidos || '-';
+}
+
+// Abrir modal fase 2
+function abrirModalFase2() {
+  $('#modalSorteoFase1').modal('hide');
+  setTimeout(() => {
+    $('#modalSorteoFase2').modal('show');
+    actualizarValidacion(); // Calcular valores iniciales
+  }, 300);
+}
+
+// Confirmar y ejecutar sorteo
+async function confirmarSorteo() {
+  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  let numFechas = 0;
+
+  if (tipo === 'simple') {
+    numFechas = NUM_EQUIPOS - 1;
+  } else if (tipo === 'ida_vuelta') {
+    numFechas = (NUM_EQUIPOS - 1) * 2;
+  } else if (tipo === 'fijo') {
+    numFechas = parseInt(document.getElementById('numFechas').value);
+  }
+
+  if (!numFechas || numFechas <= 0) {
+    alert('Por favor, ingrese un número válido de fechas.');
+    return;
+  }
+
+  const btnConfirmar = document.getElementById('btnConfirmarSorteo');
+  btnConfirmar.disabled = true;
+  btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+
+  try {
+    const response = await fetch(`/partidos/torneos/${ID_TORNEO}/grupos/${ID_GRUPO}/sortear`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tipo: tipo,
+        numFechas: numFechas
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      // Mostrar mensaje de éxito
+      $('#modalSorteoFase2').modal('hide');
+      setTimeout(() => {
+        alert(data.message);
+        location.reload(); // Recargar página para mostrar los cambios
+      }, 300);
+    } else {
+      alert('Error: ' + data.message);
+      btnConfirmar.disabled = false;
+      btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Error al procesar el sorteo.');
+    btnConfirmar.disabled = false;
+    btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
+  }
+}
+
+// Inicializar
+document.addEventListener('DOMContentLoaded', function() {
+  actualizarValidacion();
+});
+</script>
+
+<style>
+.card.border-left-primary {
+  border-left: 4px solid #007bff;
+}
+
+.modal-header.bg-primary {
+  background-color: #007bff !important;
+}
+
+#alertaValidacion {
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+</style>

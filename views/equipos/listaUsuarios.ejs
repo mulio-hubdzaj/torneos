@@ -1,0 +1,45 @@
+<div class="mb-3">
+  <form action="/equipos/buscarUsuariosEntidad" method="POST" class="d-flex">
+    <input type="hidden" name="id_torneo" value="<%= id_torneo || '' %>">
+    <input type="text" name="query" class="form-control me-2" placeholder="Buscar por Documento o nombre">
+    <button type="submit" class="btn btn-primary">Buscar</button>
+  </form>
+</div>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Seleccionar</th>
+      <th>Nombre</th>
+      <th>Correo</th>
+      <th>Documento</th>
+      <th>Rol actual</th>
+      <th>Vinculado</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% usuarios.forEach(u => { %>
+      <tr>
+        <td><input type="checkbox" name="delegados[]" value="<%= u.id_usuario %>"></td>
+        <td><%= u.nombre %></td>
+        <td><%= u.correo %></td>
+        <td><%= u.documento %></td>
+        <td>
+          <% if (u.rol_id == 1) { %> Espectador <% } %>
+          <% if (u.rol_id == 2) { %> Delegado <% } %>
+          <% if (u.rol_id == 3) { %> Admin <% } %>
+          <% if (u.rol_id == 99) { %> SuperAdmin <% } %>
+        </td>
+        <td>
+          <% if (u.vinculo === 'Delegado') { %>
+            <span class="badge bg-success">Delegado</span>
+          <% } else if (u.vinculo === 'Jugador') { %>
+            <span class="badge bg-info">Jugador</span>
+          <% } else { %>
+            <span class="badge bg-secondary">No vinculado</span>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>

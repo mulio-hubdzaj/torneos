@@ -1,0 +1,39 @@
+{
+  "name": "torneos_v2",
+  "version": "1.0.0",
+  "description": "Sistema de gestión de torneos",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "lint": "eslint .",
+    "test": "echo \"No hay tests definidos\" && exit 0"
+  },
+  "keywords": [
+    "torneos",
+    "express",
+    "sequelize",
+    "postgresql"
+  ],
+  "author": "Julio",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "connect-flash": "^0.1.1",
+    "ejs": "^5.0.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "luxon": "^3.7.2",
+    "multer": "^2.1.1",
+    "pg": "^8.20.0",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.8",
+    "uuid": "^13.0.0",
+    "dotenv": "^16.1.4"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "nodemon": "^3.1.14"
+  }
+}
