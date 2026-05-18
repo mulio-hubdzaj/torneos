@@ -6,8 +6,39 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .apk-download-link {
+      display: none;
+      position: fixed;
+      top: 96px;
+      right: 8%;
+      z-index: 20;
+      padding: 0.32rem 0.8rem;
+      font-size: 0.82rem;
+      line-height: 1.15;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    body.app-browser .apk-download-link {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .apk-download-link {
+        top: 16px;
+        right: 16px;
+      }
+    }
+  </style>
 </head>
 <body class="d-flex justify-content-center align-items-center vh-100">
+  <a href="/downloads/torneos-qa.apk" class="btn btn-success apk-download-link" download>
+    <i class="bi bi-download me-1"></i>
+    Descargar APK
+  </a>
+
   <div class="card shadow p-4" style="min-width: 350px;">
     <h1 class="mb-4 text-center">Iniciar sesión</h1>
 
@@ -27,11 +58,6 @@
     <% } %>
 
     <div class="alert alert-danger d-none" id="loginValidacion" role="alert"></div>
-
-    <a href="/downloads/torneos-qa.apk" class="btn btn-success w-100 mb-3" download>
-      <i class="bi bi-download me-1"></i>
-      Descargar APK
-    </a>
 
     <form action="/login" method="POST" id="formLogin" novalidate>
       <div class="mb-3">
@@ -67,6 +93,10 @@
   </div>
 
   <script>
+    if (!window.Capacitor) {
+      document.body.classList.add('app-browser');
+    }
+
     function togglePassword(inputId, button) {
       const input = document.getElementById(inputId);
       const icon = button.querySelector('i');
