@@ -1,23 +1,6 @@
 // models/index.js
-const { Sequelize, DataTypes } = require('sequelize');
-
-const sequelize = new Sequelize('torneos_db', 'postgres', 'Soporte2018', {
-  host: 'localhost',
-  dialect: 'postgres',
-  logging: false
-});
-
-/*
-const sequelize = new Sequelize('torneos_db', 'postgres', 'Soporte2018', {
-  host: 'localhost',
-  dialect: 'postgres',
-  logging: console.log   // 👈 imprime todas las queries en consola
-});
-
-*/
-
-
-
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
 // Importar modelos
 const Usuario = require('./Usuario')(sequelize, DataTypes);

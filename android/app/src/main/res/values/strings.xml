@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Torneos</string>
-    <string name="title_activity_main">Torneos</string>
+    <string name="app_name">Torneos PRD</string>
+    <string name="title_activity_main">Torneos PRD</string>
     <string name="package_name">com.torneosv2.app</string>
     <string name="custom_url_scheme">com.torneosv2.app</string>
 </resources>

@@ -1,8 +1,10 @@
 const serverUrl = process.env.CAPACITOR_SERVER_URL || 'http://10.0.2.2:3000';
+const appId = process.env.CAPACITOR_APP_ID || 'com.torneosv2.app';
+const appName = process.env.CAPACITOR_APP_NAME || 'Torneos';
 
 module.exports = {
-  appId: 'com.torneosv2.app',
-  appName: 'Torneos',
+  appId,
+  appName,
   webDir: 'android-web',
   server: {
     url: serverUrl,
