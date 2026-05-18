@@ -210,9 +210,15 @@ administrar ejs
   <button type="submit" class="btn btn-primary" id="btnGuardarCambios" form="formJugadores" disabled>Guardar cambios</button>
   <button type="button" class="btn btn-secondary btn-prestamo" disabled>Agregar jugador de préstamo</button>
 
-<button type="button" class="btn btn-sm btn-success" onclick="abrirModalJugadores(<%= equipo.id_equipo %>)">
-  Asignar Jugador
-</button>
+<% if (!esDelegado || permitirAgregarJugadores !== false) { %>
+  <button type="button" class="btn btn-sm btn-success" onclick="abrirModalJugadores(<%= equipo.id_equipo %>)">
+    Asignar Jugador
+  </button>
+<% } else { %>
+  <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="El torneo no permite agregar jugadores desde delegados">
+    Asignar Jugador
+  </button>
+<% } %>
 
 
   <!-- Modal Delegados -->
@@ -221,9 +227,9 @@ administrar ejs
     <div class="modal fade" id="modalAsignarDelegado" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
-          <div class="modal-header bg-dark text-white">
+          <div class="modal-header bg-primary text-white">
             <h5 class="modal-title">Asignar Delegados</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <!-- Buscador fijo en el modal -->
@@ -279,9 +285,9 @@ administrar ejs
   <div class="modal fade" id="modalAsignarJugador" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
-        <div class="modal-header bg-dark text-white">
+        <div class="modal-header bg-primary text-white">
           <h5 class="modal-title">Asignar Jugadores</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <!-- Buscador fijo en el modal -->

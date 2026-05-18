@@ -15,6 +15,73 @@ function normalizarNombreEquipo(valor) {
   return String(valor || '').trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+async function setAuditContext(req, entityId = null, transaction = null) {
+  const options = transaction ? { transaction } : {};
+  const scope = transaction ? 'SET LOCAL' : 'SET';
+  if (req.session.usuario_id) {
+    await sequelize.query(`${scope} app.usuario_id = :usuarioId`, {
+      replacements: { usuarioId: req.session.usuario_id },
+      ...options
+    });
+  }
+  if (entityId || req.session.entity_id) {
+    await sequelize.query(`${scope} app.entity_id = :entityId`, {
+      replacements: { entityId: entityId || req.session.entity_id },
+      ...options
+    });
+  }
+}
+
+function puedeAdministrarEntidad(req, entityId) {
+  return Number(req.session.rol_id) === 99 || Number(req.session.entity_id) === Number(entityId);
+}
+
+async function esDelegadoDelEquipo(req, equipoId, transaction = null) {
+  if (Number(req.session.rol_id) !== 2) return false;
+  const [vinculo] = await sequelize.query(`
+    SELECT de.id_delegado_equipo
+    FROM delegados_equipos de
+    WHERE de.id_usuario = :usuarioId
+      AND de.id_equipo = :equipoId
+      AND COALESCE(de.estado, true) = true
+    LIMIT 1
+  `, {
+    replacements: { usuarioId: req.session.usuario_id, equipoId },
+    type: sequelize.QueryTypes.SELECT,
+    transaction
+  });
+  return Boolean(vinculo);
+}
+
+async function puedeAdministrarEquipo(req, equipo, { permitirDelegado = false, transaction = null } = {}) {
+  if (!equipo) return false;
+  if ([3, 99].includes(Number(req.session.rol_id))) {
+    return puedeAdministrarEntidad(req, equipo.entity_id);
+  }
+  if (permitirDelegado) {
+    return esDelegadoDelEquipo(req, equipo.id_equipo, transaction);
+  }
+  return false;
+}
+
+async function torneoPermiteAgregarJugadores(idTorneo) {
+  try {
+    const [torneo] = await sequelize.query(`
+      SELECT permitir_agregar_jugadores
+      FROM torneos
+      WHERE id_torneo = :idTorneo
+      LIMIT 1
+    `, {
+      replacements: { idTorneo },
+      type: sequelize.QueryTypes.SELECT
+    });
+    return torneo?.permitir_agregar_jugadores !== false;
+  } catch (error) {
+    if (error?.parent?.code === '42703') return true;
+    throw error;
+  }
+}
+
 async function obtenerResumenMovimientoEquipo({ nombre, id_torneo, id_grupo, entityId }) {
   const existente = await Equipo.findOne({
     where: { nombre, id_torneo, entity_id: entityId },
@@ -122,6 +189,13 @@ async function crear(req, res) {
       return res.redirect(`/torneos/gestionar/${id_torneo}`);
     }
 
+    const torneo = await Torneo.findByPk(id_torneo, { attributes: ['id_torneo', 'entity_id'], transaction: t });
+    if (!torneo || !puedeAdministrarEntidad(req, torneo.entity_id)) {
+      await t.rollback();
+      req.flash("danger", "No puede crear equipos en otra entidad");
+      return res.redirect('/torneos');
+    }
+
     const nombre = normalizarNombreEquipo(nombre_equipo);
     const partidosGrupo = await Partido.count({
       where: {
@@ -221,6 +295,11 @@ async function eliminar(req, res) {
       return res.redirect('/torneos');
     }
 
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash("danger", "No puede eliminar equipos de otra entidad");
+      return res.redirect('/torneos');
+    }
+
     const partidosAlineados = await Partido.count({
       where: {
         id_torneo: equipo.id_torneo,
@@ -268,6 +347,10 @@ async function editarForm(req, res) {
       req.flash("danger", "Equipo no encontrado");
       return res.redirect('/torneos');
     }
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash("danger", "No puede editar equipos de otra entidad");
+      return res.redirect('/torneos');
+    }
     res.render('equipos/editar', { equipo });
   } catch (error) {
     console.error(error);
@@ -302,6 +385,7 @@ async function editar(req, res) {
 
     equipo.nombre = nombre;
     equipo.estado = req.body.estado ? true : false;
+    await setAuditContext(req, equipo.entity_id);
     await equipo.save();
 
     await registrarAuditoria(
@@ -331,6 +415,11 @@ async function toggle(req, res) {
       return res.redirect('/torneos');
     }
 
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash("danger", "No puede editar equipos de otra entidad");
+      return res.redirect('/torneos');
+    }
+
     const vaADesactivar = equipo.estado === true;
     const partidosPendientes = vaADesactivar
       ? await Partido.count({
@@ -355,6 +444,7 @@ async function toggle(req, res) {
     }
 
     equipo.estado = !equipo.estado;
+    await setAuditContext(req, equipo.entity_id);
     await equipo.save();
 
     await registrarAuditoria(
@@ -409,6 +499,11 @@ async function administrar(req, res) {
       return res.redirect('/torneos');
     }
 
+    if (!(await puedeAdministrarEquipo(req, equipo, { permitirDelegado: true }))) {
+      req.flash("danger", "No puede modificar equipos de otra entidad");
+      return res.redirect('/torneos');
+    }
+
     if (!equipo.estado) {
       req.flash("warning", "Este equipo está desactivado y no puede administrarse");
       return res.redirect(`/torneos/gestionar/${equipo.id_torneo}#equipos`);
@@ -445,6 +540,7 @@ async function administrar(req, res) {
     if (!req.session.entity_id && equipo.entity_id) {
       req.session.entity_id = equipo.entity_id;
     }
+    const permitirAgregarJugadores = await torneoPermiteAgregarJugadores(equipo.id_torneo);
 
     const idsJugadoresEquipo = (equipo.Jugadores || []).map(jugador => jugador.id_jugador).filter(Boolean);
     const sancionesPendientes = idsJugadoresEquipo.length > 0
@@ -514,6 +610,7 @@ async function administrar(req, res) {
       id_torneo: equipo.id_torneo,
       jugadores: equipo.Jugadores || [],
       delegados: equipo.Delegados || [],
+      permitirAgregarJugadores,
     });
   } catch (error) {
     console.error("Error al administrar equipo:", error);
@@ -535,6 +632,11 @@ async function actualizarIcono(req, res) {
     if (!equipo) {
       req.flash("danger", "Equipo no encontrado");
       return res.redirect('/equipos');
+    }
+
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash("danger", "No puede actualizar equipos de otra entidad");
+      return res.redirect('/torneos');
     }
 
     // Si se subió archivo, usar su path; si no, default
@@ -737,15 +839,22 @@ async function asignarDelegados(req, res) {
       await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
     }
 
-    // Obtener entity_id del equipo
-    const equipo = await sequelize.query(`
-      SELECT entity_id, id_torneo 
-      FROM equipos 
-      WHERE id_equipo = $1
-    `, { bind: [id_equipo], type: sequelize.QueryTypes.SELECT });
+    const equipo = await Equipo.findByPk(id_equipo, {
+      attributes: ['id_equipo', 'id_torneo', 'entity_id']
+    });
 
-    const entity_id = equipo[0]?.entity_id;
-    const id_torneo = equipo[0]?.id_torneo;
+    if (!equipo) {
+      req.flash('error', 'Equipo no encontrado');
+      return res.redirect('/torneos');
+    }
+
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash('danger', 'No puede asignar delegados a este equipo');
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}#equipos`);
+    }
+
+    const entity_id = equipo.entity_id;
+    const id_torneo = equipo.id_torneo;
 
     // Setear entity_id en la sesión de auditoría
     if (entity_id) {
@@ -807,15 +916,21 @@ async function desvincularDelegado(req, res) {
       return res.redirect(`/equipos/administrar/${id_equipo}`);
     }
 
-    const equipoContexto = await sequelize.query(`
-      SELECT entity_id
-      FROM equipos
-      WHERE id_equipo = $1
-    `, {
-      bind: [id_equipo],
-      type: sequelize.QueryTypes.SELECT
+    const equipo = await Equipo.findByPk(id_equipo, {
+      attributes: ['id_equipo', 'id_torneo', 'entity_id']
     });
-    const entityIdContexto = equipoContexto[0]?.entity_id || req.session.entity_id;
+
+    if (!equipo) {
+      req.flash('error', 'Equipo no encontrado');
+      return res.redirect('/torneos');
+    }
+
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash('danger', 'No puede desvincular delegados de este equipo');
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}#equipos`);
+    }
+
+    const entityIdContexto = equipo.entity_id || req.session.entity_id;
 
     // Setear variables de sesión para el trigger de auditoría
     if (req.session.usuario_id) {
@@ -1014,6 +1129,16 @@ async function asignarJugadores(req, res) {
       return res.redirect('/torneos');
     }
 
+    if (!(await puedeAdministrarEquipo(req, equipo, { permitirDelegado: true }))) {
+      req.flash('danger', 'No puede asignar jugadores a este equipo');
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}#equipos`);
+    }
+
+    if (Number(req.session.rol_id) === 2 && !(await torneoPermiteAgregarJugadores(equipo.id_torneo))) {
+      req.flash('danger', 'El torneo no permite que los delegados agreguen jugadores a sus equipos');
+      return res.redirect(`/equipos/administrar/${id_equipo}`);
+    }
+
     if (req.session.usuario_id) {
       await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
     }
@@ -1096,6 +1221,11 @@ async function actualizarJugadores(req, res) {
       await t.rollback();
       req.flash('danger', 'Equipo no encontrado');
       return res.redirect('/torneos');
+    }
+    if (!(await puedeAdministrarEquipo(req, equipo, { permitirDelegado: true, transaction: t }))) {
+      await t.rollback();
+      req.flash('danger', 'No puede actualizar jugadores de este equipo');
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}#equipos`);
     }
     const torneoId = equipo.id_torneo;
 
@@ -1191,6 +1321,11 @@ async function desvincularJugador(req, res) {
     if (!equipo) {
       req.flash('error', 'Equipo no encontrado');
       return res.redirect('/torneos');
+    }
+
+    if (!(await puedeAdministrarEquipo(req, equipo))) {
+      req.flash('danger', 'No puede desvincular jugadores de este equipo');
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}#equipos`);
     }
 
     if (req.session.usuario_id) {

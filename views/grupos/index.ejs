@@ -1,4 +1,4 @@
-<div class="row">
+<div class="row grupos-index-partial">
   <% if (grupos && grupos.length > 0) { %>
     <% grupos.forEach(grupo => { %>
       <div class="col-md-6 mb-4">
@@ -8,7 +8,11 @@
             
             <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
               <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST" 
-                    onsubmit="return confirm('¿Seguro que quiere eliminar? Este grupo contiene equipos');">
+                    class="form-confirmar-app"
+                    data-confirm-title="Eliminar grupo"
+                    data-confirm-message="Este grupo contiene equipos. ¿Seguro que quiere eliminarlo?"
+                    data-confirm-accept="Sí, eliminar"
+                    data-confirm-cancel="Cancelar">
                 <button type="submit" class="btn btn-sm btn-danger">✖</button>
               </form>
             <% } else { %>
@@ -34,19 +38,19 @@
               <h6>Equipos en este grupo:</h6>
               <ul class="list-group">
                 <% grupo.Equipos.forEach(equipo => { %>
-                  <li class="list-group-item d-flex justify-content-between align-items-center 
+                  <li class="list-group-item grupo-equipo-item 
                              <%= !equipo.estado ? 'text-muted bg-light' : '' %>">
                     
                     <span><%= equipo.nombre %></span>
 
                     <% if (equipo.estado) { %>
-                      <div class="btn-group">
-                        <form action="/equipos/editar/<%= equipo.id_equipo %>" method="POST" style="display:inline;">
+                      <div class="grupo-equipo-actions">
+                        <form action="/equipos/editar/<%= equipo.id_equipo %>" method="POST" class="grupo-equipo-edit">
                           <input type="text" name="nombre_equipo" value="<%= equipo.nombre %>" 
-                                 class="form-control form-control-sm d-inline-block" style="width:150px;">
+                                 class="form-control form-control-sm">
                           <button type="submit" class="btn btn-sm btn-warning">Guardar</button>
                         </form>
-                        <form action="/equipos/eliminar/<%= equipo.id_equipo %>" method="POST" style="display:inline;">
+                        <form action="/equipos/eliminar/<%= equipo.id_equipo %>" method="POST">
                           <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                         </form>
                       </div>

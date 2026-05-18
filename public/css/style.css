@@ -14,7 +14,7 @@ body {
   color: #000;
   padding: 2rem;
   border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
   text-align: center;
   max-width: 400px;
 }
@@ -34,11 +34,11 @@ body {
 
 .btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* 🔑 Nueva línea para forzar mayúsculas */
-input[type="text"], textarea {
+input[type="text"],
+textarea {
   text-transform: uppercase;
 }
 
@@ -46,28 +46,371 @@ input.password-segura {
   text-transform: none !important;
 }
 
+/* Modo APK Responsive */
+.app-responsive-page {
+  display: block;
+  align-items: initial;
+  justify-content: initial;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  color: #172033;
+}
 
-document.querySelectorAll('.estado-switch').forEach(sw => {
-  sw.addEventListener('change', function(e) {
-    if (!this.checked) {
-      // Mostrar modal de advertencia
-      const modal = new bootstrap.Modal(document.getElementById('confirmDesactivarModal'));
-      modal.show();
+.app-page-shell {
+  width: min(1120px, calc(100vw - 24px));
+  margin: 0 auto;
+  padding: 1rem 0 1.5rem;
+}
 
-      // Si cancela, revertir el switch
-      document.getElementById('confirmDesactivarBtn').onclick = () => {
-        // Aquí va la lógica para desactivar realmente al jugador
-        console.log("Jugador desactivado:", this.dataset.id);
-        modal.hide();
-      };
+.app-page-header,
+.app-panel {
+  background: rgba(255, 255, 255, 0.94);
+  color: #172033;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
 
-      // Revertir el switch si cancela
-      document.getElementById('confirmDesactivarModal')
-        .addEventListener('hidden.bs.modal', () => {
-          this.checked = true;
-        }, { once: true });
-    }
-  });
-});
+.app-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
 
+.app-page-header h1 {
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  color: #102033;
+}
 
+.app-page-kicker {
+  color: #198754;
+  font-weight: 700;
+}
+
+.app-panel {
+  padding: 0.5rem;
+}
+
+.app-search-bar {
+  margin-bottom: 0.85rem;
+  text-align: left;
+}
+
+.app-search-bar .form-label {
+  color: #102033;
+  font-weight: 700;
+}
+
+.app-search-bar .form-control {
+  min-height: 42px;
+  margin: 0;
+  text-transform: none;
+}
+
+.app-table-wrap {
+  border-radius: 8px;
+}
+
+.app-mobile-table {
+  margin-bottom: 0;
+}
+
+.app-row-actions,
+.entity-row-actions,
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.app-row-actions .btn,
+.entity-row-actions .btn,
+.welcome-actions .btn,
+.app-page-header .btn {
+  margin: 0;
+}
+
+.app-switch-cell {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding-left: 2.4rem;
+}
+
+.entity-card,
+.welcome-card {
+  width: min(100%, 520px);
+  min-width: 0 !important;
+  max-width: none;
+  margin: 1rem auto;
+}
+
+.entity-page-shell {
+  width: min(920px, calc(100vw - 32px));
+}
+
+.entity-tournaments-card {
+  width: 100%;
+  max-width: none;
+  padding: 1.25rem !important;
+  text-align: left;
+}
+
+.entity-title-block {
+  text-align: center;
+  border-bottom: 1px solid rgba(13, 110, 253, 0.12);
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+}
+
+.entity-title-block h1 {
+  color: #0b3d0b;
+  font-size: clamp(1.45rem, 3vw, 2rem);
+}
+
+.entity-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.75rem 0 0.9rem;
+}
+
+.entity-section-title h3 {
+  color: #102033;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.entity-tournament-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.entity-tournament-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.entity-tournament-name {
+  color: #102033;
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.entity-tournament-season {
+  color: #5c667a;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.entity-status-badge {
+  justify-self: start;
+}
+
+.entity-search-bar {
+  margin-top: 0.25rem;
+}
+
+.entity-row-actions {
+  justify-content: flex-end;
+}
+
+.entity-row-actions form {
+  margin: 0;
+}
+
+.entity-row-actions .btn {
+  min-width: 112px;
+  margin: 0;
+}
+
+.welcome-actions {
+  justify-content: center;
+}
+
+.grupo-equipo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.grupo-equipo-actions,
+.grupo-equipo-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.grupo-equipo-edit .form-control {
+  width: 150px;
+}
+
+@media (max-width: 576px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .app-page-shell {
+    width: min(100%, calc(100vw - 16px));
+    padding: 0.75rem 0 1rem;
+  }
+
+  .app-page-header {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 0.85rem;
+  }
+
+  .app-page-header .btn,
+  .welcome-actions .btn {
+    width: 100%;
+  }
+
+  .app-responsive-page .btn,
+  .welcome-index-page .btn {
+    padding: 0.48rem 0.7rem;
+    font-size: 0.94rem;
+    border-radius: 6px;
+  }
+
+  .app-responsive-page .btn:hover,
+  .welcome-index-page .btn:hover {
+    transform: none;
+  }
+
+  .app-mobile-table,
+  .app-mobile-table tbody,
+  .app-mobile-table tr,
+  .app-mobile-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .app-mobile-table thead {
+    display: none;
+  }
+
+  .app-mobile-table tr {
+    background: #fff;
+    border: 1px solid rgba(13, 110, 253, 0.16);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  .app-mobile-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .app-mobile-table td {
+    border-bottom: 1px solid #edf1f7;
+    padding: 0.68rem 0.75rem;
+  }
+
+  .app-mobile-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .app-mobile-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.2rem;
+    color: #0d6efd;
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .app-row-actions,
+  .entity-row-actions,
+  .welcome-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .app-row-actions .btn,
+  .entity-row-actions .btn {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .entity-card,
+  .welcome-card {
+    margin: 0.75rem auto;
+    padding: 1rem !important;
+    border-radius: 8px;
+  }
+
+  .entity-card h1,
+  .welcome-card h1 {
+    font-size: 1.25rem;
+  }
+
+  .entity-tournament-item {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 0.85rem;
+  }
+
+  .entity-tournament-main {
+    grid-template-columns: 1fr;
+    gap: 0.32rem;
+  }
+
+  .entity-tournament-name {
+    font-size: 0.98rem;
+  }
+
+  .entity-tournament-season {
+    white-space: normal;
+  }
+
+  .entity-row-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+    width: 100%;
+  }
+
+  .entity-row-actions form {
+    width: 100%;
+  }
+
+  .entity-row-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .grupos-index-partial > [class*="col-"] {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .grupo-equipo-item,
+  .grupo-equipo-actions,
+  .grupo-equipo-edit {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .grupo-equipo-edit .form-control,
+  .grupo-equipo-actions .btn {
+    width: 100%;
+  }
+}

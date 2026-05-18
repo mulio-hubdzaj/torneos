@@ -1,67 +1,66 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+  <meta charset="UTF-8">
   <title>Iniciar sesión</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="d-flex justify-content-center align-items-center vh-100">
-
   <div class="card shadow p-4" style="min-width: 350px;">
     <h1 class="mb-4 text-center">Iniciar sesión</h1>
 
-  <!-- Bloque de mensajes flash -->
-  <!-- Bloque de mensajes flash -->
-<% if (messages) { %>
-  <% if (messages.success && messages.success.length > 0) { %>
-    <div class="alert alert-success"><%= messages.success[0] %></div>
-  <% } %>
-  <% if (messages.error && messages.error.length > 0) { %>
-    <div class="alert alert-danger"><%= messages.error[0] %></div>
-  <% } %>
-  <% if (messages.danger && messages.danger.length > 0) { %>
-    <div class="alert alert-danger"><%= messages.danger[0] %></div>
-  <% } %>
-  <% if (messages.info && messages.info.length > 0) { %>
-    <div class="alert alert-info"><%= messages.info[0] %></div>
-  <% } %>
-<% } %>
+    <% if (messages) { %>
+      <% if (messages.success && messages.success.length > 0) { %>
+        <div class="alert alert-success"><%= messages.success[0] %></div>
+      <% } %>
+      <% if (messages.error && messages.error.length > 0) { %>
+        <div class="alert alert-danger"><%= messages.error[0] %></div>
+      <% } %>
+      <% if (messages.danger && messages.danger.length > 0) { %>
+        <div class="alert alert-danger"><%= messages.danger[0] %></div>
+      <% } %>
+      <% if (messages.info && messages.info.length > 0) { %>
+        <div class="alert alert-info"><%= messages.info[0] %></div>
+      <% } %>
+    <% } %>
 
+    <div class="alert alert-danger d-none" id="loginValidacion" role="alert"></div>
 
-
-
-  <!-- Formulario de login -->
-  <form action="/login" method="POST">
-    <div class="mb-3">
-      <label for="documento" class="form-label">Documento:</label>
-      <input type="text" id="documento" name="documento" class="form-control" required>
-    </div>
-
-    <div class="mb-3">
-      <label for="contrasena" class="form-label">Contraseña:</label>
-      <div class="input-group">
-        <input type="password" id="contrasena" name="contrasena" class="form-control password-segura" required>
-        <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('contrasena', this)" aria-label="Ver contrasena">
-          <i class="bi bi-eye"></i>
-        </button>
+    <form action="/login" method="POST" id="formLogin" novalidate>
+      <div class="mb-3">
+        <label for="documento" class="form-label">Documento:</label>
+        <input type="text" id="documento" name="documento" class="form-control" autocomplete="username" required>
       </div>
+
+      <div class="mb-3">
+        <label for="contrasena" class="form-label">Contraseña:</label>
+        <div class="input-group">
+          <input type="password" id="contrasena" name="contrasena" class="form-control password-segura" autocomplete="current-password" required>
+          <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('contrasena', this)" aria-label="Ver contraseña">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="entidad" class="form-label">Entidad:</label>
+        <input type="text" id="entidad" name="entidad" class="form-control">
+        <small class="form-text text-muted">
+          Ingresa el código de la entidad si deseas iniciar sesión en un contexto específico.
+        </small>
+      </div>
+
+      <button type="submit" class="btn btn-primary w-100">Entrar</button>
+    </form>
+
+    <div class="mt-3 d-flex justify-content-between gap-3">
+      <a href="/registro">Crear cuenta</a>
+      <a href="/restablecer-contrasena">Restablecer contraseña</a>
     </div>
+  </div>
 
-    <div class="mb-3">
-      <label for="entidad" class="form-label">Entidad:</label>
-      <input type="text" id="entidad" name="entidad" class="form-control">
-      <small class="form-text text-muted">
-        Ingresa el código de la entidad si deseas iniciar sesión en un contexto específico.<br>
-       <br>
-      
-      </small>
-    </div>
-
-    <button type="submit" class="btn btn-primary">Entrar</button>
-  </form>
-
-  <p class="mt-3">¿No tienes cuenta? <a href="/registro">Crear cuenta</a></p>
   <script>
     function togglePassword(inputId, button) {
       const input = document.getElementById(inputId);
@@ -70,6 +69,25 @@
       input.type = mostrar ? 'text' : 'password';
       icon.className = mostrar ? 'bi bi-eye-slash' : 'bi bi-eye';
     }
+
+    document.getElementById('formLogin')?.addEventListener('submit', event => {
+      const documento = document.getElementById('documento');
+      const contrasena = document.getElementById('contrasena');
+      const aviso = document.getElementById('loginValidacion');
+      const mensajes = [];
+
+      if (!documento.value.trim()) mensajes.push('Ingrese su documento.');
+      if (!contrasena.value.trim()) mensajes.push('Ingrese su contraseña.');
+
+      if (mensajes.length) {
+        event.preventDefault();
+        aviso.textContent = mensajes.join(' ');
+        aviso.classList.remove('d-none');
+        (documento.value.trim() ? contrasena : documento).focus();
+      } else {
+        aviso.classList.add('d-none');
+      }
+    });
   </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Jugador, JugadorEquipo, Equipo, sequelize } = require('../models');
+const { Jugador, JugadorEquipo, Equipo, Torneo, sequelize } = require('../models');
 
 // 🔧 Función auxiliar para calcular edad y meses transcurridos desde último cumpleaños
 function calcularEdadYMeses(fechaNacimiento) {
@@ -20,6 +20,48 @@ function calcularEdadYMeses(fechaNacimiento) {
   return { edad, meses };
 }
 
+async function validarContextoTorneo(req, torneoId, entityId) {
+  const torneo = await Torneo.findByPk(torneoId, { attributes: ['id_torneo', 'entity_id'] });
+  if (!torneo) return { ok: false, message: 'Torneo no encontrado' };
+  if (Number(torneo.entity_id) !== Number(entityId)) {
+    return { ok: false, message: 'El torneo no pertenece a la entidad indicada' };
+  }
+  if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+    return { ok: false, message: 'No puede gestionar jugadores de otra entidad' };
+  }
+  return { ok: true, torneo };
+}
+
+function normalizarFechaNacimiento(valor) {
+  const fecha = String(valor || '').trim();
+  let dia;
+  let mes;
+  let anho;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    [anho, mes, dia] = fecha.split('-').map(Number);
+  } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
+    [dia, mes, anho] = fecha.split('/').map(Number);
+  } else {
+    return null;
+  }
+
+  const normalizada = new Date(anho, mes - 1, dia);
+  if (
+    normalizada.getFullYear() !== anho ||
+    normalizada.getMonth() !== mes - 1 ||
+    normalizada.getDate() !== dia
+  ) {
+    return null;
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  if (normalizada > hoy) return null;
+
+  return `${String(anho).padStart(4, '0')}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
 // 📌 Mostrar formulario de nuevo jugador
 exports.nuevo = (req, res) => {
   if (![2, 3, 99].includes(Number(req.session.rol_id))) {
@@ -27,8 +69,14 @@ exports.nuevo = (req, res) => {
     return res.redirect(`/torneos/gestionar/${req.query.torneo_id || req.session.torneo_id}#jugadores`);
   }
 
-  req.session.entity_id = parseInt(req.query.entity_id, 10);
-  req.session.torneo_id = parseInt(req.query.torneo_id, 10);
+  const entityId = parseInt(req.query.entity_id, 10);
+  const torneoId = parseInt(req.query.torneo_id, 10);
+  if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(entityId)) {
+    req.flash("danger", "No puede registrar jugadores en otra entidad");
+    return res.redirect('/torneos');
+  }
+  req.session.entity_id = entityId;
+  req.session.torneo_id = torneoId;
 
   res.render('jugadores/nuevo', {
     entity_id: req.session.entity_id,
@@ -43,12 +91,10 @@ exports.nuevo = (req, res) => {
 exports.crear = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    req.session.entity_id = parseInt(req.body.entity_id || req.query.entity_id, 10);
-    req.session.torneo_id = parseInt(req.body.torneo_id || req.query.torneo_id, 10);
-
-    const entityId = req.session.entity_id;
-    const torneoId = req.session.torneo_id;
-    const { nombre, apellido, documento, fecha_nacimiento } = req.body;
+    const entityId = parseInt(req.body.entity_id || req.query.entity_id, 10);
+    const torneoId = parseInt(req.body.torneo_id || req.query.torneo_id, 10);
+    const { nombre, apellido, documento } = req.body;
+    const fechaNacimientoNormalizada = normalizarFechaNacimiento(req.body.fecha_nacimiento);
     const esDelegado = Number(req.session.rol_id) === 2;
     const estado = esDelegado ? "true" : req.body.estado;
     const observaciones = esDelegado ? "" : (req.body.observaciones || "");
@@ -58,6 +104,21 @@ exports.crear = async (req, res) => {
       await t.rollback();
       return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
     }
+
+    if (!fechaNacimientoNormalizada) {
+      req.flash("danger", "Ingrese la fecha de nacimiento con formato DD/MM/AAAA");
+      await t.rollback();
+      return res.redirect(`/jugadores/nuevo?entity_id=${entityId}&torneo_id=${torneoId}`);
+    }
+
+    const permiso = await validarContextoTorneo(req, torneoId, entityId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      await t.rollback();
+      return res.redirect('/torneos');
+    }
+    req.session.entity_id = permiso.torneo.entity_id;
+    req.session.torneo_id = torneoId;
 
     // 🔎 Validar duplicado SOLO dentro de la misma entidad
     const existente = await Jugador.findOne({ where: { documento, entity_id: entityId } });
@@ -77,7 +138,7 @@ exports.crear = async (req, res) => {
       nombre,
       apellido,
       documento,
-      fecha_nacimiento,
+      fecha_nacimiento: fechaNacimientoNormalizada,
       estado: estado === "true",
       entity_id: entityId,
       observaciones
@@ -276,7 +337,8 @@ exports.editar = async (req, res) => {
 exports.actualizar = async (req, res) => {
   const t = await sequelize.transaction(); // 👈 transacción explícita
   try {
-    const { nombre, apellido, documento, fecha_nacimiento, estado, observaciones } = req.body;
+    const { nombre, apellido, documento, estado, observaciones } = req.body;
+    const fechaNacimientoNormalizada = normalizarFechaNacimiento(req.body.fecha_nacimiento);
     const jugador = await Jugador.findByPk(req.params.id);
     const torneoId = req.session.torneo_id;
 
@@ -284,6 +346,12 @@ exports.actualizar = async (req, res) => {
       req.flash("danger", "Jugador no encontrado");
       await t.rollback();
       return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+    }
+
+    if (!fechaNacimientoNormalizada) {
+      req.flash("danger", "Ingrese la fecha de nacimiento con formato DD/MM/AAAA");
+      await t.rollback();
+      return res.redirect(`/jugadores/editar/${req.params.id}`);
     }
 
     // 🔎 Validar duplicado SOLO dentro de la misma entidad
@@ -315,7 +383,7 @@ exports.actualizar = async (req, res) => {
       nombre,
       apellido,
       documento,
-      fecha_nacimiento,
+      fecha_nacimiento: fechaNacimientoNormalizada,
       entity_id: req.session.entity_id
     }, { transaction: t });
 

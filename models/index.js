@@ -32,6 +32,7 @@ const Jugador = require('./Jugador')(sequelize, DataTypes);
 const JugadorEquipo = require('./JugadorEquipo')(sequelize, DataTypes);
 const DelegadoEquipo = require('./DelegadoEquipo')(sequelize, DataTypes);
 const EquipoMovimientoGrupo = require('./EquipoMovimientoGrupo')(sequelize, DataTypes);
+const Cancha = require('./Cancha')(sequelize, DataTypes);
 
 // Guardar en objeto db
 const db = {
@@ -47,7 +48,8 @@ const db = {
   Jugador,
   JugadorEquipo,
   DelegadoEquipo,
-  EquipoMovimientoGrupo
+  EquipoMovimientoGrupo,
+  Cancha
 };
 
 // 🔑 Ejecutar asociaciones si existen

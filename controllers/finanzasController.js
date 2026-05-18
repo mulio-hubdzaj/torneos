@@ -1,5 +1,18 @@
-const { Finanzas, Torneo } = require('../models');
+const { Finanzas, Torneo, sequelize } = require('../models');
 const { registrarAuditoria } = require('../utils/helpers');
+
+async function setAuditContext(req, entityId = null) {
+  if (req.session.usuario_id) {
+    await sequelize.query('SET app.usuario_id = :usuarioId', {
+      replacements: { usuarioId: req.session.usuario_id }
+    });
+  }
+  if (entityId || req.session.entity_id) {
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: entityId || req.session.entity_id }
+    });
+  }
+}
 
 exports.listar = async (req, res) => {
   try {
@@ -14,11 +27,15 @@ exports.listar = async (req, res) => {
 exports.crear = async (req, res) => {
   try {
     const { id_torneo, monto_inscripcion, monto_aportado, deuda_total } = req.body;
+    const torneo = await Torneo.findByPk(id_torneo, { attributes: ['entity_id'] });
+    await setAuditContext(req, torneo?.entity_id);
+
     const nueva = await Finanzas.create({
       id_torneo,
       monto_inscripcion,
       monto_aportado,
-      deuda_total
+      deuda_total,
+      entity_id: torneo?.entity_id || req.session.entity_id || null
     });
 
     const usuarioId = req.session.usuario_id;
@@ -59,6 +76,7 @@ exports.actualizar = async (req, res) => {
     finanza.monto_inscripcion = req.body.monto_inscripcion;
     finanza.monto_aportado = req.body.monto_aportado;
     finanza.deuda_total = req.body.deuda_total;
+    await setAuditContext(req, finanza.entity_id);
     await finanza.save();
 
     const usuarioId = req.session.usuario_id;

@@ -30,6 +30,86 @@ router.get('/cambiar-contrasena', (req, res) => {
   res.render('cambiar_contrasena');
 });
 
+router.get('/restablecer-contrasena', (req, res) => {
+  res.render('restablecer_contrasena');
+});
+
+router.post('/restablecer-contrasena', async (req, res) => {
+  try {
+    const documento = String(req.body.documento || '').trim();
+    const correo = String(req.body.correo || '').trim().toLowerCase();
+    const entidad = String(req.body.entidad || '').trim().toUpperCase();
+    const nuevaContrasena = String(req.body.contrasena || '').trim();
+    const confirmarContrasena = String(req.body.confirmar_contrasena || '').trim();
+
+    if (!documento || !correo || !entidad || !nuevaContrasena || !confirmarContrasena) {
+      req.flash("danger", "Complete documento, correo, entidad y nueva contrasena. Si no puede avanzar, comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo);
+    if (!correoValido) {
+      req.flash("danger", "El correo ingresado no tiene un formato valido. Si no puede avanzar, comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    const seguridad = validarContrasenaSegura(nuevaContrasena);
+    if (!seguridad.ok) {
+      req.flash("danger", `${seguridad.mensaje}. Si no puede avanzar, comuniquese con el admin.`);
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    if (nuevaContrasena !== confirmarContrasena) {
+      req.flash("danger", "Las contrasenas no coinciden. Si no puede avanzar, comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    const entidadObj = await Entity.findOne({
+      where: { codigo: entidad }
+    });
+
+    if (!entidadObj) {
+      req.flash("danger", "La entidad ingresada no existe. Verifique el codigo o comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    if (!entidadObj.activo) {
+      req.flash("danger", "La entidad esta inactiva. Comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    const usuario = await Usuario.findOne({
+      where: {
+        documento,
+        correo,
+        entity_id: entidadObj.entity_id
+      }
+    });
+
+    if (!usuario) {
+      req.flash("danger", "Documento, correo y entidad no coinciden con un usuario registrado. Comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    if (!usuario.estado) {
+      req.flash("danger", "El usuario no esta activo actualmente. Comuniquese con el admin.");
+      return res.redirect('/restablecer-contrasena');
+    }
+
+    usuario.contrasena_hash = await bcrypt.hash(nuevaContrasena, 10);
+    usuario.debe_cambiar_contrasena = false;
+    usuario.reset_contrasena_en = new Date();
+    await usuario.save();
+
+    req.flash("success", "Contrasena restablecida correctamente. Ya puede iniciar sesion.");
+    return res.redirect('/login');
+  } catch (error) {
+    console.error("Error al restablecer contrasena:", error);
+    req.flash("danger", "No se pudo restablecer la contrasena. Comuniquese con el admin.");
+    return res.redirect('/restablecer-contrasena');
+  }
+});
+
 router.post('/cambiar-contrasena', async (req, res) => {
   try {
     if (!req.session.usuario_id || !req.session.debe_cambiar_contrasena) {
@@ -123,6 +203,11 @@ router.post('/login', async (req, res) => {
       return res.redirect('/login');
     }
 
+    if (!user.estado) {
+      req.flash("danger", "Usuario inactivo. Comuniquese con el admin");
+      return res.redirect('/login');
+    }
+
     const validPassword = await bcrypt.compare(contrasena, user.contrasena_hash);
     if (!validPassword) {
       req.flash("danger", "Contraseña incorrecta");
@@ -205,7 +290,8 @@ router.get('/registro', (req, res) => {
 // Procesar registro
 router.post('/registro', async (req, res) => {
   try {
-    const { nombre, apellido, correo, documento, contrasena, entidad } = req.body;
+    const { nombre, apellido, correo, contrasena, entidad } = req.body;
+    const documentoNormalizado = String(req.body.documento || '').trim();
     const nombreCompleto = [nombre, apellido]
       .map(valor => String(valor || '').trim().toUpperCase())
       .filter(Boolean)
@@ -213,7 +299,7 @@ router.post('/registro', async (req, res) => {
     const correoNormalizado = String(correo || '').trim().toLowerCase();
     const correoValido = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correoNormalizado);
 
-    if (!nombreCompleto || !documento || !contrasena || !entidad || !correoNormalizado) {
+    if (!nombreCompleto || !documentoNormalizado || !contrasena || !entidad || !correoNormalizado) {
       req.flash("danger", "Complete todos los datos del registro");
       return res.redirect('/registro');
     }
@@ -245,13 +331,26 @@ router.post('/registro', async (req, res) => {
     // Validar duplicado de documento + entidad
     const existente = await Usuario.findOne({
       where: {
-        documento,
+        documento: documentoNormalizado,
         entity_id: entityId
       }
     });
 
     if (existente) {
       req.flash("danger", "Ya existe un usuario con ese documento en la entidad seleccionada");
+      return res.redirect('/registro');
+    }
+
+    const correoExistente = await Usuario.findOne({
+      where: {
+        correo: correoNormalizado,
+        entity_id: entityId
+      },
+      attributes: ['id_usuario', 'entity_id', 'estado']
+    });
+
+    if (correoExistente) {
+      req.flash("danger", "Ya existe un usuario con ese correo en la entidad seleccionada");
       return res.redirect('/registro');
     }
 
@@ -262,7 +361,7 @@ router.post('/registro', async (req, res) => {
     await Usuario.create({
       nombre: nombreCompleto,
       correo: correoNormalizado,
-      documento,
+      documento: documentoNormalizado,
       contrasena_hash: contrasenaHash,
       entity_id: entityId,
       rol_id: 1,
@@ -274,6 +373,13 @@ router.post('/registro', async (req, res) => {
     res.redirect('/login');
   } catch (error) {
     console.error("Error en registro:", error);
+    if (error?.name === 'SequelizeUniqueConstraintError') {
+      const campos = (error.errors || []).map(err => err.path);
+      if (campos.includes('correo')) {
+        req.flash("danger", "Ya existe un usuario con ese correo en la entidad seleccionada");
+        return res.redirect('/registro');
+      }
+    }
     req.flash("danger", "Error al registrar usuario");
     res.redirect('/registro');
   }

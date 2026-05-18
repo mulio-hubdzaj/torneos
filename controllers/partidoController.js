@@ -1,6 +1,6 @@
 // partidoController.js
 
-const { Partido, Equipo, Torneo, sequelize } = require('../models');
+const { Partido, Equipo, Torneo, Cancha, sequelize } = require('../models');
 const { registrarAuditoria } = require('../utils/helpers');
 const { Op } = require('sequelize');
 
@@ -38,6 +38,75 @@ function numeroDecimalNoNegativo(valor) {
   const texto = String(valor ?? '0').trim().replace(',', '.');
   if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(texto)) return null;
   return Number.parseFloat(texto);
+}
+
+async function calcularSaldoAnteriorFinanzas({ equipoId, torneoId, concepto, numeroFecha, transaction = null }) {
+  const movimientosPrevios = await sequelize.query(`
+    SELECT COALESCE(f.monto_aportado, 0) AS monto_aportado,
+           COALESCE(f.deuda_total, 0) AS deuda_total,
+           COALESCE(p.numero_fecha, CAST(NULLIF(SUBSTRING(f.concepto FROM '^Fecha libre #([0-9]+)'), '') AS INTEGER), 999999) AS numero_fecha,
+           f.fecha_registro,
+           f.id_finanza
+    FROM finanzas f
+    LEFT JOIN partidos p
+      ON p.id_partido = CAST(NULLIF(SUBSTRING(f.concepto FROM '^Encuentro #([0-9]+)'), '') AS INTEGER)
+    WHERE f.id_equipo = :equipoId
+      AND f.id_torneo = :torneoId
+      AND COALESCE(f.concepto, '') <> :concepto
+    ORDER BY numero_fecha ASC, f.fecha_registro ASC, f.id_finanza ASC
+  `, {
+    replacements: { equipoId, torneoId, concepto },
+    type: sequelize.QueryTypes.SELECT,
+    transaction
+  });
+
+  const fechaActual = Number(numeroFecha || 999999);
+  return movimientosPrevios.reduce((saldo, movimiento) => {
+    const fechaMovimiento = Number(movimiento.numero_fecha || 999999);
+    if (fechaMovimiento >= fechaActual) return saldo;
+    return saldo + Number(movimiento.deuda_total || 0) - Number(movimiento.monto_aportado || 0);
+  }, 0);
+}
+
+async function setAuditContext(req, entityId = null, transaction = null) {
+  const options = transaction ? { transaction } : {};
+  const scope = transaction ? 'SET LOCAL' : 'SET';
+  if (req.session.usuario_id) {
+    await sequelize.query(`${scope} app.usuario_id = :usuarioId`, {
+      replacements: { usuarioId: req.session.usuario_id },
+      ...options
+    });
+  }
+  if (entityId || req.session.entity_id) {
+    await sequelize.query(`${scope} app.entity_id = :entityId`, {
+      replacements: { entityId: entityId || req.session.entity_id },
+      ...options
+    });
+  }
+}
+
+function puedeAdministrarEntidad(req, entityId) {
+  return Number(req.session.rol_id) === 99 || Number(req.session.entity_id) === Number(entityId);
+}
+
+async function validarAdminTorneo(req, torneoId, transaction = null) {
+  const torneo = await Torneo.findByPk(torneoId, {
+    attributes: ['id_torneo', 'entity_id'],
+    transaction
+  });
+  if (!torneo) return { ok: false, message: 'Torneo no encontrado' };
+  if (!puedeAdministrarEntidad(req, torneo.entity_id)) {
+    return { ok: false, message: 'No puede modificar fixture de otra entidad' };
+  }
+  return { ok: true, torneo };
+}
+
+function validarAdminPartido(req, partido) {
+  if (!partido) return { ok: false, message: 'Partido no encontrado' };
+  if (!puedeAdministrarEntidad(req, partido.entity_id)) {
+    return { ok: false, message: 'No puede modificar fixture de otra entidad' };
+  }
+  return { ok: true };
 }
 
 async function obtenerReglaTarjetasTorneo(torneoId, transaction = null) {
@@ -171,10 +240,16 @@ exports.crear = async (req, res) => {
       return res.redirect(redirectUrl);
     }
 
-    const torneoEntity = await Torneo.findByPk(id_torneo, { attributes: ['entity_id'] });
-    const partidoEntityId = torneoEntity ? torneoEntity.entity_id : req.session.entity_id;
+    const permisoTorneo = await validarAdminTorneo(req, id_torneo);
+    if (!permisoTorneo.ok) {
+      req.flash("danger", permisoTorneo.message);
+      return res.redirect(redirectUrl);
+    }
+    const partidoEntityId = permisoTorneo.torneo.entity_id;
 
     const numeroFechaIda = Number.parseInt(numero_fecha || 1, 10) || 1;
+
+    await setAuditContext(req, partidoEntityId);
 
     await Partido.create({
       id_torneo,
@@ -249,12 +324,44 @@ exports.detalle = async (req, res) => {
 exports.actualizarHorario = async (req, res) => {
   try {
     const partidoId = req.params.partido_id;
-    const { fecha, hora, torneo_id } = req.body;
+    const { fecha, hora, torneo_id, id_cancha } = req.body;
+    const canchaId = id_cancha ? Number.parseInt(id_cancha, 10) : null;
+    const partido = await Partido.findByPk(partidoId);
+    const torneoRedirect = partido?.id_torneo || torneo_id;
+
+    if (!partido) {
+      req.flash('danger', 'Partido no encontrado');
+      return res.redirect(`/torneos/gestionar/${torneoRedirect}#partidos`);
+    }
+
+    const permisoPartido = validarAdminPartido(req, partido);
+    if (!permisoPartido.ok) {
+      req.flash('danger', permisoPartido.message);
+      return res.redirect('/torneos');
+    }
+
+    if (canchaId) {
+      const canchaValida = await Cancha.findOne({
+        where: {
+          id_cancha: canchaId,
+          id_torneo: partido.id_torneo,
+          estado: true
+        }
+      });
+
+      if (!canchaValida) {
+        req.flash('danger', 'La cancha seleccionada no pertenece a este torneo o esta inactiva');
+        return res.redirect(`/torneos/gestionar/${torneoRedirect}#partidos`);
+      }
+    }
+
+    await setAuditContext(req, partido.entity_id);
 
     await Partido.update(
       {
         fecha: fecha || null,
-        hora: hora || null
+        hora: hora || null,
+        id_cancha: canchaId || null
       },
       { where: { id_partido: partidoId } }
     );
@@ -263,15 +370,16 @@ exports.actualizarHorario = async (req, res) => {
     await registrarAuditoria(usuarioId, null, "partidos", "UPDATE", {
       id_partido: partidoId,
       fecha,
-      hora
+      hora,
+      id_cancha: canchaId || null
     });
 
     req.flash('success', 'Horario actualizado correctamente');
-    return res.redirect(`/torneos/gestionar/${torneo_id}#partidos`);
+    return res.redirect(`/torneos/gestionar/${torneoRedirect}#partidos`);
   } catch (error) {
     console.error('Error al actualizar horario:', error);
     req.flash('danger', 'Error al actualizar el horario del partido');
-    return res.redirect(`/torneos/gestionar/${torneo_id}#partidos`);
+    return res.redirect(`/torneos/gestionar/${req.body.torneo_id || ''}#partidos`);
   }
 };
 
@@ -289,6 +397,12 @@ exports.intercambiarEquipos = async (req, res) => {
 
     const redirectUrl = redirectUrlBody || `/torneos/gestionar/${partido.id_torneo}#partidos`;
 
+    const permisoPartido = validarAdminPartido(req, partido);
+    if (!permisoPartido.ok) {
+      req.flash("danger", permisoPartido.message);
+      return res.redirect('/torneos');
+    }
+
     if (partido.estado === 'finalizado') {
       req.flash("danger", "No se puede intercambiar equipos en un partido finalizado");
       return res.redirect(redirectUrl);
@@ -303,6 +417,7 @@ exports.intercambiarEquipos = async (req, res) => {
     partido.equipo_b = equipoAOriginal;
     partido.goles_a = golesBOriginal;
     partido.goles_b = golesAOriginal;
+    await setAuditContext(req, partido.entity_id);
     await partido.save();
 
     const usuarioId = req.session.usuario_id;
@@ -326,25 +441,37 @@ exports.intercambiarEquipos = async (req, res) => {
 // Actualizar horarios comunes para toda una fecha
 exports.actualizarHorariosFecha = async (req, res) => {
   try {
-    const { numero_fecha, torneo_id, fecha_comun, hora_inicial, intervalo_minutos } = req.body;
+    const { numero_fecha, torneo_id, grupo_id, fecha_comun, hora_inicial, intervalo_minutos } = req.body;
 
     // Validar parámetros
     if (!numero_fecha || !torneo_id || !fecha_comun || !hora_inicial || !intervalo_minutos) {
       return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos' });
     }
 
-    // Obtener todos los partidos de esa fecha
+    const where = {
+      id_torneo: torneo_id,
+      numero_fecha: numero_fecha
+    };
+    const grupoId = Number.parseInt(grupo_id || '', 10);
+    if (Number.isInteger(grupoId) && grupoId > 0) {
+      where.id_grupo = grupoId;
+    }
+
+    // Obtener todos los partidos de esa fecha, respetando el filtro por grupo cuando exista.
     const partidos = await Partido.findAll({
-      where: {
-        id_torneo: torneo_id,
-        numero_fecha: numero_fecha
-      },
+      where,
       order: [['id_partido', 'ASC']] // Orden consistente
     });
 
     if (partidos.length === 0) {
-      return res.status(404).json({ success: false, message: 'No se encontraron partidos para esta fecha' });
+      return res.status(404).json({ success: false, message: 'No se encontraron encuentros para esta fecha y grupo' });
     }
+
+    if (!puedeAdministrarEntidad(req, partidos[0].entity_id)) {
+      return res.status(403).json({ success: false, message: 'No puede modificar fixture de otra entidad' });
+    }
+
+    await setAuditContext(req, partidos[0].entity_id);
 
     // Calcular horarios espaciados
     const horaBase = new Date(`2000-01-01T${hora_inicial}:00`);
@@ -369,6 +496,7 @@ exports.actualizarHorariosFecha = async (req, res) => {
     await registrarAuditoria(usuarioId, null, "partidos", "UPDATE_BULK", {
       numero_fecha,
       torneo_id,
+      grupo_id: Number.isInteger(grupoId) && grupoId > 0 ? grupoId : null,
       fecha_comun,
       hora_inicial,
       intervalo_minutos,
@@ -377,7 +505,7 @@ exports.actualizarHorariosFecha = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Horarios actualizados correctamente para ${partidos.length} partidos`
+      message: `Horarios actualizados correctamente para ${partidos.length} encuentros`
     });
 
   } catch (error) {
@@ -423,8 +551,25 @@ exports.actualizarMarcador = async (req, res) => {
     };
 
     if (typeof estado !== 'undefined') {
-      updateData.estado = estado;
+      const estadoNormalizado = String(estado).trim().toLowerCase().replace(/[\s-]+/g, '_');
+      const estadosPermitidos = ['programado', 'en_curso', 'suspendido', 'finalizado'];
+      if (!estadosPermitidos.includes(estadoNormalizado)) {
+        return res.status(400).json({ success: false, message: 'Estado de partido no valido' });
+      }
+      updateData.estado = estadoNormalizado;
     }
+
+    const partido = await Partido.findByPk(partido_id, { attributes: ['id_partido', 'entity_id'] });
+    if (!partido) {
+      return res.status(404).json({ success: false, message: 'Partido no encontrado' });
+    }
+
+    const permisoPartido = validarAdminPartido(req, partido);
+    if (!permisoPartido.ok) {
+      return res.status(403).json({ success: false, message: permisoPartido.message });
+    }
+
+    await setAuditContext(req, partido.entity_id);
 
     await Partido.update(updateData, { where: { id_partido: partido_id } });
 
@@ -473,6 +618,7 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
 
     const entityId = req.session.entity_id || partido.entity_id;
     const nombreEquipo = partido.id_equipo_a === equipoId ? partido.equipo_a : partido.equipo_b;
+    const nombreRival = partido.id_equipo_a === equipoId ? partido.equipo_b : partido.equipo_a;
     const conceptoFinanza = `Encuentro #${partidoId} - ${nombreEquipo}`;
 
     const jugadores = await sequelize.query(`
@@ -564,17 +710,14 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
 
+    const deudaAnterior = await calcularSaldoAnteriorFinanzas({
+      equipoId,
+      torneoId: partido.id_torneo,
+      concepto: conceptoFinanza,
+      numeroFecha: partido.numero_fecha
+    });
     const [resumenFinanzas] = await sequelize.query(`
       SELECT COALESCE((
-               SELECT f.saldo
-               FROM finanzas f
-               WHERE f.id_equipo = :equipoId
-                 AND f.id_torneo = :torneoId
-                 AND COALESCE(f.concepto, '') <> :concepto
-               ORDER BY f.fecha_registro DESC, f.id_finanza DESC
-               LIMIT 1
-             ), 0) AS deuda_anterior,
-             COALESCE((
                SELECT f.monto_aportado
                FROM finanzas f
                WHERE f.id_equipo = :equipoId
@@ -596,12 +739,12 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
         numero_fecha: partido.numero_fecha,
         fecha: formatearFechaVisual(partido.fecha)
       },
-      equipo: { id_equipo: equipoId, nombre: nombreEquipo },
+      equipo: { id_equipo: equipoId, nombre: nombreEquipo, rival: nombreRival || '' },
       jugadores,
       items,
       itemsCargados,
       reglaTarjetas,
-      deudaAnterior: Number(resumenFinanzas?.deuda_anterior || 0),
+      deudaAnterior,
       montoAportado: Number(resumenFinanzas?.monto_aportado || 0)
     });
   } catch (error) {
@@ -646,8 +789,14 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Partido o equipo no encontrado' });
     }
 
+    if (!puedeAdministrarEntidad(req, partido.entity_id)) {
+      await transaction.rollback();
+      return res.status(403).json({ success: false, message: 'No puede cargar encuentros de otra entidad' });
+    }
+
     const entityId = req.session.entity_id || partido.entity_id;
     const conceptoFinanza = `Encuentro #${partidoId} - ${partido.nombre_equipo}`;
+    await setAuditContext(req, entityId, transaction);
 
     const jugadoresEquipo = await sequelize.query(`
       SELECT id_jugador
@@ -825,23 +974,14 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
       });
     }
 
-    const [resumenPrevio] = await sequelize.query(`
-      SELECT COALESCE((
-               SELECT f.saldo
-               FROM finanzas f
-               WHERE f.id_equipo = :equipoId
-                 AND f.id_torneo = :torneoId
-                 AND COALESCE(f.concepto, '') <> :concepto
-               ORDER BY f.fecha_registro DESC, f.id_finanza DESC
-               LIMIT 1
-             ), 0) AS deuda_anterior
-    `, {
-      replacements: { equipoId, torneoId: partido.id_torneo, concepto: conceptoFinanza },
-      type: sequelize.QueryTypes.SELECT,
+    const deudaAnterior = await calcularSaldoAnteriorFinanzas({
+      equipoId,
+      torneoId: partido.id_torneo,
+      concepto: conceptoFinanza,
+      numeroFecha: partido.numero_fecha,
       transaction
     });
 
-    const deudaAnterior = Number(resumenPrevio?.deuda_anterior || 0);
     const saldo = deudaAnterior + totalItems - montoAportado;
 
     await sequelize.query(`
@@ -951,17 +1091,14 @@ exports.obtenerCargaEquipoLibre = async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
 
+    const deudaAnterior = await calcularSaldoAnteriorFinanzas({
+      equipoId,
+      torneoId,
+      concepto: conceptoFinanza,
+      numeroFecha
+    });
     const [resumenFinanzas] = await sequelize.query(`
       SELECT COALESCE((
-               SELECT f.saldo
-               FROM finanzas f
-               WHERE f.id_equipo = :equipoId
-                 AND f.id_torneo = :torneoId
-                 AND COALESCE(f.concepto, '') <> :concepto
-               ORDER BY f.fecha_registro DESC, f.id_finanza DESC
-               LIMIT 1
-             ), 0) AS deuda_anterior,
-             COALESCE((
                SELECT f.monto_aportado
                FROM finanzas f
                WHERE f.id_equipo = :equipoId
@@ -988,7 +1125,7 @@ exports.obtenerCargaEquipoLibre = async (req, res) => {
       jugadores: [],
       items,
       itemsCargados,
-      deudaAnterior: Number(resumenFinanzas?.deuda_anterior || 0),
+      deudaAnterior,
       montoAportado: Number(resumenFinanzas?.monto_aportado || 0)
     });
   } catch (error) {
@@ -1029,9 +1166,15 @@ exports.guardarCargaEquipoLibre = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Equipo no encontrado para esta fecha libre' });
     }
 
+    if (!puedeAdministrarEntidad(req, equipo.entity_id)) {
+      await transaction.rollback();
+      return res.status(403).json({ success: false, message: 'No puede cargar fechas libres de otra entidad' });
+    }
+
     const entityId = req.session.entity_id || equipo.entity_id;
     const conceptoFinanza = `Fecha libre #${numeroFecha} - ${equipo.nombre}`;
     const marcaLibre = `[fecha_libre:${torneoId}:${numeroFecha}]`;
+    await setAuditContext(req, entityId, transaction);
 
     await sequelize.query(`
       DELETE FROM items_equipo
@@ -1073,23 +1216,14 @@ exports.guardarCargaEquipoLibre = async (req, res) => {
       });
     }
 
-    const [resumenPrevio] = await sequelize.query(`
-      SELECT COALESCE((
-               SELECT f.saldo
-               FROM finanzas f
-               WHERE f.id_equipo = :equipoId
-                 AND f.id_torneo = :torneoId
-                 AND COALESCE(f.concepto, '') <> :concepto
-               ORDER BY f.fecha_registro DESC, f.id_finanza DESC
-               LIMIT 1
-             ), 0) AS deuda_anterior
-    `, {
-      replacements: { equipoId, torneoId, concepto: conceptoFinanza },
-      type: sequelize.QueryTypes.SELECT,
+    const deudaAnterior = await calcularSaldoAnteriorFinanzas({
+      equipoId,
+      torneoId,
+      concepto: conceptoFinanza,
+      numeroFecha,
       transaction
     });
 
-    const deudaAnterior = Number(resumenPrevio?.deuda_anterior || 0);
     const saldo = deudaAnterior + totalItems - montoAportado;
 
     await sequelize.query(`
@@ -1280,8 +1414,14 @@ exports.sortearEncuentros = async (req, res) => {
     console.log('Partidos generados:', partidos.length);
 
     // Obtener entity_id del torneo para que los partidos queden asociados correctamente
-    const torneoEntity = await Torneo.findByPk(id_torneo, { attributes: ['entity_id'] });
-    const partidoEntityId = torneoEntity ? torneoEntity.entity_id : req.session.entity_id;
+    const permisoTorneo = await validarAdminTorneo(req, id_torneo);
+    if (!permisoTorneo.ok) {
+      req.flash("danger", permisoTorneo.message);
+      return res.redirect(`/torneos/gestionar/${id_torneo}`);
+    }
+    const partidoEntityId = permisoTorneo.torneo.entity_id;
+
+    await setAuditContext(req, partidoEntityId);
 
     // Insertar partidos en la BD
     for (const partido of partidos) {
@@ -1335,7 +1475,7 @@ exports.sortearEncuentros = async (req, res) => {
 exports.actualizarEstado = async (req, res) => {
   try {
     const partidoId = req.params.partido_id;
-    const nuevoEstado = req.body.nuevoEstado || req.body.nuevo_estado;
+    const nuevoEstado = String(req.body.nuevoEstado || req.body.nuevo_estado || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     const acceptJson = req.headers.accept && req.headers.accept.includes('application/json');
     const partido = await Partido.findByPk(partidoId);
 
@@ -1347,7 +1487,18 @@ exports.actualizarEstado = async (req, res) => {
       return res.redirect('/partidos');
     }
 
-    if (partido.estado === nuevoEstado) {
+    const permisoPartido = validarAdminPartido(req, partido);
+    if (!permisoPartido.ok) {
+      if (acceptJson) {
+        return res.status(403).json({ success: false, message: permisoPartido.message });
+      }
+      req.flash("danger", permisoPartido.message);
+      return res.redirect('/torneos');
+    }
+
+    const estadoActual = String(partido.estado || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+    if (estadoActual === nuevoEstado) {
       if (acceptJson) {
         return res.json({ success: true, message: 'Estado sin cambios' });
       }
@@ -1355,7 +1506,7 @@ exports.actualizarEstado = async (req, res) => {
       return res.redirect(`/torneos/gestionar/${partido.id_torneo}#partidos`);
     }
 
-    if (partido.estado === 'finalizado') {
+    if (estadoActual === 'finalizado') {
       if (acceptJson) {
         return res.status(400).json({ success: false, message: 'No se puede cambiar el estado de un partido finalizado' });
       }
@@ -1364,11 +1515,12 @@ exports.actualizarEstado = async (req, res) => {
     }
 
     const transicionesValidas = {
-      programado: ['finalizado', 'suspendido'],
-      suspendido: ['finalizado']
+      programado: ['en_curso', 'finalizado', 'suspendido'],
+      en_curso: ['programado', 'finalizado', 'suspendido'],
+      suspendido: ['programado', 'en_curso', 'finalizado']
     };
 
-    if (!transicionesValidas[partido.estado] || !transicionesValidas[partido.estado].includes(nuevoEstado)) {
+    if (!transicionesValidas[estadoActual] || !transicionesValidas[estadoActual].includes(nuevoEstado)) {
       if (acceptJson) {
         return res.status(400).json({ success: false, message: 'Transición de estado no permitida' });
       }
@@ -1377,6 +1529,7 @@ exports.actualizarEstado = async (req, res) => {
     }
 
     partido.estado = nuevoEstado;
+    await setAuditContext(req, partido.entity_id);
     await partido.save();
 
     const usuarioId = req.session.usuario_id;
@@ -1440,6 +1593,12 @@ exports.eliminar = async (req, res) => {
     }
     const redirectUrl = redirectUrlBody || `/torneos/gestionar/${partido.id_torneo}#partidos`;
 
+    const permisoPartido = validarAdminPartido(req, partido);
+    if (!permisoPartido.ok) {
+      req.flash("danger", permisoPartido.message);
+      return res.redirect('/torneos');
+    }
+
     if (partido.estado === 'finalizado') {
       req.flash("danger", "No se puede eliminar un partido finalizado");
       return res.redirect(redirectUrl);
@@ -1451,6 +1610,7 @@ exports.eliminar = async (req, res) => {
       return res.redirect(redirectUrl);
     }
 
+    await setAuditContext(req, partido.entity_id);
     await partido.destroy();
 
     const usuarioId = req.session.usuario_id;
@@ -1497,6 +1657,14 @@ exports.eliminarFecha = async (req, res) => {
       req.flash("danger", "No se puede eliminar una fecha con encuentros finalizados");
       return res.redirect(redirectUrl);
     }
+
+    const permisoTorneo = await validarAdminTorneo(req, torneoId);
+    if (!permisoTorneo.ok) {
+      req.flash("danger", permisoTorneo.message);
+      return res.redirect('/torneos');
+    }
+    const torneo = permisoTorneo.torneo;
+    await setAuditContext(req, torneo?.entity_id || req.session.entity_id);
 
     const eliminados = await Partido.destroy({ where });
 

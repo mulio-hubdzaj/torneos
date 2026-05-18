@@ -223,10 +223,42 @@
 <!-- ============================================ -->
 <!-- SCRIPTS -->
 <!-- ============================================ -->
+<div class="modal fade" id="modalAvisoApp" tabindex="-1" role="dialog" aria-labelledby="modalAvisoAppTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalAvisoAppTitulo">Aviso</h5>
+        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body" id="modalAvisoAppMensaje"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-dismiss="modal">Aceptar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const ID_TORNEO = '<%= grupo.id_torneo %>';
 const ID_GRUPO = '<%= grupo.id_grupo %>';
 const NUM_EQUIPOS = <%= grupo.Equipos ? grupo.Equipos.length : 0 %>;
+
+function mostrarAvisoApp(mensaje, titulo = 'Aviso') {
+  const modal = document.getElementById('modalAvisoApp');
+  if (!modal || !window.$) {
+    console.warn(mensaje);
+    return Promise.resolve();
+  }
+
+  document.getElementById('modalAvisoAppTitulo').textContent = titulo;
+  document.getElementById('modalAvisoAppMensaje').textContent = mensaje;
+
+  return new Promise(resolve => {
+    $('#modalAvisoApp').one('hidden.bs.modal', resolve).modal('show');
+  });
+}
 
 // Validar fechas según cantidad de equipos
 function validarFechas(numEquipos, fechasIngresadas) {
@@ -331,7 +363,7 @@ async function confirmarSorteo() {
   }
 
   if (!numFechas || numFechas <= 0) {
-    alert('Por favor, ingrese un número válido de fechas.');
+    mostrarAvisoApp('Por favor, ingrese un número válido de fechas.', 'Sorteo');
     return;
   }
 
@@ -356,18 +388,18 @@ async function confirmarSorteo() {
     if (data.success) {
       // Mostrar mensaje de éxito
       $('#modalSorteoFase2').modal('hide');
-      setTimeout(() => {
-        alert(data.message);
-        location.reload(); // Recargar página para mostrar los cambios
+      setTimeout(async () => {
+        await mostrarAvisoApp(data.message || 'Sorteo generado correctamente.', 'Sorteo');
+        location.reload();
       }, 300);
     } else {
-      alert('Error: ' + data.message);
+      mostrarAvisoApp(data.message || 'No se pudo generar el sorteo.', 'Sorteo');
       btnConfirmar.disabled = false;
       btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
     }
   } catch (error) {
     console.error('Error:', error);
-    alert('Error al procesar el sorteo.');
+    mostrarAvisoApp('Error al procesar el sorteo.', 'Sorteo');
     btnConfirmar.disabled = false;
     btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
   }

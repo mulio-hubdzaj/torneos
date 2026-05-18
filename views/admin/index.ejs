@@ -1,70 +1,103 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Panel de Administración</title>
+  <title>Panel de Administracion</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
-<body class="container mt-4">
-  <h1 class="mb-4">Panel de Administración</h1>
+<body class="admin-index-page app-responsive-page">
+  <main class="container-fluid app-page-shell">
+    <section class="app-page-header">
+      <div>
+        <p class="app-page-kicker mb-1">Bienvenido</p>
+        <h1 class="mb-0">Super Admin</h1>
+      </div>
+      <a href="/admin/nueva" class="btn btn-success">Crear entidad</a>
+    </section>
 
-<!-- Bloque de mensajes flash -->
-<% if (messages) { %>
-  <% if (messages.success && messages.success.length > 0) { %>
-    <div class="alert alert-success"><%= messages.success[0] %></div>
-  <% } %>
-  <% if (messages.danger && messages.danger.length > 0) { %>
-    <div class="alert alert-danger"><%= messages.danger[0] %></div>
-  <% } %>
-  <% if (messages.info && messages.info.length > 0) { %>
-    <div class="alert alert-info"><%= messages.info[0] %></div>
-  <% } %>
-<% } %>
+    <% if (messages) { %>
+      <% if (messages.success && messages.success.length > 0) { %>
+        <div class="alert alert-success"><%= messages.success[0] %></div>
+      <% } %>
+      <% if (messages.danger && messages.danger.length > 0) { %>
+        <div class="alert alert-danger"><%= messages.danger[0] %></div>
+      <% } %>
+      <% if (messages.info && messages.info.length > 0) { %>
+        <div class="alert alert-info"><%= messages.info[0] %></div>
+      <% } %>
+    <% } %>
 
+    <section class="app-panel">
+      <div class="app-search-bar">
+        <label class="form-label mb-1" for="buscarEntidadesAdmin">Buscar entidad</label>
+        <input type="search"
+               class="form-control"
+               id="buscarEntidadesAdmin"
+               placeholder="Codigo o descripcion"
+               autocomplete="off">
+      </div>
+      <div class="table-responsive app-table-wrap">
+        <table class="table table-striped align-middle app-mobile-table">
+          <thead>
+            <tr>
+              <th>Codigo</th>
+              <th>Descripcion</th>
+              <th>Activo</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% entidades.forEach(entidad => { %>
+              <% const entidadTextoBusqueda = `${entidad.codigo || ''} ${entidad.descripcion || ''} ${entidad.activo ? 'activo' : 'inactivo'}`; %>
+              <tr data-search="<%= entidadTextoBusqueda.toUpperCase() %>">
+                <td data-label="Codigo"><%= entidad.codigo %></td>
+                <td data-label="Descripcion"><%= entidad.descripcion %></td>
+                <td data-label="Activo">
+                  <form action="/admin/entidades/toggle/<%= entidad.entity_id %>" method="POST">
+                    <div class="form-check form-switch app-switch-cell">
+                      <input class="form-check-input" type="checkbox" name="activo"
+                             onchange="this.form.submit()" <%= entidad.activo ? 'checked' : '' %>>
+                    </div>
+                  </form>
+                </td>
+                <td data-label="Acciones">
+                  <div class="app-row-actions">
+                    <a href="/admin/editar/<%= entidad.entity_id %>" class="btn btn-sm btn-warning">Editar</a>
 
+                    <% if (entidad.activo) { %>
+                      <a href="/entidad/gestionar/<%= entidad.entity_id %>" class="btn btn-sm btn-primary">Administrar</a>
+                    <% } else { %>
+                      <button class="btn btn-sm btn-secondary" disabled>Administrar</button>
+                    <% } %>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted text-center py-3 mb-0 d-none" id="sinEntidadesAdmin">No se encontraron entidades.</p>
+    </section>
+  </main>
+  <script>
+    const buscarEntidadesAdmin = document.getElementById('buscarEntidadesAdmin');
+    const sinEntidadesAdmin = document.getElementById('sinEntidadesAdmin');
 
+    function filtrarEntidadesAdmin() {
+      const filtro = (buscarEntidadesAdmin.value || '').trim().toUpperCase();
+      let visibles = 0;
 
+      document.querySelectorAll('.app-mobile-table tbody tr[data-search]').forEach(row => {
+        const coincide = !filtro || (row.dataset.search || '').includes(filtro);
+        row.classList.toggle('d-none', !coincide);
+        if (coincide) visibles += 1;
+      });
 
-  <!-- Tabla de entidades -->
-  <table class="table table-striped">
-    <thead>
-      <tr>
-        <th>Código</th>
-        <th>Descripción</th>
-        <th>Activo</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      <% entidades.forEach(entidad => { %>
-        <tr>
-          <td><%= entidad.codigo %></td>
-          <td><%= entidad.descripcion %></td>
-          <td>
-            <form action="/admin/entidades/toggle/<%= entidad.entity_id %>" method="POST">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="activo" 
-                       onchange="this.form.submit()" <%= entidad.activo ? 'checked' : '' %>>
-              </div>
-            </form>
-          </td>
-          <td>
-  <a href="/admin/editar/<%= entidad.entity_id %>" class="btn btn-sm btn-warning">Editar</a>
-  
-  <% if (entidad.activo) { %>
-  <a href="/entidad/gestionar/<%= entidad.entity_id %>" class="btn btn-sm btn-primary ms-2">Administrar</a>
-<% } else { %>
-  <button class="btn btn-sm btn-secondary ms-2" disabled>Administrar</button>
-<% } %>
+      sinEntidadesAdmin.classList.toggle('d-none', visibles !== 0);
+    }
 
-</td>
-
-          
-        </tr>
-      <% }) %>
-    </tbody>
-  </table>
-
-  <a href="/admin/nueva" class="btn btn-success">Crear nueva entidad</a>
+    buscarEntidadesAdmin.addEventListener('input', filtrarEntidadesAdmin);
+  </script>
 </body>
 </html>

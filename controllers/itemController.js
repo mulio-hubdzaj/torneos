@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Item, sequelize } = require('../models');
+const { Item, Torneo, sequelize } = require('../models');
 
 function normalizarNombreItem(valor) {
   return String(valor || '').trim().toLowerCase();
@@ -35,15 +35,31 @@ function redirectItems(req, fallback = '/torneos') {
   return fallback;
 }
 
+async function validarTorneoAdmin(req, idTorneo) {
+  const torneo = await Torneo.findByPk(idTorneo, { attributes: ['id_torneo', 'entity_id'] });
+  if (!torneo) return { ok: false, message: 'Torneo no encontrado' };
+  if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+    return { ok: false, message: 'No puede administrar items de otra entidad' };
+  }
+  return { ok: true, torneo };
+}
+
 exports.crear = async (req, res) => {
   try {
-    const { nombre, descripcion, monto, id_torneo, entity_id } = req.body;
+    const { nombre, descripcion, monto, id_torneo } = req.body;
     const montoNumero = Number(monto);
 
-    if (!nombre || monto === undefined || monto === '' || !id_torneo || !entity_id) {
+    if (!nombre || monto === undefined || monto === '' || !id_torneo) {
       req.flash('danger', 'Faltan parámetros requeridos');
       return res.redirect(redirectItems(req));
     }
+
+    const permiso = await validarTorneoAdmin(req, id_torneo);
+    if (!permiso.ok) {
+      req.flash('danger', permiso.message);
+      return res.redirect(redirectItems(req));
+    }
+    const entity_id = permiso.torneo.entity_id;
 
     if (Number.isNaN(montoNumero) || montoNumero < 0) {
       req.flash('danger', 'El monto debe ser un número positivo');
@@ -84,13 +100,16 @@ exports.actualizar = async (req, res) => {
       return res.redirect(redirectItems(req));
     }
 
-    const { nombre, descripcion, monto, id_torneo, entity_id } = req.body;
+    const { nombre, descripcion, monto } = req.body;
     const montoNumero = Number(monto);
 
-    if (!id_torneo || !entity_id) {
-      req.flash('danger', 'Faltan parámetros de contexto');
+    const permiso = await validarTorneoAdmin(req, item.id_torneo);
+    if (!permiso.ok) {
+      req.flash('danger', permiso.message);
       return res.redirect(redirectItems(req));
     }
+    const id_torneo = item.id_torneo;
+    const entity_id = item.entity_id;
 
     if (Number.isNaN(montoNumero) || montoNumero < 0) {
       req.flash('danger', 'El monto debe ser un número positivo');
@@ -115,8 +134,8 @@ exports.actualizar = async (req, res) => {
       nombre: nombre?.trim(),
       descripcion: descripcion || null,
       monto: montoNumero,
-      id_torneo: Number(id_torneo),
-      entity_id: Number(entity_id)
+      id_torneo: item.id_torneo,
+      entity_id: item.entity_id
     });
 
     req.flash('success', 'Item actualizado correctamente');
@@ -133,6 +152,12 @@ exports.eliminar = async (req, res) => {
     const item = await Item.findByPk(req.params.id_item);
     if (!item) {
       req.flash('danger', 'Item no encontrado');
+      return res.redirect(redirectItems(req));
+    }
+
+    const permiso = await validarTorneoAdmin(req, item.id_torneo);
+    if (!permiso.ok) {
+      req.flash('danger', permiso.message);
       return res.redirect(redirectItems(req));
     }
 

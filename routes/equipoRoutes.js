@@ -5,6 +5,22 @@ const multer = require('multer');
 const upload = multer({ dest: 'public/uploads/' }); // carpeta donde se guardan los iconos
 const { Equipo } = require('../models');
 
+function requiereAdmin(req, res, next) {
+  if (![3, 99].includes(Number(req.session.rol_id))) {
+    req.flash('danger', 'No tiene permisos para administrar equipos');
+    return res.redirect(req.get('referer') || '/torneos');
+  }
+  next();
+}
+
+function requiereGestionJugadores(req, res, next) {
+  if (![2, 3, 99].includes(Number(req.session.rol_id))) {
+    req.flash('danger', 'No tiene permisos para gestionar jugadores');
+    return res.redirect(req.get('referer') || '/torneos');
+  }
+  next();
+}
+
 // Ruta raíz: listado de equipos
 router.get('/', async (req, res) => {
   try {
@@ -23,20 +39,20 @@ router.get('/', async (req, res) => {
 router.get('/gestionar/:id_torneo', equipoController.listar);
 
 // Crear equipo
-router.post('/validarMudanza', equipoController.validarMudanza);
-router.post('/crear', equipoController.crear);
+router.post('/validarMudanza', requiereAdmin, equipoController.validarMudanza);
+router.post('/crear', requiereAdmin, equipoController.crear);
 
 // Formulario de edición
-router.get('/editar/:id_equipo', equipoController.editarForm);
+router.get('/editar/:id_equipo', requiereAdmin, equipoController.editarForm);
 
 // Guardar cambios de edición
-router.post('/editar/:id_equipo', equipoController.editar);
+router.post('/editar/:id_equipo', requiereAdmin, equipoController.editar);
 
 // Activar/Desactivar equipo (switch)
-router.post('/toggle/:id_equipo', equipoController.toggle);
+router.post('/toggle/:id_equipo', requiereAdmin, equipoController.toggle);
 
 // Eliminar equipo
-router.post('/eliminar/:id_equipo', equipoController.eliminar);
+router.post('/eliminar/:id_equipo', requiereAdmin, equipoController.eliminar);
 
 // Administrar equipo (engrane)
 router.get('/administrar/:id_equipo', equipoController.administrar);
@@ -49,27 +65,27 @@ router.get('/ver/:id_equipo', equipoController.ver);
 // -----------------------------
 
 // Buscar usuarios (para delegados)
-router.post('/buscarUsuariosEntidad', equipoController.buscarUsuariosEntidad);
+router.post('/buscarUsuariosEntidad', requiereAdmin, equipoController.buscarUsuariosEntidad);
 
 // Buscar jugadores
-router.post('/buscarJugadores', equipoController.buscarJugadores);
+router.post('/buscarJugadores', requiereGestionJugadores, equipoController.buscarJugadores);
 
 // Asignar delegados
-router.post('/asignarDelegados', equipoController.asignarDelegados);
+router.post('/asignarDelegados', requiereAdmin, equipoController.asignarDelegados);
 
 // Desvincular delegado
-router.post('/desvincularDelegado', equipoController.desvincularDelegado);
+router.post('/desvincularDelegado', requiereAdmin, equipoController.desvincularDelegado);
 
 // Asignar jugadores
-router.post('/asignarJugadores', equipoController.asignarJugadores);
+router.post('/asignarJugadores', requiereGestionJugadores, equipoController.asignarJugadores);
 
 // Desvincular jugador
-router.post('/desvincularJugador', equipoController.desvincularJugador);
+router.post('/desvincularJugador', requiereAdmin, equipoController.desvincularJugador);
 
 // Actualizar jugadores (camiseta y capitán)
-router.post('/actualizarJugadores', equipoController.actualizarJugadores);
+router.post('/actualizarJugadores', requiereGestionJugadores, equipoController.actualizarJugadores);
 
 // Actualizar icono de un equipo
-router.post('/:id_equipo/icono', upload.single('icono'), equipoController.actualizarIcono);
+router.post('/:id_equipo/icono', requiereAdmin, upload.single('icono'), equipoController.actualizarIcono);
 
 module.exports = router;

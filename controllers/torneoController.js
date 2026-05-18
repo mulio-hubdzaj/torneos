@@ -1,9 +1,10 @@
 // torneoContrller.js
-const { Torneo, Grupo, Equipo, Partido, Finanzas, Usuario, Item, EquipoMovimientoGrupo, Entity } = require('../models');
-const { registrarAuditoria } = require('../utils/helpers');
+const { Torneo, Grupo, Equipo, Partido, Finanzas, Usuario, Item, EquipoMovimientoGrupo, Entity, Cancha } = require('../models');
+const { registrarAuditoria, registrarAccesoAuditoria, debeRegistrarAccesoSesion } = require('../utils/helpers');
 const { sequelize } = require('../models');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 
 // 🔧 Función auxiliar para calcular edad y meses transcurridos desde último cumpleaños
 function calcularEdadYMeses(fechaNacimiento) {
@@ -47,6 +48,257 @@ function generarCodigoTemporal(longitud = 8) {
 function obtenerEtiquetaFase(tipo, numeroFecha, mitadFechas) {
   if (tipo !== 'ida_vuelta') return '';
   return numeroFecha <= mitadFechas ? 'Ida' : 'Vuelta';
+}
+
+function normalizarDetalleAuditoria(detalle) {
+  if (detalle === null || detalle === undefined) return '';
+  if (typeof detalle === 'string') {
+    const limpio = detalle.trim();
+    if (!limpio) return '';
+    try {
+      const parsed = JSON.parse(limpio);
+      if (typeof parsed === 'string') return parsed;
+      return JSON.stringify(parsed);
+    } catch (error) {
+      return limpio;
+    }
+  }
+  if (typeof detalle === 'object') {
+    if (typeof detalle.detalle === 'string') return detalle.detalle;
+    return JSON.stringify(detalle);
+  }
+  return String(detalle);
+}
+
+function leerDetalleAuditoria(detalle) {
+  if (detalle === null || detalle === undefined) return {};
+  if (typeof detalle === 'object') return detalle;
+  if (typeof detalle !== 'string') return {};
+  try {
+    const parsed = JSON.parse(detalle);
+    return parsed && typeof parsed === 'object' ? parsed : { detalle: parsed };
+  } catch (error) {
+    return { detalle };
+  }
+}
+
+function obtenerPantallaAuditoria(registro, detalle) {
+  if (detalle.pantalla) return String(detalle.pantalla);
+  const tabla = String(registro.tabla_afectada || '');
+  const mapa = {
+    pantalla: 'Pantalla',
+    equipos: 'Equipo',
+    jugadores: 'Jugador',
+    jugadores_equipos: 'Jugador equipo',
+    partidos: 'Fixture',
+    torneos: 'Torneo',
+    grupos: 'Grupo',
+    items: 'Items',
+    items_equipo: 'Items equipo',
+    finanzas: 'Finanzas',
+    usuarios: 'Usuarios',
+    canchas: 'Sedes/canchas',
+    sanciones: 'Sanciones',
+    estadisticas: 'Estadisticas',
+    eventos_partido: 'Eventos partido'
+  };
+  return mapa[tabla] || tabla || 'Sistema';
+}
+
+function obtenerAfectadoAuditoria(registro, detalle, detalleLegible) {
+  const campos = ['equipo_afectado', 'equipo', 'usuario_afectado', 'jugador', 'torneo', 'grupo', 'nombre', 'pantalla'];
+  for (const campo of campos) {
+    if (detalle[campo]) return String(detalle[campo]);
+  }
+
+  const texto = String(detalleLegible || '');
+  const matchTabla = texto.match(/(?:equipos|jugadores|usuarios|torneos|grupos|items|canchas):\s*([^;]+)/i);
+  if (matchTabla) return matchTabla[1].trim();
+  const matchCambioNombre = texto.match(/nombre de ([^;]+?) a ([^;]+)/i);
+  if (matchCambioNombre) return matchCambioNombre[2].trim();
+
+  return '-';
+}
+
+async function desvincularDelegadoUsuarioEnEntidad(idUsuario, entityId) {
+  await sequelize.query(`
+    DELETE FROM delegados_equipos de
+    USING equipos e
+    WHERE e.id_equipo = de.id_equipo
+      AND de.id_usuario = :idUsuario
+      AND e.entity_id = :entityId
+  `, {
+    replacements: { idUsuario, entityId }
+  });
+}
+
+async function validarTorneoAdmin(req, torneoId) {
+  if (![3, 99].includes(Number(req.session.rol_id))) {
+    return { ok: false, message: 'No tiene permisos para administrar este torneo' };
+  }
+  const torneo = await Torneo.findByPk(torneoId);
+  if (!torneo) return { ok: false, message: 'Torneo no encontrado' };
+  if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+    return { ok: false, message: 'No puede administrar torneos de otra entidad' };
+  }
+  return { ok: true, torneo };
+}
+
+async function obtenerPermitirAgregarJugadores(torneoId) {
+  try {
+    const [config] = await sequelize.query(`
+      SELECT permitir_agregar_jugadores
+      FROM torneos
+      WHERE id_torneo = :torneoId
+      LIMIT 1
+    `, {
+      replacements: { torneoId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    return config?.permitir_agregar_jugadores !== false;
+  } catch (error) {
+    if (error?.parent?.code === '42703') return true;
+    throw error;
+  }
+}
+
+async function obtenerGruposOcultosFixture(torneoId) {
+  try {
+    const grupos = await sequelize.query(`
+      SELECT id_grupo
+      FROM grupos
+      WHERE id_torneo = :torneoId
+        AND COALESCE(visible_fixture, true) = false
+    `, {
+      replacements: { torneoId: parseInt(torneoId, 10) },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    return new Set(grupos.map(grupo => String(grupo.id_grupo)));
+  } catch (error) {
+    if (error?.parent?.code === '42703') return new Set();
+    throw error;
+  }
+}
+
+function reemplazarIdsEquiposEnDetalle(detalle, equiposPorId) {
+  let texto = String(detalle || '');
+  if (!texto) return texto;
+
+  texto = texto.replace(/equipo a de (\d+) a (\d+)/gi, (match, anterior, nuevo) => (
+    `equipo A de ${equiposPorId.get(String(anterior)) || `equipo #${anterior}`} a ${equiposPorId.get(String(nuevo)) || `equipo #${nuevo}`}`
+  ));
+
+  texto = texto.replace(/equipo b de (\d+) a (\d+)/gi, (match, anterior, nuevo) => (
+    `equipo B de ${equiposPorId.get(String(anterior)) || `equipo #${anterior}`} a ${equiposPorId.get(String(nuevo)) || `equipo #${nuevo}`}`
+  ));
+
+  texto = texto.replace(/equipo de (\d+) a (\d+)/gi, (match, anterior, nuevo) => (
+    `equipo de ${equiposPorId.get(String(anterior)) || `equipo #${anterior}`} a ${equiposPorId.get(String(nuevo)) || `equipo #${nuevo}`}`
+  ));
+
+  texto = texto.replace(/equipos:\s*(\d+)/gi, (match, idEquipo) => (
+    `equipos: ${equiposPorId.get(String(idEquipo)) || `equipo #${idEquipo}`}`
+  ));
+
+  return texto;
+}
+
+function obtenerEquipoPorIconoEnDetalle(detalle, equipos) {
+  const texto = String(detalle || '');
+  const matchIconoNuevo = texto.match(/icono de\s+\S+\s+a\s+(\S+)/i);
+  const iconoNuevo = matchIconoNuevo?.[1];
+  if (!iconoNuevo) return '';
+
+  const equipo = equipos.find(item => String(item.icono || '') === iconoNuevo);
+  return equipo?.nombre || '';
+}
+
+function normalizarEstadoPartido(estado) {
+  return String(estado || 'programado')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function ordenarMovimientosFinanzasPorFixture(a, b) {
+  const fechaA = Number(a.numero_fecha || 999999);
+  const fechaB = Number(b.numero_fecha || 999999);
+  if (fechaA !== fechaB) return fechaA - fechaB;
+
+  const calendarioA = String(a.fecha_calendario || a.fecha_registro || '');
+  const calendarioB = String(b.fecha_calendario || b.fecha_registro || '');
+  if (calendarioA !== calendarioB) return calendarioA.localeCompare(calendarioB);
+
+  return Number(a.id_finanza || 0) - Number(b.id_finanza || 0);
+}
+
+function recalcularMovimientosFinanzas(movimientos = []) {
+  let saldoAnterior = 0;
+
+  return [...movimientos]
+    .sort(ordenarMovimientosFinanzasPorFixture)
+    .map(movimiento => {
+      const totalItems = Number(movimiento.total_items || 0);
+      const entrega = Number(movimiento.entrega || 0);
+      const saldo = saldoAnterior + totalItems - entrega;
+      const movimientoRecalculado = {
+        ...movimiento,
+        deuda_inicial: saldoAnterior,
+        saldo
+      };
+
+      saldoAnterior = saldo;
+      return movimientoRecalculado;
+    });
+}
+
+function obtenerRivalFinanzas(partido, equipoId) {
+  if (!partido) return '';
+  const equipo = String(equipoId || '');
+  if (equipo && String(partido.equipo_a || '') === equipo) return partido.nombre_equipo_b || '';
+  if (equipo && String(partido.equipo_b || '') === equipo) return partido.nombre_equipo_a || '';
+  return '';
+}
+
+function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }) {
+  const partidosEnCurso = (partidosRaw || [])
+    .filter(partido => normalizarEstadoPartido(partido.estado) === 'en_curso')
+    .sort((a, b) => {
+      const fechaA = `${a.fecha_input || '9999-12-31'} ${a.hora || '23:59'}`;
+      const fechaB = `${b.fecha_input || '9999-12-31'} ${b.hora || '23:59'}`;
+      return fechaA.localeCompare(fechaB);
+    })
+    .slice(0, 5);
+
+  const partidosFinalizados = (partidosRaw || [])
+    .filter(partido => normalizarEstadoPartido(partido.estado) === 'finalizado')
+    .sort((a, b) => {
+      const fechaA = `${a.fecha_input || ''} ${a.hora || ''}`;
+      const fechaB = `${b.fecha_input || ''} ${b.hora || ''}`;
+      return fechaB.localeCompare(fechaA);
+    })
+    .slice(0, 5);
+
+  const proximosPartidos = (partidosRaw || [])
+    .filter(partido => {
+      const estado = normalizarEstadoPartido(partido.estado);
+      return estado !== 'finalizado' && estado !== 'en_curso';
+    })
+    .sort((a, b) => {
+      const fechaA = `${a.fecha_input || '9999-12-31'} ${a.hora || '23:59'}`;
+      const fechaB = `${b.fecha_input || '9999-12-31'} ${b.hora || '23:59'}`;
+      return fechaA.localeCompare(fechaB);
+    })
+    .slice(0, 5);
+
+  return {
+    tablaTop: (estadisticasGeneral || []).slice(0, 5),
+    goleadoresTop: (rankingGoles || []).slice(0, 5),
+    partidosEnCurso,
+    ultimosResultados: partidosFinalizados,
+    proximosPartidos
+  };
 }
 
 async function obtenerReglaTarjetasTorneo(torneoId) {
@@ -362,16 +614,27 @@ exports.gestionar = async (req, res) => {
       return res.redirect('/torneos');
     }
 
-    if (!entityId && req.session.rol_id === 99) {
+    if (req.session.rol_id === 99) {
       req.session.entity_id = torneo.entity_id;
       entityId = torneo.entity_id;
+    }
+
+    if (debeRegistrarAccesoSesion(req, `torneo:${torneo.id_torneo}`)) {
+      await registrarAccesoAuditoria(req.session.usuario_id, torneo.entity_id, 'Torneo', {
+        id_entidad: torneo.entity_id,
+        id_torneo: torneo.id_torneo,
+        torneo: `${torneo.nombre_torneo} ${torneo.temporada || ''}`.trim(),
+        detalle: `Ingreso a torneo ${torneo.nombre_torneo}`
+      });
     }
 
     const grupoSeleccionadoId = req.query.grupo_id ? parseInt(req.query.grupo_id, 10) : null;
     const fechaCalendarioSeleccionada = req.query.fecha_calendario ? normalizarFechaInput(req.query.fecha_calendario) : '';
     const torneoData = torneo.get({ plain: true });
+    torneoData.permitir_agregar_jugadores = await obtenerPermitirAgregarJugadores(torneoId);
     const entidadActual = await Entity.findByPk(entityId);
     const gruposMapa = new Map((torneoData.Grupos || []).map(grupo => [String(grupo.id_grupo), grupo.nombre_grupo]));
+    const gruposOcultosFixture = await obtenerGruposOcultosFixture(torneoId);
     const movimientosGrupo = await EquipoMovimientoGrupo.findAll({
       where: { id_torneo: torneoId },
       include: [
@@ -568,6 +831,8 @@ exports.gestionar = async (req, res) => {
                p.goles_b,
                p.observaciones,
                p.id_grupo,
+               p.id_cancha,
+               c.nombre AS nombre_cancha,
                ea.nombre AS nombre_equipo_a,
                ea.icono AS icono_equipo_a,
                ea.estado AS estado_equipo_a,
@@ -609,6 +874,7 @@ exports.gestionar = async (req, res) => {
         LEFT JOIN equipos ea ON ea.id_equipo = p.equipo_a
         LEFT JOIN equipos eb ON eb.id_equipo = p.equipo_b
         LEFT JOIN grupos g ON g.id_grupo = p.id_grupo
+        LEFT JOIN canchas c ON c.id_cancha = p.id_cancha
         WHERE p.id_torneo = :torneoId
         ORDER BY p.numero_fecha ASC, p.fecha ASC, p.hora ASC
       `, {
@@ -660,11 +926,12 @@ exports.gestionar = async (req, res) => {
         });
       });
 
+      const partidosFixtureBase = partidosRaw.filter(partido => !gruposOcultosFixture.has(String(partido.id_grupo)));
       const partidosVisibles = fechaCalendarioSeleccionada
-        ? partidosRaw.filter(partido => partido.fecha_input === fechaCalendarioSeleccionada)
+        ? partidosFixtureBase.filter(partido => partido.fecha_input === fechaCalendarioSeleccionada)
         : (grupoSeleccionadoId
-          ? partidosRaw.filter(partido => String(partido.id_grupo) === String(grupoSeleccionadoId))
-          : partidosRaw);
+          ? partidosFixtureBase.filter(partido => String(partido.id_grupo) === String(grupoSeleccionadoId))
+          : partidosFixtureBase);
 
       const partidosPorFechaMap = {};
       partidosVisibles.forEach(partido => {
@@ -799,6 +1066,7 @@ exports.gestionar = async (req, res) => {
 
       return {
         ...grupo,
+        visible_fixture: !gruposOcultosFixture.has(String(grupo.id_grupo)),
         movimientos_salida: movimientosPorGrupoOrigen[String(grupo.id_grupo)] || [],
         encuentros_sorteados: totalPartidos > 0,
         total_partidos: totalPartidos
@@ -806,6 +1074,7 @@ exports.gestionar = async (req, res) => {
     }));
 
     torneoData.Grupos = gruposConSorteo;
+    const gruposFixture = gruposConSorteo.filter(grupo => grupo.visible_fixture !== false);
     torneoData.Equipos = equiposConGrupo;
 
     const estadisticasGeneral = calcularTablaPosiciones(partidosRaw, equiposConGrupo, gruposMapa, null);
@@ -834,6 +1103,13 @@ exports.gestionar = async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
     const reglaTarjetas = await obtenerReglaTarjetasTorneo(torneoData.id_torneo);
+    const canchas = await Cancha.findAll({
+      where: {
+        id_torneo: torneoData.id_torneo,
+        entity_id: torneoData.entity_id
+      },
+      order: [['estado', 'DESC'], ['nombre', 'ASC']]
+    });
     const movimientosFinanzas = await sequelize.query(`
       SELECT id_finanza,
              id_equipo,
@@ -900,6 +1176,10 @@ exports.gestionar = async (req, res) => {
       acc[String(partido.id_partido)] = {
         numero_fecha: partido.numero_fecha || null,
         fecha: partido.fecha_input || partido.fecha || null,
+        equipo_a: partido.equipo_a || null,
+        equipo_b: partido.equipo_b || null,
+        nombre_equipo_a: partido.nombre_equipo_a || '',
+        nombre_equipo_b: partido.nombre_equipo_b || '',
         nombre_grupo: partido.nombre_grupo || 'Sin grupo',
         nombre_grupo_display: partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo'
       };
@@ -923,12 +1203,15 @@ exports.gestionar = async (req, res) => {
         : (matchLibre ? `libre:${movimiento.id_equipo}:${matchLibre[1]}` : null);
       const itemsMovimiento = claveItems ? (itemsPorClaveFinanza[claveItems] || []) : [];
       const partidoMovimiento = matchPartido ? partidoFinanzasPorId[String(matchPartido[1])] : null;
+      const rivalMovimiento = obtenerRivalFinanzas(partidoMovimiento, movimiento.id_equipo);
       const numeroFechaMovimiento = partidoMovimiento?.numero_fecha || matchLibre?.[1] || null;
       const fechaCalendarioMovimiento = partidoMovimiento?.fecha || fechaCalendarioPorNumero[String(numeroFechaMovimiento || '')] || null;
+      const conceptoBase = movimiento.concepto || 'Movimiento';
 
       acc[key].push({
         id_finanza: movimiento.id_finanza,
-        concepto: movimiento.concepto || 'Movimiento',
+        concepto: conceptoBase,
+        concepto_display: rivalMovimiento ? `${conceptoBase} vs ${rivalMovimiento}` : conceptoBase,
         tipo: movimiento.tipo || '',
         fecha_registro: movimiento.fecha_registro,
         numero_fecha: numeroFechaMovimiento,
@@ -948,7 +1231,7 @@ exports.gestionar = async (req, res) => {
       ? equiposConGrupo.filter(equipo => equipo.es_equipo_delegado)
       : equiposConGrupo;
     const finanzasResumen = equiposFinanzasVisibles.map(equipo => {
-      const movimientos = movimientosPorEquipo[String(equipo.id_equipo)] || [];
+      const movimientos = recalcularMovimientosFinanzas(movimientosPorEquipo[String(equipo.id_equipo)] || []);
       const ultimoMovimiento = movimientos[movimientos.length - 1] || null;
       const saldoActual = Number(ultimoMovimiento?.saldo || 0);
       return {
@@ -964,6 +1247,81 @@ exports.gestionar = async (req, res) => {
       };
     });
 
+    const puedeVerAuditoria = [3, 99].includes(Number(req.session.rol_id));
+    const contextoAuditoria = {
+      entity_id: entityId,
+      id_torneo: parseInt(torneoId, 10),
+      entidad: entidadActual ? (entidadActual.codigo || `Entidad #${entityId}`) : `Entidad #${entityId}`,
+      torneo: `${torneoData.nombre_torneo} ${torneoData.temporada || ''}`.trim()
+    };
+    let auditoria = [];
+
+    if (puedeVerAuditoria) {
+      auditoria = await sequelize.query(`
+        SELECT a.id_auditoria,
+               a.id_usuario,
+               a.accion,
+               a.tabla_afectada,
+               a.detalle,
+               a.fecha_hora,
+               a.entity_id,
+               u.nombre AS usuario_nombre,
+               u.documento AS usuario_documento,
+               e.codigo AS entidad_codigo,
+               e.descripcion AS entidad_descripcion
+        FROM auditoria a
+        LEFT JOIN usuarios u ON u.id_usuario = a.id_usuario
+        LEFT JOIN entity e ON e.entity_id = a.entity_id
+        WHERE a.entity_id = :auditEntityId
+          AND (
+            a.detalle->>'id_torneo' IS NULL
+            OR a.detalle->>'id_torneo' = :auditTorneoId
+          )
+        ORDER BY a.fecha_hora DESC, a.id_auditoria DESC
+        LIMIT :auditLimit
+      `, {
+        replacements: {
+          auditEntityId: entityId,
+          auditTorneoId: String(torneoData.id_torneo),
+          auditLimit: 250
+        },
+        type: sequelize.QueryTypes.SELECT
+      });
+
+      const equiposPorIdAuditoria = new Map(equiposConGrupo.map(equipo => [
+        String(equipo.id_equipo),
+        equipo.nombre
+      ]));
+
+      auditoria = auditoria.map(registro => {
+        const detalleObjeto = leerDetalleAuditoria(registro.detalle);
+        let detalleLegible = detalleObjeto.detalle
+          ? String(detalleObjeto.detalle)
+          : normalizarDetalleAuditoria(registro.detalle);
+        detalleLegible = reemplazarIdsEquiposEnDetalle(detalleLegible, equiposPorIdAuditoria);
+        let afectado = obtenerAfectadoAuditoria(registro, detalleObjeto, detalleLegible);
+        if (afectado === '-' && String(registro.tabla_afectada || '') === 'equipos') {
+          afectado = obtenerEquipoPorIconoEnDetalle(detalleLegible, equiposConGrupo) || afectado;
+        }
+
+        return {
+          ...registro,
+          pantalla: obtenerPantallaAuditoria(registro, detalleObjeto),
+          afectado,
+          detalle_legible: detalleLegible,
+          usuario_display: registro.usuario_nombre || 'Sistema',
+          usuario_documento_display: registro.usuario_documento || '',
+          contexto_torneo: contextoAuditoria.torneo
+        };
+      });
+    }
+
+    const dashboardInicio = armarDashboardInicio({
+      estadisticasGeneral,
+      rankingGoles,
+      partidosRaw
+    });
+
     //const messages = req.flash();
 
     return res.render('torneos/index', {
@@ -971,6 +1329,7 @@ exports.gestionar = async (req, res) => {
       partidosPorFecha,
       torneo: torneoData,
       grupos: torneoData.Grupos,
+      gruposFixture,
       equipos: torneoData.Equipos,
       entityId,
       entidadActual: entidadActual ? entidadActual.get({ plain: true }) : null,
@@ -990,6 +1349,10 @@ exports.gestionar = async (req, res) => {
       rankingGoles,
       reglaTarjetas,
       finanzasResumen,
+      dashboardInicio,
+      canchas: canchas.map(cancha => cancha.get({ plain: true })),
+      auditoria,
+      contextoAuditoria,
       //messages esto sobra comanter siempres
     });
 
@@ -1000,13 +1363,222 @@ exports.gestionar = async (req, res) => {
   }
 };
 
-exports.actualizarPortada = async (req, res) => {
+exports.auditoriaResumen = async (req, res) => {
   try {
+    if (![3, 99].includes(Number(req.session.rol_id))) {
+      return res.status(403).json({ success: false, message: 'No tiene permisos para ver auditoria' });
+    }
+
     const torneo = await Torneo.findByPk(req.params.id_torneo);
     if (!torneo) {
-      req.flash("danger", "Torneo no encontrado");
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      return res.status(403).json({ success: false, message: 'No puede ver auditoria de otra entidad' });
+    }
+
+    const equipos = await Equipo.findAll({
+      where: { id_torneo: torneo.id_torneo },
+      attributes: ['id_equipo', 'nombre', 'icono']
+    });
+    const equiposPlain = equipos.map(equipo => equipo.get({ plain: true }));
+    const equiposPorIdAuditoria = new Map(equiposPlain.map(equipo => [String(equipo.id_equipo), equipo.nombre]));
+
+    const registros = await sequelize.query(`
+      SELECT a.id_auditoria,
+             a.id_usuario,
+             a.accion,
+             a.tabla_afectada,
+             a.detalle,
+             a.fecha_hora,
+             a.entity_id,
+             u.nombre AS usuario_nombre,
+             u.documento AS usuario_documento
+      FROM auditoria a
+      LEFT JOIN usuarios u ON u.id_usuario = a.id_usuario
+      WHERE a.entity_id = :entityId
+        AND (
+          a.detalle->>'id_torneo' IS NULL
+          OR a.detalle->>'id_torneo' = :torneoId
+        )
+      ORDER BY a.fecha_hora DESC, a.id_auditoria DESC
+      LIMIT 250
+    `, {
+      replacements: {
+        entityId: torneo.entity_id,
+        torneoId: String(torneo.id_torneo)
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const auditoria = registros.map(registro => {
+      const detalleObjeto = leerDetalleAuditoria(registro.detalle);
+      let detalleLegible = detalleObjeto.detalle
+        ? String(detalleObjeto.detalle)
+        : normalizarDetalleAuditoria(registro.detalle);
+      detalleLegible = reemplazarIdsEquiposEnDetalle(detalleLegible, equiposPorIdAuditoria);
+      let afectado = obtenerAfectadoAuditoria(registro, detalleObjeto, detalleLegible);
+      if (afectado === '-' && String(registro.tabla_afectada || '') === 'equipos') {
+        afectado = obtenerEquipoPorIconoEnDetalle(detalleLegible, equiposPlain) || afectado;
+      }
+
+      return {
+        id_auditoria: registro.id_auditoria,
+        fecha_hora: registro.fecha_hora,
+        pantalla: obtenerPantallaAuditoria(registro, detalleObjeto),
+        afectado,
+        accion: registro.accion || '',
+        usuario_display: registro.usuario_nombre || 'Sistema',
+        usuario_documento_display: registro.usuario_documento || '',
+        detalle_legible: detalleLegible
+      };
+    });
+
+    return res.json({ success: true, auditoria });
+  } catch (error) {
+    console.error('Error al obtener auditoria:', error);
+    return res.status(500).json({ success: false, message: 'Error al obtener auditoria' });
+  }
+};
+
+exports.crearCancha = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+
+  try {
+    if (![3, 99].includes(Number(req.session.rol_id))) {
+      req.flash("danger", "No tiene permisos para administrar canchas");
+      return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+    }
+
+    const permiso = await validarTorneoAdmin(req, torneoId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
       return res.redirect('/torneos');
     }
+    const torneo = permiso.torneo;
+
+    const nombre = String(req.body.nombre || '').trim();
+    const direccion = String(req.body.direccion || '').trim();
+
+    if (!nombre) {
+      req.flash("warning", "Ingrese el nombre de la cancha");
+      return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#items`);
+    }
+
+    await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
+    await Cancha.create({
+      id_torneo: torneo.id_torneo,
+      entity_id: torneo.entity_id,
+      nombre,
+      direccion: direccion || null,
+      estado: true
+    });
+
+    req.flash("success", "Cancha agregada correctamente");
+    return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#items`);
+  } catch (error) {
+    console.error("Error al crear cancha:", error);
+    req.flash("danger", "No se pudo agregar la cancha");
+    return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+  }
+};
+
+exports.toggleCancha = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+
+  try {
+    if (![3, 99].includes(Number(req.session.rol_id))) {
+      req.flash("danger", "No tiene permisos para administrar canchas");
+      return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+    }
+
+    const cancha = await Cancha.findOne({
+      where: {
+        id_cancha: req.params.id_cancha,
+        id_torneo: torneoId
+      }
+    });
+
+    if (!cancha) {
+      req.flash("danger", "Cancha no encontrada");
+      return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(cancha.entity_id)) {
+      req.flash("danger", "No puede administrar canchas de otra entidad");
+      return res.redirect('/torneos');
+    }
+
+    await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
+    cancha.estado = !cancha.estado;
+    await cancha.save();
+
+    req.flash("success", "Estado de cancha actualizado");
+    return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+  } catch (error) {
+    console.error("Error al cambiar estado de cancha:", error);
+    req.flash("danger", "No se pudo actualizar la cancha");
+    return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+  }
+};
+
+exports.actualizarCancha = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+
+  try {
+    if (![3, 99].includes(Number(req.session.rol_id))) {
+      req.flash("danger", "No tiene permisos para administrar canchas");
+      return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+    }
+
+    const cancha = await Cancha.findOne({
+      where: {
+        id_cancha: req.params.id_cancha,
+        id_torneo: torneoId
+      }
+    });
+
+    if (!cancha) {
+      req.flash("danger", "Cancha no encontrada");
+      return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(cancha.entity_id)) {
+      req.flash("danger", "No puede administrar canchas de otra entidad");
+      return res.redirect('/torneos');
+    }
+
+    const nombre = String(req.body.nombre || '').trim();
+    const direccion = String(req.body.direccion || '').trim();
+
+    if (!nombre) {
+      req.flash("warning", "Ingrese el nombre de la cancha");
+      return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+    }
+
+    await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
+    cancha.nombre = nombre;
+    cancha.direccion = direccion || null;
+    await cancha.save();
+
+    req.flash("success", "Cancha actualizada correctamente");
+    return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+  } catch (error) {
+    console.error("Error al actualizar cancha:", error);
+    req.flash("danger", "No se pudo actualizar la cancha");
+    return res.redirect(`/torneos/gestionar/${torneoId}#items`);
+  }
+};
+
+exports.actualizarPortada = async (req, res) => {
+  try {
+    const permiso = await validarTorneoAdmin(req, req.params.id_torneo);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      return res.redirect('/torneos');
+    }
+    const torneo = permiso.torneo;
 
     if (!req.file) {
       req.flash("warning", "Seleccione una imagen para la portada");
@@ -1037,11 +1609,12 @@ exports.actualizarPortada = async (req, res) => {
 
 exports.eliminarPortada = async (req, res) => {
   try {
-    const torneo = await Torneo.findByPk(req.params.id_torneo);
-    if (!torneo) {
-      req.flash("danger", "Torneo no encontrado");
+    const permiso = await validarTorneoAdmin(req, req.params.id_torneo);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
       return res.redirect('/torneos');
     }
+    const torneo = permiso.torneo;
 
     if (req.session.usuario_id) {
       await sequelize.query('SET app.usuario_id = :usuarioId', {
@@ -1065,11 +1638,66 @@ exports.eliminarPortada = async (req, res) => {
   }
 };
 
+exports.actualizarPermitirAgregarJugadores = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+  try {
+    const permiso = await validarTorneoAdmin(req, torneoId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      return res.redirect('/torneos');
+    }
+
+    const permitir = req.body.permitir_agregar_jugadores === '1';
+
+    if (req.session.usuario_id) {
+      await sequelize.query('SET app.usuario_id = :usuarioId', {
+        replacements: { usuarioId: req.session.usuario_id }
+      });
+    }
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: permiso.torneo.entity_id }
+    });
+
+    await sequelize.query(`
+      UPDATE torneos
+      SET permitir_agregar_jugadores = :permitir
+      WHERE id_torneo = :torneoId
+    `, {
+      replacements: { permitir, torneoId }
+    });
+
+    req.flash(
+      "success",
+      permitir
+        ? "Los delegados pueden agregar jugadores a sus equipos"
+        : "Los delegados ya no pueden agregar jugadores a sus equipos"
+    );
+    return res.redirect(`/torneos/gestionar/${torneoId}#equipos`);
+  } catch (error) {
+    console.error("Error al actualizar permiso de agregar jugadores:", error);
+    req.flash("danger", "No se pudo actualizar el permiso para agregar jugadores");
+    return res.redirect(`/torneos/gestionar/${torneoId}#equipos`);
+  }
+};
+
 exports.resumenFinanzas = async (req, res) => {
   try {
     const torneoId = parseInt(req.params.id_torneo, 10);
     if (!torneoId) {
       return res.status(400).json({ success: false, message: 'Torneo invalido' });
+    }
+
+    if (![2, 3, 99].includes(Number(req.session.rol_id))) {
+      return res.status(403).json({ success: false, message: 'No tiene permisos para ver finanzas' });
+    }
+
+    const torneo = await Torneo.findByPk(torneoId, { attributes: ['id_torneo', 'entity_id'] });
+    if (!torneo) {
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      return res.status(403).json({ success: false, message: 'No puede ver finanzas de otra entidad' });
     }
 
     const equipos = await sequelize.query(`
@@ -1093,8 +1721,12 @@ exports.resumenFinanzas = async (req, res) => {
              p.id_grupo,
              p.equipo_a,
              p.equipo_b,
+             ea.nombre AS nombre_equipo_a,
+             eb.nombre AS nombre_equipo_b,
              COALESCE(g.nombre_grupo, 'Sin grupo') AS nombre_grupo
       FROM partidos p
+      LEFT JOIN equipos ea ON ea.id_equipo = p.equipo_a
+      LEFT JOIN equipos eb ON eb.id_equipo = p.equipo_b
       LEFT JOIN grupos g ON g.id_grupo = p.id_grupo
       WHERE p.id_torneo = :torneoId
       ORDER BY p.numero_fecha ASC, p.id_partido ASC
@@ -1121,6 +1753,10 @@ exports.resumenFinanzas = async (req, res) => {
       acc[String(partido.id_partido)] = {
         numero_fecha: partido.numero_fecha || null,
         fecha: normalizarFechaInput(partido.fecha) || null,
+        equipo_a: partido.equipo_a || null,
+        equipo_b: partido.equipo_b || null,
+        nombre_equipo_a: partido.nombre_equipo_a || '',
+        nombre_equipo_b: partido.nombre_equipo_b || '',
         nombre_grupo: partido.nombre_grupo || 'Sin grupo',
         nombre_grupo_display: fase ? `${partido.nombre_grupo || 'Sin grupo'} - ${fase}` : (partido.nombre_grupo || 'Sin grupo')
       };
@@ -1197,10 +1833,13 @@ exports.resumenFinanzas = async (req, res) => {
       const matchLibre = String(movimiento.concepto || '').match(/^Fecha libre #(\d+)/);
       const claveItems = matchPartido ? `partido:${matchPartido[1]}:equipo:${movimiento.id_equipo}` : (matchLibre ? `libre:${movimiento.id_equipo}:${matchLibre[1]}` : null);
       const partido = matchPartido ? partidosPorId[String(matchPartido[1])] : null;
+      const rival = obtenerRivalFinanzas(partido, movimiento.id_equipo);
       const numeroFecha = partido?.numero_fecha || matchLibre?.[1] || null;
+      const conceptoBase = movimiento.concepto || 'Movimiento';
       acc[key].push({
         id_finanza: movimiento.id_finanza,
-        concepto: movimiento.concepto || 'Movimiento',
+        concepto: conceptoBase,
+        concepto_display: rival ? `${conceptoBase} vs ${rival}` : conceptoBase,
         tipo: movimiento.tipo || '',
         fecha_registro: movimiento.fecha_registro,
         numero_fecha: numeroFecha,
@@ -1235,7 +1874,7 @@ exports.resumenFinanzas = async (req, res) => {
     }
 
     const resumen = equiposVisibles.map(equipo => {
-      const movimientos = movimientosPorEquipo[String(equipo.id_equipo)] || [];
+      const movimientos = recalcularMovimientosFinanzas(movimientosPorEquipo[String(equipo.id_equipo)] || []);
       const saldoActual = Number(movimientos[movimientos.length - 1]?.saldo || 0);
       return {
         id_equipo: equipo.id_equipo,
@@ -1259,11 +1898,12 @@ exports.resumenFinanzas = async (req, res) => {
 
 exports.actualizarReglaTarjetas = async (req, res) => {
   try {
-    const torneo = await Torneo.findByPk(req.params.id_torneo);
-    if (!torneo) {
-      req.flash("danger", "Torneo no encontrado");
+    const permiso = await validarTorneoAdmin(req, req.params.id_torneo);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
       return res.redirect('/torneos');
     }
+    const torneo = permiso.torneo;
 
     const valorCheckbox = (valor) => Array.isArray(valor)
       ? valor.includes('1')
@@ -1281,6 +1921,15 @@ exports.actualizarReglaTarjetas = async (req, res) => {
       req.flash("danger", "La regla de tarjetas debe tener numeros mayores a cero");
       return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#items`);
     }
+
+    if (req.session.usuario_id) {
+      await sequelize.query('SET app.usuario_id = :usuarioId', {
+        replacements: { usuarioId: req.session.usuario_id }
+      });
+    }
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: torneo.entity_id }
+    });
 
     await sequelize.query(`
       INSERT INTO torneos_reglas_tarjetas (
@@ -1442,7 +2091,7 @@ exports.cambiarPermisosUsuario = async (req, res) => {
     }
 
     const nuevoRol = Number.parseInt(req.body.rol_id, 10);
-    const rolesPermitidos = permiso.rolSesion === 99 ? [1, 2, 3, 99] : [1, 3];
+    const rolesPermitidos = permiso.rolSesion === 99 ? [1, 3, 99] : [1, 3];
     if (!rolesPermitidos.includes(nuevoRol)) {
       req.flash("danger", "No tiene permisos para asignar ese rol");
       return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
@@ -1460,6 +2109,10 @@ exports.cambiarPermisosUsuario = async (req, res) => {
     usuario.rol_id = nuevoRol;
     usuario.entity_id = nuevoRol === 99 ? null : permiso.torneo.entity_id;
     await usuario.save();
+
+    if (nuevoRol !== 2) {
+      await desvincularDelegadoUsuarioEnEntidad(usuario.id_usuario, permiso.torneo.entity_id);
+    }
 
     const nombresRol = {
       1: 'espectador',
@@ -1529,6 +2182,96 @@ exports.resetearContrasenaUsuario = async (req, res) => {
   } catch (error) {
     console.error("Error al resetear contraseña:", error);
     req.flash("danger", "No se pudo resetear la contraseña");
+    return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+  }
+};
+
+exports.editarDatosUsuarioSuperAdmin = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+  try {
+    const permiso = await validarGestionUsuarios(req, torneoId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    if (permiso.rolSesion !== 99) {
+      req.flash("danger", "Solo el super admin puede editar datos de usuarios");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    const usuario = await Usuario.findByPk(req.params.id_usuario);
+    if (!usuario) {
+      req.flash("danger", "Usuario no encontrado");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    if (Number(usuario.rol_id) !== 99 && Number(usuario.entity_id) !== Number(permiso.torneo.entity_id)) {
+      req.flash("danger", "No puede editar usuarios de otra entidad desde este torneo");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    const nombre = String(req.body.nombre || '').trim().toUpperCase();
+    const documento = String(req.body.documento || '').trim();
+    const correo = String(req.body.correo || '').trim().toLowerCase();
+
+    if (!nombre || !documento) {
+      req.flash("warning", "Nombre y documento son obligatorios");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo)) {
+      req.flash("warning", "Ingrese un correo valido, por ejemplo usuario@dominio.com");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    const correoExistente = correo
+      ? await Usuario.findOne({
+          where: {
+            correo,
+            entity_id: usuario.entity_id ?? null,
+            id_usuario: { [Op.ne]: usuario.id_usuario }
+          }
+        })
+      : null;
+
+    if (correoExistente) {
+      req.flash("danger", "Ya existe otro usuario con ese correo");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    const documentoExistente = await Usuario.findOne({
+      where: {
+        documento,
+        entity_id: usuario.entity_id ?? null,
+        id_usuario: { [Op.ne]: usuario.id_usuario }
+      }
+    });
+
+    if (documentoExistente) {
+      req.flash("danger", "Ya existe otro usuario con ese documento en la misma entidad");
+      return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+    }
+
+    if (req.session.usuario_id) {
+      await sequelize.query('SET app.usuario_id = :usuarioId', {
+        replacements: { usuarioId: req.session.usuario_id }
+      });
+    }
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: permiso.torneo.entity_id }
+    });
+
+    usuario.nombre = nombre;
+    usuario.documento = documento;
+    usuario.correo = correo || null;
+    await usuario.save();
+
+    req.flash("success", "Datos del usuario actualizados");
+    return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
+  } catch (error) {
+    console.error("Error al editar datos de usuario:", error);
+    req.flash("danger", "No se pudieron actualizar los datos del usuario");
     return res.redirect(`/torneos/gestionar/${torneoId}#usuarios`);
   }
 };

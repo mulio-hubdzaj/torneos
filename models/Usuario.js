@@ -15,7 +15,6 @@ module.exports = (sequelize) => {
     },
     correo: {
       type: DataTypes.STRING(150),
-      unique: true,
       allowNull: true
     },
     contrasena_hash: {

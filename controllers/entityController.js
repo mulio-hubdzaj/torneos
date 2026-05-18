@@ -20,7 +20,11 @@ exports.gestionar = async (req, res) => {
     const usuario = await Usuario.findByPk(req.session.usuario_id);
 
     const torneos = await Torneo.findAll({
-      where: { entity_id: entityId }
+      where: { entity_id: entityId },
+      order: [
+        ['estado', 'DESC'],
+        ['nombre_torneo', 'ASC']
+      ]
     });
 
     // 🔧 Actualizar la sesión con la entidad actual
@@ -111,7 +115,7 @@ exports.editar = async (req, res) => {
 };
 exports.desactivar = async (req, res) => {
   try {
-    const entityId = parseInt(req.params.id, 10); // 👈 usar 'id'
+    const entityId = parseInt(req.params.entity_id, 10);
     const entity = await Entity.findByPk(entityId);
 
     if (!entity) {
@@ -133,7 +137,7 @@ exports.desactivar = async (req, res) => {
 
 exports.activar = async (req, res) => {
   try {
-    const entityId = parseInt(req.params.id, 10); // 👈 usar 'id'
+    const entityId = parseInt(req.params.entity_id, 10);
     const entity = await Entity.findByPk(entityId);
 
     if (!entity) {

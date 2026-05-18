@@ -14,8 +14,8 @@
       const hash = window.location.hash;
       const rolId = Number(<%= Number(rol_id || 0) %>);
       const hashesBloqueados = rolId === 1
-        ? ['#grupos', '#equipos', '#items', '#usuarios', '#finanzas']
-        : (rolId === 2 ? ['#grupos', '#items', '#usuarios'] : []);
+        ? ['#grupos', '#equipos', '#items', '#usuarios', '#auditoria', '#finanzas']
+        : (rolId === 2 ? ['#grupos', '#items', '#usuarios', '#auditoria'] : []);
 
       if (hashesBloqueados.includes(hash)) {
         window.location.hash = '#torneos';
@@ -42,7 +42,11 @@
   </script>
 </head>
 
-<body class="bg-stadium">
+<body class="bg-stadium torneos-page">
+  <div id="pullRefreshIndicator" class="pull-refresh-indicator" aria-live="polite">
+    <i class="bi bi-arrow-clockwise"></i>
+    <span>Desliza para actualizar</span>
+  </div>
 
   <!-- Barra superior fija -->
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
@@ -58,14 +62,14 @@
 
 
         <li class="nav-item">
-          <a class="nav-link <%= (rol_id == 1 || rol_id == 2) ? 'active' : '' %>" 
+          <a class="nav-link active" 
              id="torneos-tab" data-bs-toggle="tab" href="#torneos" role="tab">TORNEOS</a>
         </li>
 
 
         <% if (rol_id == 3 || rol_id == 99) { %>
           <li class="nav-item">
-            <a class="nav-link active" 
+            <a class="nav-link" 
                id="grupos-tab" data-bs-toggle="tab" href="#grupos" role="tab">Grupos</a>
           </li>
         <% } %>
@@ -79,7 +83,7 @@
           </li>
         <% } %>
         <li class="nav-item">
-          <a class="nav-link" id="partidos-tab" data-bs-toggle="tab" href="#partidos" role="tab">Partidos</a>
+          <a class="nav-link" id="partidos-tab" data-bs-toggle="tab" href="#partidos" role="tab">Fixture</a>
         </li>
         <% if (rol_id != 1) { %>
           <li class="nav-item">
@@ -98,11 +102,14 @@
           <li class="nav-item">
             <a class="nav-link" id="usuarios-tab" data-bs-toggle="tab" href="#usuarios" role="tab">Usuarios</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link" id="auditoria-tab" data-bs-toggle="tab" href="#auditoria" role="tab">Auditoría</a>
+          </li>
         <% } %>
       </ul>
 
       <!-- Botones de navegación a la derecha -->
-      <div class="d-flex ms-auto">
+      <div class="d-flex ms-auto app-nav-actions">
         <% if (rol_id != 1) { %>
           <a href="/entidad/gestionar/<%= entityId %>" class="btn btn-success btn-sm me-2">Ir a Torneos</a>
         <% } %>
@@ -153,7 +160,7 @@
 
   <!-- TORNEOS -->
 
-    <div class="tab-pane fade <%= (rol_id == 1 || rol_id == 2) ? 'show active' : '' %>" 
+    <div class="tab-pane fade show active" 
      id="torneos" role="tabpanel">
 
       <h3 class="text-white">Selección de Torneos</h3>
@@ -182,6 +189,150 @@
         <% if (torneo.descripcion) { %>
           <p class="text-muted"><%= torneo.descripcion %></p>
         <% } %>
+        <div class="d-flex flex-wrap gap-2 mt-3 mb-2 dashboard-quick-actions">
+          <button type="button" class="btn btn-success btn-sm dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasTablaPosiciones">
+            <i class="bi bi-table"></i> Tabla
+          </button>
+          <button type="button" class="btn btn-outline-light btn-sm dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasRankingGoles">
+            <i class="bi bi-trophy"></i> Goleadores
+          </button>
+          <button type="button" class="btn btn-outline-light btn-sm dashboard-tab-link" data-target-tab="#partidos">
+            <i class="bi bi-calendar-event"></i> Fixture
+          </button>
+          <button type="button" class="btn btn-outline-light btn-sm dashboard-tab-link" data-target-tab="#jugadores">
+            <i class="bi bi-people"></i> Jugadores
+          </button>
+        </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-lg-6">
+            <div class="card shadow-sm h-100 border-0">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Tabla de posiciones</strong>
+                <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasTablaPosiciones">Ver</button>
+              </div>
+              <div class="table-responsive bg-white">
+                <table class="table table-sm align-middle mb-0">
+                  <tbody>
+                    <% ((dashboardInicio || {}).tablaTop || []).forEach((item, index) => { %>
+                      <tr>
+                        <td style="width:40px;"><strong><%= index + 1 %></strong></td>
+                        <td>
+                          <img src="<%= item.icono || '/images/default_team.png' %>" alt="" style="width:24px;height:24px;object-fit:contain;">
+                          <strong><%= item.nombre %></strong>
+                        </td>
+                        <td class="text-end"><strong><%= item.puntos %> pts</strong></td>
+                      </tr>
+                    <% }) %>
+                    <% if (!((dashboardInicio || {}).tablaTop || []).length) { %>
+                      <tr><td class="text-center text-muted py-3">Sin posiciones todavia.</td></tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card shadow-sm h-100 border-0">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Goleadores</strong>
+                <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasRankingGoles">Ver</button>
+              </div>
+              <div class="table-responsive bg-white">
+                <table class="table table-sm align-middle mb-0">
+                  <tbody>
+                    <% ((dashboardInicio || {}).goleadoresTop || []).forEach(jugador => { %>
+                      <tr>
+                        <td><strong><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') %></strong></td>
+                        <td><small><%= jugador.equipo || 'Libre' %></small></td>
+                        <td class="text-end"><strong><%= jugador.goles %></strong></td>
+                      </tr>
+                    <% }) %>
+                    <% if (!((dashboardInicio || {}).goleadoresTop || []).length) { %>
+                      <tr><td class="text-center text-muted py-3">Sin goles cargados todavia.</td></tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <% if (((dashboardInicio || {}).partidosEnCurso || []).length) { %>
+          <div class="col-lg-6">
+            <div class="card shadow-sm h-100 border-0 dashboard-en-curso-card">
+              <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <strong>En curso</strong>
+                <button type="button" class="btn btn-sm btn-outline-dark dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
+              </div>
+              <div class="list-group list-group-flush">
+                <% ((dashboardInicio || {}).partidosEnCurso || []).forEach(partido => { %>
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between gap-2 align-items-start">
+                      <div>
+                        <strong class="d-block"><%= partido.nombre_equipo_a || 'Equipo A' %> <span class="text-warning-emphasis"><%= partido.goles_a ?? 0 %> - <%= partido.goles_b ?? 0 %></span> <%= partido.nombre_equipo_b || 'Equipo B' %></strong>
+                        <small class="text-muted">Fecha <%= partido.numero_fecha || '-' %><% if (partido.fecha_formateada && partido.fecha_formateada !== '-') { %> | <%= partido.fecha_formateada %><% } %><% if (partido.hora && partido.hora !== '-') { %> | <%= partido.hora %><% } %></small>
+                      </div>
+                      <span class="badge estado-badge-en-curso">En curso</span>
+                    </div>
+                    <small>
+                      Fecha <%= partido.numero_fecha || '-' %> Â· <%= partido.fecha_formateada || '-' %> Â· <%= partido.hora || '-' %>
+                    </small>
+                  </div>
+                <% }) %>
+                <% if (!((dashboardInicio || {}).partidosEnCurso || []).length) { %>
+                  <div class="list-group-item text-center text-muted py-3">Sin encuentros en curso.</div>
+                <% } %>
+              </div>
+            </div>
+          </div>
+          <% } %>
+
+          <div class="col-lg-6">
+            <div class="card shadow-sm h-100 border-0">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Últimos resultados</strong>
+                <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
+              </div>
+              <div class="list-group list-group-flush">
+                <% ((dashboardInicio || {}).ultimosResultados || []).forEach(partido => { %>
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <span><%= partido.nombre_equipo_a %> <strong><%= partido.goles_a %> - <%= partido.goles_b %></strong> <%= partido.nombre_equipo_b %></span>
+                    <small class="text-muted">Fecha <%= partido.numero_fecha || '-' %></small>
+                  </div>
+                <% }) %>
+                <% if (!((dashboardInicio || {}).ultimosResultados || []).length) { %>
+                  <div class="list-group-item text-center text-muted py-3">Sin resultados finalizados.</div>
+                <% } %>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-6">
+            <div class="card shadow-sm h-100 border-0">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <strong>Próximos encuentros</strong>
+                <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
+              </div>
+              <div class="list-group list-group-flush">
+                <% ((dashboardInicio || {}).proximosPartidos || []).forEach(partido => { %>
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                      <strong><%= partido.nombre_equipo_a %> vs <%= partido.nombre_equipo_b %></strong>
+                      <small class="text-muted">Fecha <%= partido.numero_fecha || '-' %></small>
+                    </div>
+                    <small>
+                      <%= partido.fecha_formateada || '-' %> · <%= partido.hora || '-' %><%= partido.nombre_cancha ? ' · ' + partido.nombre_cancha : '' %>
+                    </small>
+                  </div>
+                <% }) %>
+                <% if (!((dashboardInicio || {}).proximosPartidos || []).length) { %>
+                  <div class="list-group-item text-center text-muted py-3">Sin encuentros pendientes.</div>
+                <% } %>
+              </div>
+            </div>
+          </div>
+        </div>
       <% } else { %>
         <p class="text-muted">Seleccione un torneo para ver detalles.</p>
       <% } %>
@@ -191,7 +342,7 @@
     
     <!-- Grupos -->
     <!-- Grupos -->
-<div class="tab-pane fade <%= (rol_id == 3 || rol_id == 99) ? 'show active' : '' %>" 
+<div class="tab-pane fade" 
      id="grupos" role="tabpanel">
   <h3 class="text-white">Grupos del Torneo</h3>
 
@@ -215,7 +366,11 @@
               <strong><%= grupo.nombre_grupo %></strong>
               <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
                 <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST"
-                      onsubmit="return confirm('¿Seguro que quiere eliminar? Este grupo contiene equipos');">
+                      class="form-confirmar-app"
+                      data-confirm-title="Eliminar grupo"
+                      data-confirm-message="Este grupo contiene equipos. ¿Seguro que quiere eliminarlo?"
+                      data-confirm-accept="Sí, eliminar"
+                      data-confirm-cancel="Cancelar">
                   <button type="submit" class="btn btn-sm btn-danger">✖</button>
                 </form>
               <% } else { %>
@@ -277,6 +432,29 @@
                   <button type="submit" class="btn btn-success">Agregar</button>
                 </div>
               </form>
+
+              <% if (rol_id == 3 || rol_id == 99) { %>
+                <% const grupoVisibleFixture = grupo.visible_fixture !== false; %>
+                <form action="/grupos/fixture-visibilidad/<%= grupo.id_grupo %>"
+                      method="POST"
+                      class="mt-2 form-confirmar-app"
+                      data-confirm-title="<%= grupoVisibleFixture ? 'Ocultar grupo del Fixture' : 'Mostrar grupo en Fixture' %>"
+                      data-confirm-message="<%= grupoVisibleFixture ? 'El historico de este grupo seguira en dashboard y estadisticas, pero dejara de verse en Fixture. ¿Desea continuar?' : 'Este grupo volvera a verse en Fixture. ¿Desea continuar?' %>"
+                      data-confirm-accept="<%= grupoVisibleFixture ? 'Dejar de ver' : 'Volver a ver' %>"
+                      data-confirm-cancel="Cancelar">
+                  <input type="hidden" name="visible_fixture" value="<%= grupoVisibleFixture ? '0' : '1' %>">
+                  <button type="submit"
+                          class="btn btn-sm <%= grupoVisibleFixture ? 'btn-outline-secondary' : 'btn-outline-success' %> w-100 text-start">
+                    <i class="bi <%= grupoVisibleFixture ? 'bi-eye-slash' : 'bi-eye' %>"></i>
+                    <%= grupoVisibleFixture ? 'Dejar de ver en Fixture' : 'Volver a ver en Fixture' %>
+                  </button>
+                  <small class="text-muted d-block mt-1">
+                    <%= grupoVisibleFixture
+                      ? 'Se vera el historico en dashboard, pero no en Fixture.'
+                      : 'Actualmente no aparece en Fixture; el historico sigue disponible.' %>
+                  </small>
+                </form>
+              <% } %>
 
               <!-- Botón para sortear encuentros -->
               <% if (grupo.encuentros_sorteados) { %>
@@ -503,11 +681,16 @@ function etiquetaFechaFinanzas(movimiento) {
   const numero = movimiento?.numero_fecha || '-';
   const fechaCalendario = formatoFechaFinanzas(movimiento?.fecha_calendario || movimiento?.fecha_registro);
   const grupo = movimiento?.nombre_grupo_display || movimiento?.nombre_grupo || '';
+  const grupoVisible = grupo && grupo !== 'Sin grupo';
+  const titulo = grupoVisible ? `${grupo} - Fecha ${numero}` : `Fecha ${numero}`;
   return `
-    <strong class="d-block">Fecha ${escaparHtml(numero)}</strong>
-    ${grupo ? `<span class="badge text-bg-secondary">${escaparHtml(grupo)}</span>` : ''}
+    <strong class="d-block">${escaparHtml(titulo)}</strong>
     <small class="text-muted">${fechaCalendario}</small>
   `;
+}
+
+function conceptoVisibleFinanzas(movimiento) {
+  return movimiento?.concepto_display || movimiento?.concepto || 'Movimiento';
 }
 
 function renderFinanzasResumen() {
@@ -521,18 +704,18 @@ function renderFinanzasResumen() {
 
   tbody.innerHTML = finanzasResumen.map(equipo => `
     <tr data-finanzas-equipo-id="${escaparHtml(equipo.id_equipo)}">
-      <td>
+      <td data-label="Equipo">
         <div class="d-flex align-items-center gap-2">
           <img src="${escaparHtml(equipo.icono || '/images/default_team.png')}" alt="" style="width:28px;height:28px;object-fit:cover;border-radius:50%;">
           <strong class="text-dark">${escaparHtml(equipo.nombre || '')}</strong>
         </div>
       </td>
-      <td class="text-dark">${escaparHtml(equipo.nombre_grupo || 'Sin grupo')}</td>
-      <td class="text-center finanzas-estado-cell">
+      <td class="text-dark" data-label="Grupo">${escaparHtml(equipo.nombre_grupo || 'Sin grupo')}</td>
+      <td class="text-center finanzas-estado-cell" data-label="Estado">
         ${equipo.adeuda ? '<span class="fw-bold text-danger" title="Equipo con deuda">‼️‼️</span>' : '<span class="badge text-bg-success">Al dia</span>'}
       </td>
-      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell ${equipo.adeuda ? 'text-danger' : 'text-dark'}">${formatoMontoFinanzas(equipo.saldo_actual)}</td>
-      <td class="text-end finanzas-admin-only">
+      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell ${equipo.adeuda ? 'text-danger' : 'text-dark'}" data-label="Saldo">${formatoMontoFinanzas(equipo.saldo_actual)}</td>
+      <td class="text-end" data-label="Acciones">
         <button type="button" class="btn btn-sm btn-outline-dark" onclick="abrirDetalleFinanzas('${escaparHtml(equipo.id_equipo)}')">Detalles</button>
       </td>
     </tr>
@@ -570,7 +753,7 @@ function abrirDetalleFinanzas(idEquipo) {
       const fila = document.createElement('tr');
       fila.innerHTML = `
         <td>${etiquetaFechaFinanzas(movimiento)}</td>
-        <td>${escaparHtml(movimiento.concepto || 'Movimiento')}</td>
+        <td>${escaparHtml(conceptoVisibleFinanzas(movimiento))}</td>
         <td class="text-end">${formatoMontoFinanzas(movimiento.deuda_inicial)}</td>
         <td class="text-end">${formatoMontoFinanzas(movimiento.total_items)}</td>
         <td class="text-end">${formatoMontoFinanzas(movimiento.entrega)}</td>
@@ -624,13 +807,22 @@ function obtenerEquiposGrupo(grupoId) {
 }
 
 function actualizarAccionesPartido(partidoId, estado) {
+  const estadoNormalizado = normalizarEstadoPartidoCliente(estado);
   const fila = document.querySelector(`.estado-select[data-id="${partidoId}"]`)?.closest('tr');
   if (!fila) return;
   const botonEditar = fila.querySelector('.editar-horario-btn');
   const botonEliminar = fila.querySelector('form[action*="/eliminar"] button[type="submit"]');
+  const selectEstado = fila.querySelector('.estado-select');
 
-  if (botonEditar) botonEditar.disabled = estado === 'finalizado';
-  if (botonEliminar) botonEliminar.disabled = estado === 'finalizado';
+  if (botonEditar) botonEditar.disabled = estadoNormalizado === 'finalizado';
+  if (botonEliminar) botonEliminar.disabled = estadoNormalizado === 'finalizado';
+  if (selectEstado) {
+    selectEstado.classList.toggle('estado-en-curso', estadoNormalizado === 'en_curso');
+  }
+}
+
+function normalizarEstadoPartidoCliente(estado) {
+  return String(estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_');
 }
 
 function cerrarModalBootstrapSeguro(modalId) {
@@ -884,7 +1076,7 @@ async function confirmarSorteo() {
   }
 
   if (!numFechas || numFechas <= 0) {
-    alert('Por favor, ingrese un número válido de fechas.');
+    mostrarAvisoApp('Por favor, ingrese un número válido de fechas.', 'Sorteo');
     return;
   }
 
@@ -912,17 +1104,19 @@ async function confirmarSorteo() {
       modal.hide();
       
       setTimeout(() => {
-        alert(data.message);
-        location.reload(); // Recargar página para mostrar los cambios
+        mostrarAvisoApp(data.message || 'Sorteo generado correctamente.', 'Sorteo');
+        document.getElementById('modalAvisoApp')?.addEventListener('hidden.bs.modal', () => {
+          location.reload();
+        }, { once: true });
       }, 300);
     } else {
-      alert('Error: ' + data.message);
+      mostrarAvisoApp(data.message || 'No se pudo generar el sorteo.', 'Sorteo');
       btnConfirmar.disabled = false;
       btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
     }
   } catch (error) {
     console.error('Error:', error);
-    alert('Error al procesar el sorteo.');
+    mostrarAvisoApp('Error al procesar el sorteo.', 'Sorteo');
     btnConfirmar.disabled = false;
     btnConfirmar.innerHTML = '<i class="fas fa-check"></i> Confirmar Sorteo';
   }
@@ -932,6 +1126,27 @@ async function confirmarSorteo() {
 document.addEventListener('DOMContentLoaded', function() {
   actualizarValidacion();
 
+  document.querySelectorAll('.form-confirmar-app').forEach(form => {
+    form.addEventListener('submit', async event => {
+      if (form.dataset.confirmadoApp === '1') return;
+
+      event.preventDefault();
+      const confirmado = await confirmarApp(
+        form.dataset.confirmMessage || '¿Desea continuar?',
+        form.dataset.confirmTitle || 'Confirmar',
+        {
+          aceptar: form.dataset.confirmAccept || 'Aceptar',
+          cancelar: form.dataset.confirmCancel || 'Cancelar',
+          destacar: true
+        }
+      );
+
+      if (!confirmado) return;
+      form.dataset.confirmadoApp = '1';
+      form.submit();
+    });
+  });
+
   document.querySelectorAll('.editar-horario-btn').forEach(button => {
     button.addEventListener('click', () => {
       const partidoId = button.dataset.id;
@@ -939,6 +1154,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const equipoB = button.dataset.equipoB;
       const fecha = button.dataset.fecha || '';
       const hora = button.dataset.hora || '';
+      const canchaId = button.dataset.canchaId || '';
       const torneoId = button.dataset.torneoId;
 
       document.getElementById('modalHorarioTitulo').textContent = `${equipoA} vs ${equipoB}`;
@@ -946,6 +1162,7 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('horarioPartidoId').value = partidoId;
       document.getElementById('horarioFecha').value = fecha;
       document.getElementById('horarioHora').value = hora;
+      document.getElementById('horarioCancha').value = canchaId;
       document.getElementById('horarioTorneoId').value = torneoId;
 
       const modal = new bootstrap.Modal(document.getElementById('modalEditarHorario'));
@@ -1020,12 +1237,12 @@ document.addEventListener('DOMContentLoaded', function() {
       const equipoB = manualEquipoB ? manualEquipoB.value : '';
       if (!equipoA || !equipoB) {
         event.preventDefault();
-        alert('Selecciona dos equipos del mismo grupo.');
+        mostrarAvisoApp('Selecciona dos equipos del mismo grupo.', 'Cruce manual');
         return;
       }
       if (String(equipoA) === String(equipoB)) {
         event.preventDefault();
-        alert('El cruce manual no puede usar el mismo equipo en ambos lados.');
+        mostrarAvisoApp('El cruce manual no puede usar el mismo equipo en ambos lados.', 'Cruce manual');
         return;
       }
 
@@ -1119,6 +1336,48 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   });
+
+  document.querySelectorAll('.btn-editar-cancha').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const form = document.getElementById('formEditarCancha');
+      const nombreInput = document.getElementById('editarCanchaNombre');
+      const direccionInput = document.getElementById('editarCanchaDireccion');
+
+      if (!form || !nombreInput || !direccionInput) return;
+
+      form.action = `/torneos/<%= torneo.id_torneo %>/canchas/${btn.dataset.id}`;
+      nombreInput.value = btn.dataset.nombre || '';
+      direccionInput.value = btn.dataset.direccion || '';
+      form.classList.remove('d-none');
+      nombreInput.focus();
+    });
+  });
+
+  document.getElementById('btnCancelarEditarCancha')?.addEventListener('click', () => {
+    const form = document.getElementById('formEditarCancha');
+    if (!form) return;
+    form.reset();
+    form.action = '';
+    form.classList.add('d-none');
+  });
+
+  document.querySelectorAll('.btn-editar-usuario-admin').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const form = document.getElementById('formEditarUsuarioAdmin');
+      const nombreInput = document.getElementById('editarUsuarioNombre');
+      const documentoInput = document.getElementById('editarUsuarioDocumento');
+      const correoInput = document.getElementById('editarUsuarioCorreo');
+
+      if (!form || !nombreInput || !documentoInput || !correoInput) return;
+
+      form.action = `/torneos/<%= torneo.id_torneo %>/usuarios/${btn.dataset.id}/editar`;
+      nombreInput.value = btn.dataset.nombre || '';
+      documentoInput.value = btn.dataset.documento || '';
+      correoInput.value = btn.dataset.correo || '';
+
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarUsuarioAdmin')).show();
+    });
+  });
 });
 
 // Función para guardar horarios comunes a toda una fecha
@@ -1131,15 +1390,15 @@ async function guardarHorariosComunes(numeroFecha) {
   const intervaloMinutos = parseInt(formData.get('intervalo_minutos'));
 
   if (!fechaComun) {
-    alert('Por favor selecciona una fecha común.');
+    mostrarAvisoApp('Por favor selecciona una fecha común.', 'Horarios');
     return;
   }
   if (!horaInicial) {
-    alert('Por favor ingresa una hora inicial.');
+    mostrarAvisoApp('Por favor ingresa una hora inicial.', 'Horarios');
     return;
   }
   if (!intervaloMinutos || intervaloMinutos < 5) {
-    alert('Por favor ingresa un intervalo válido (mínimo 5 minutos).');
+    mostrarAvisoApp('Por favor ingresa un intervalo válido (mínimo 5 minutos).', 'Horarios');
     return;
   }
 
@@ -1152,6 +1411,7 @@ async function guardarHorariosComunes(numeroFecha) {
       body: JSON.stringify({
         numero_fecha: numeroFecha,
         torneo_id: formData.get('torneo_id'),
+        grupo_id: formData.get('grupo_id') || '',
         fecha_comun: fechaComun,
         hora_inicial: horaInicial,
         intervalo_minutos: intervaloMinutos
@@ -1161,7 +1421,7 @@ async function guardarHorariosComunes(numeroFecha) {
     const data = await response.json();
 
   if (data.success) {
-    alert(data.message);
+    mostrarAvisoApp(data.message || 'Horarios actualizados correctamente.', 'Horarios');
     const fechaDisplay = fechaComun.split('-').reverse().join('/');
     const fechaPane = document.getElementById(`fecha-${numeroFecha}`);
     if (fechaPane) {
@@ -1181,11 +1441,11 @@ async function guardarHorariosComunes(numeroFecha) {
       });
     }
   } else {
-    alert('Error: ' + data.message);
+    mostrarAvisoApp(data.message || 'No se pudieron actualizar los horarios.', 'Horarios');
   }
   } catch (error) {
     console.error('Error:', error);
-    alert('Error al actualizar los horarios.');
+    mostrarAvisoApp('Error al actualizar los horarios.', 'Horarios');
   }
 }
 
@@ -1243,7 +1503,7 @@ async function cambiarEstado(selectElement) {
 
     const data = await response.json();
     if (!data.success) {
-      alert('Error: ' + data.message);
+      mostrarAvisoApp(data.message || 'No se pudo actualizar el estado del partido.', 'Partidos');
     } else {
       const marcador = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a-id]`);
       if (marcador) marcador.dataset.estado = nuevoEstado;
@@ -1259,14 +1519,17 @@ async function guardarMarcador() {
   const partidoId = document.getElementById('marcadorPartidoId').value;
   const golesA = document.getElementById('marcadorGolesA').value;
   const golesB = document.getElementById('marcadorGolesB').value;
+  const selectEstadoActual = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
+  const estadoActual = selectEstadoActual ? selectEstadoActual.value : '';
+  const estadoMarcador = estadoActual === 'en_curso' ? 'en_curso' : 'finalizado';
 
   if (golesA === '' || golesB === '') {
-    alert('Por favor ingresa ambos marcadores.');
+    mostrarAvisoApp('Por favor ingresa ambos marcadores.', 'Marcador');
     return;
   }
 
   if (!marcadorValido(golesA) || !marcadorValido(golesB)) {
-    alert('El marcador debe ser un numero entero entre 0 y 99, sin negativos ni ceros a la izquierda.');
+    mostrarAvisoApp('El marcador debe ser un número entero entre 0 y 99, sin negativos ni ceros a la izquierda.', 'Marcador');
     return;
   }
 
@@ -1280,7 +1543,7 @@ async function guardarMarcador() {
         partido_id: partidoId,
         goles_a: golesA,
         goles_b: golesB,
-        estado: 'finalizado'
+        estado: estadoMarcador
       })
     });
 
@@ -1290,7 +1553,7 @@ async function guardarMarcador() {
       if (resultCell) {
         resultCell.setAttribute('data-goles-a', golesA);
         resultCell.setAttribute('data-goles-b', golesB);
-        resultCell.setAttribute('data-estado', 'finalizado');
+        resultCell.setAttribute('data-estado', estadoMarcador);
         const span = resultCell.querySelector('span');
         if (span) {
           span.textContent = `${golesA} - ${golesB}`;
@@ -1298,17 +1561,17 @@ async function guardarMarcador() {
       }
       const selectEstado = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
       if (selectEstado) {
-        selectEstado.value = 'finalizado';
+        selectEstado.value = estadoMarcador;
       }
-      actualizarAccionesPartido(partidoId, 'finalizado');
+      actualizarAccionesPartido(partidoId, estadoMarcador);
       recalcularEstadisticasCliente();
       cerrarModalBootstrapSeguro('modalEditarMarcador');
     } else {
-      alert('Error: ' + data.message);
+      mostrarAvisoApp(data.message || 'No se pudo actualizar el marcador.', 'Marcador');
     }
   } catch (error) {
     console.error('Error:', error);
-    alert('Error al actualizar marcador');
+    mostrarAvisoApp('Error al actualizar marcador.', 'Marcador');
   }
 }
 
@@ -1329,7 +1592,7 @@ async function guardarEstadoPartido(pidoId, nuevoEstado) {
       recalcularEstadisticasCliente();
       return true;
     } else {
-      alert('Error: ' + data.message);
+      mostrarAvisoApp(data.message || 'No se pudo actualizar el estado del partido.', 'Partidos');
       return false;
     }
   } catch (e) {
@@ -1414,7 +1677,7 @@ function escaparHtml(valor) {
 function mostrarAvisoApp(mensaje, titulo = 'Atencion') {
   const modalEl = document.getElementById('modalAvisoApp');
   if (!modalEl) {
-    alert(mensaje);
+    console.warn(mensaje);
     return;
   }
 
@@ -1443,7 +1706,10 @@ function esMensajeAcumulacionTarjetas(mensaje = '', titulo = '') {
 
 function confirmarApp(mensaje, titulo = 'Confirmar', opciones = {}) {
   const modalEl = document.getElementById('modalAvisoApp');
-  if (!modalEl) return Promise.resolve(confirm(mensaje));
+  if (!modalEl) {
+    console.warn(mensaje);
+    return Promise.resolve(false);
+  }
 
   return new Promise(resolve => {
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -1486,6 +1752,20 @@ async function confirmarResetPassword(event) {
     'Se generara una contraseña temporal y el usuario debera cambiarla en su proximo inicio de sesion.',
     'Resetear contraseña',
     { aceptar: 'Generar clave', cancelar: 'Cancelar', destacar: true }
+  );
+
+  if (confirmado) form.submit();
+}
+
+async function confirmarCambioPermisosUsuario(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const selectRol = form.querySelector('select[name="rol_id"]');
+  const rolTexto = selectRol?.selectedOptions?.[0]?.textContent?.trim() || 'el rol seleccionado';
+  const confirmado = await confirmarApp(
+    `El usuario pasara a ${rolTexto}.`,
+    'Cambiar permisos',
+    { aceptar: 'Cambiar permisos', cancelar: 'Cancelar', destacar: true }
   );
 
   if (confirmado) form.submit();
@@ -1750,6 +2030,7 @@ async function abrirCargaEquipoPartido(partidoId, equipoId, boton = null) {
       partidoId,
       equipoId,
       equipoNombre: data.equipo.nombre,
+      equipoRival: data.equipo.rival || '',
       numeroFecha: data.partido.numero_fecha || null,
       fechaCalendario: data.partido.fecha || null
     };
@@ -1877,11 +2158,11 @@ function recalcularEstadisticasCliente() {
       </td>
       <td><small>${escaparHtml(item.nombre_grupo)}</small></td>
       <td>${item.pj}/${item.pj_total}</td>
-      <td>${item.pg}</td>
-      <td>${item.pe}</td>
-      <td>${item.pp}</td>
-      <td>${item.gf}</td>
-      <td>${item.gc}</td>
+      <td class="estadisticas-col-detalle">${item.pg}</td>
+      <td class="estadisticas-col-detalle">${item.pe}</td>
+      <td class="estadisticas-col-detalle">${item.pp}</td>
+      <td class="estadisticas-col-detalle">${item.gf}</td>
+      <td class="estadisticas-col-detalle">${item.gc}</td>
       <td>${item.gf - item.gc}</td>
       <td><strong>${item.puntos}</strong></td>
     </tr>
@@ -1978,6 +2259,9 @@ function actualizarFinanzasDesdeCarga(resumen = {}) {
   const concepto = esLibre
     ? `Fecha libre #${cargaEquipoPartidoActual.numeroFecha} - ${cargaEquipoPartidoActual.equipoNombre}`
     : `Encuentro #${cargaEquipoPartidoActual.partidoId} - ${cargaEquipoPartidoActual.equipoNombre}`;
+  const conceptoDisplay = !esLibre && cargaEquipoPartidoActual.equipoRival
+    ? `${concepto} vs ${cargaEquipoPartidoActual.equipoRival}`
+    : concepto;
 
   equipo.saldo_actual = saldo;
   equipo.adeuda = saldo > 0;
@@ -1995,6 +2279,7 @@ function actualizarFinanzasDesdeCarga(resumen = {}) {
     fecha_calendario: cargaEquipoPartidoActual.fechaCalendario || null,
     nombre_grupo: equipo.nombre_grupo || null,
     nombre_grupo_display: equipo.nombre_grupo || null,
+    concepto_display: conceptoDisplay,
     deuda_inicial: deudaInicial,
     total_items: totalItems,
     entrega,
@@ -2096,15 +2381,20 @@ async function guardarCargaEquipoPartido() {
   }
 }
 
-function confirmarToggleEquipo(input) {
+async function confirmarToggleEquipo(input) {
   const form = input.form;
   const confirmarInput = form.querySelector('input[name="confirmar_desactivacion"]');
   const partidosPendientes = Number(input.dataset.partidosPendientes || 0);
 
   if (!input.checked && partidosPendientes > 0) {
-    const ok = confirm(
-      'Este equipo tiene cargados partidos en curso, pendientes o en proceso. Desea desactivar?\n\n' +
-      'Los encuentros quedaran disparejos para el equipo contrario en cada fecha.'
+    const ok = await confirmarApp(
+      'Este equipo tiene partidos en curso, pendientes o en proceso. Si lo desactiva, los encuentros quedarán disparejos para el equipo contrario en cada fecha.',
+      'Desactivar equipo',
+      {
+        aceptar: 'Sí, desactivar',
+        cancelar: 'Cancelar',
+        destacar: true
+      }
     );
 
     if (!ok) {
@@ -2121,6 +2411,69 @@ function confirmarToggleEquipo(input) {
 </script>
 
 <style>
+.torneos-page {
+  display: block;
+  align-items: initial;
+  justify-content: initial;
+  padding-top: 72px;
+}
+
+.torneos-page .navbar {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.32);
+}
+
+.torneos-page .navbar .nav-tabs {
+  border-bottom: 0;
+  gap: 4px;
+}
+
+.torneos-page .navbar .nav-link {
+  border: 0;
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.1;
+}
+
+.torneos-page .navbar .nav-link.active {
+  background: #0d6efd;
+  color: #fff;
+}
+
+.torneos-page .btn {
+  margin: 0;
+  padding: 0.38rem 0.72rem;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  transform: none;
+}
+
+.torneos-page .btn:hover {
+  transform: none;
+}
+
+.torneos-page .card {
+  max-width: none;
+  padding: 0;
+  text-align: left;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.torneos-page .tab-content {
+  width: min(1140px, calc(100vw - 24px));
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.dashboard-quick-actions .btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .card.border-left-primary {
   border-left: 4px solid #007bff;
 }
@@ -2195,16 +2548,42 @@ function confirmarToggleEquipo(input) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border: 1px solid #dee2e6;
+  border: 1px solid rgba(13, 110, 253, 0.28);
+  border-left: 4px solid #0d6efd;
   border-radius: 6px;
   padding: 10px 12px;
-  background: #fff;
+  background: #f8fbff;
 }
 
 .regla-tarjeta-opcion .form-check-input {
   width: 2.4rem;
   height: 1.25rem;
   margin: 0;
+  cursor: pointer;
+  border: 2px solid #0d6efd;
+  background-color: #fff;
+  opacity: 1;
+  box-shadow: none;
+}
+
+.regla-tarjeta-opcion .form-check-input:not(:checked) {
+  background-color: #eaf3ff;
+  background-image: none;
+}
+
+.regla-tarjeta-opcion .form-check-input:checked {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.regla-tarjeta-opcion .form-check-input:focus {
+  border-color: #0a58ca;
+  box-shadow: 0 0 0 0.18rem rgba(13, 110, 253, 0.22);
+}
+
+.regla-tarjeta-opcion label,
+.regla-tarjeta-opcion .form-text {
+  color: #102033;
 }
 
 .estadisticas-equipo {
@@ -2229,9 +2608,70 @@ function confirmarToggleEquipo(input) {
 
 .estadisticas-nombre {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.15;
+}
+
+.estado-badge-en-curso {
+  background-color: #fd7e14;
+  color: #111827;
+  border: 1px solid rgba(180, 83, 9, 0.28);
+}
+
+.estado-select.estado-en-curso {
+  border-color: #fd7e14;
+  background-color: #fff4e6;
+  color: #9a4d00;
+  font-weight: 700;
+}
+
+.dashboard-en-curso-card .list-group-item > small:not(.text-muted) {
+  display: none;
+}
+
+.pull-refresh-indicator {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.45rem 0.85rem;
+  color: #fff;
+  background: rgba(13, 110, 253, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(4, 12, 26, 0.24);
+  font-size: 0.88rem;
+  font-weight: 700;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -130%);
+  transition: opacity 0.16s ease, transform 0.16s ease, background-color 0.16s ease;
+}
+
+.pull-refresh-indicator.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.pull-refresh-indicator.is-ready {
+  background: rgba(25, 135, 84, 0.98);
+}
+
+.pull-refresh-indicator.is-refreshing .bi {
+  animation: pullRefreshSpin 0.8s linear infinite;
+}
+
+@keyframes pullRefreshSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .torneo-portada {
@@ -2264,6 +2704,261 @@ function confirmarToggleEquipo(input) {
 
 .tab-pane-spaced {
   padding-top: 22px;
+}
+
+.torneos-page #partidos,
+.torneos-page #finanzas,
+.torneos-page #estadisticas,
+.torneos-page #items,
+.torneos-page #usuarios,
+.torneos-page #auditoria,
+.torneos-page #equipos,
+.torneos-page #jugadores {
+  --tab-accent: #0d6efd;
+  --tab-accent-2: #0a58ca;
+  --tab-action: #198754;
+  --tab-action-2: #157347;
+  --tab-soft: rgba(13, 110, 253, 0.12);
+}
+
+.torneos-page #partidos .card-partidos,
+.torneos-page #finanzas .finanzas-panel,
+.torneos-page #estadisticas > .p-3,
+.torneos-page #items > .p-3,
+.torneos-page #usuarios > .p-3,
+.torneos-page #auditoria > .p-3,
+.torneos-page #equipos > .card,
+.torneos-page #jugadores > .card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 252, 255, 0.88));
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-top: 4px solid var(--tab-accent);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(4, 12, 26, 0.22);
+}
+
+.torneos-page #partidos h3,
+.torneos-page #finanzas h3,
+.torneos-page #estadisticas h3,
+.torneos-page #items h3,
+.torneos-page #usuarios h3,
+.torneos-page #auditoria h3,
+.torneos-page #equipos h3,
+.torneos-page #jugadores h3 {
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+}
+
+.torneos-page #equipos > .card h3,
+.torneos-page #jugadores > .card h3 {
+  color: #102033 !important;
+  text-shadow: none;
+}
+
+.torneos-page #partidos .card-partidos > .d-flex:first-child,
+.torneos-page #finanzas > .p-3 > .d-flex:first-child,
+.torneos-page #estadisticas > .p-3 > h3,
+.torneos-page #items > .p-3 > .d-flex:first-child,
+.torneos-page #usuarios > .p-3 > .d-flex:first-child,
+.torneos-page #auditoria > .p-3 > .d-flex:first-child {
+  background: linear-gradient(90deg, #0d6efd, #0a58ca);
+  color: #fff !important;
+  margin: -1rem -1rem 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 4px 4px 0 0;
+}
+
+.torneos-page #estadisticas > .p-3 > h3 {
+  text-shadow: none;
+}
+
+.torneos-page #partidos .card-partidos > .d-flex:first-child h3,
+.torneos-page #finanzas > .p-3 > .d-flex:first-child h3,
+.torneos-page #items > .p-3 > .d-flex:first-child h3,
+.torneos-page #usuarios > .p-3 > .d-flex:first-child h3,
+.torneos-page #auditoria > .p-3 > .d-flex:first-child h3 {
+  color: #fff !important;
+  text-shadow: none;
+}
+
+.torneos-page #partidos .table thead.table-dark,
+.torneos-page #finanzas .table thead.table-dark,
+.torneos-page #estadisticas .table thead.table-dark,
+.torneos-page #items .table thead.table-dark,
+.torneos-page #usuarios .table thead.table-dark,
+.torneos-page #auditoria .table thead.table-dark,
+.torneos-page #equipos .table thead.table-dark,
+.torneos-page #jugadores .table thead.table-dark {
+  --bs-table-bg: var(--tab-accent);
+  --bs-table-color: #fff;
+  background: linear-gradient(90deg, #0d6efd, #0a58ca) !important;
+}
+
+.torneos-page #partidos .table thead.table-dark th,
+.torneos-page #finanzas .table thead.table-dark th,
+.torneos-page #estadisticas .table thead.table-dark th,
+.torneos-page #items .table thead.table-dark th,
+.torneos-page #usuarios .table thead.table-dark th,
+.torneos-page #auditoria .table thead.table-dark th,
+.torneos-page #equipos .table thead.table-dark th,
+.torneos-page #jugadores .table thead.table-dark th {
+  background: transparent !important;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.torneos-page .tab-pane .card-header.bg-primary,
+.torneos-page .tab-pane .card-header.bg-success {
+  background: linear-gradient(90deg, #0d6efd, #0a58ca) !important;
+  color: #fff !important;
+}
+
+.torneos-page #partidos .nav-tabs .nav-link.active,
+.torneos-page #estadisticas .nav-tabs .nav-link.active,
+.torneos-page #modalCargaEquipoPartido .nav-tabs .nav-link.active {
+  background: var(--tab-accent);
+  color: #fff;
+  border-color: var(--tab-accent);
+}
+
+#modalCargaEquipoPartido .nav-tabs {
+  border-bottom-color: rgba(25, 135, 84, 0.35);
+  gap: 0.35rem;
+}
+
+#modalCargaEquipoPartido .nav-tabs .nav-link {
+  color: #198754 !important;
+  border: 1px solid rgba(25, 135, 84, 0.55) !important;
+  border-bottom-color: rgba(25, 135, 84, 0.55) !important;
+  border-radius: 6px 6px 0 0;
+  font-weight: 800 !important;
+  background: #f4fff8 !important;
+  min-width: 112px;
+  opacity: 1 !important;
+}
+
+#modalCargaEquipoPartido .nav-tabs .nav-link:hover {
+  color: #fff !important;
+  background: #198754 !important;
+  border-color: #198754 !important;
+}
+
+#modalCargaEquipoPartido .nav-tabs .nav-link.active {
+  background: #198754 !important;
+  border-color: #198754 !important;
+  color: #fff !important;
+}
+
+.torneos-page #partidos .btn-primary,
+.torneos-page #finanzas .btn-primary,
+.torneos-page #estadisticas .btn-primary,
+.torneos-page #items .btn-primary,
+.torneos-page #usuarios .btn-primary,
+.torneos-page #auditoria .btn-primary,
+.torneos-page #equipos .btn-primary,
+.torneos-page #jugadores .btn-primary,
+.torneos-page #partidos .btn-success,
+.torneos-page #finanzas .btn-success,
+.torneos-page #estadisticas .btn-success,
+.torneos-page #items .btn-success,
+.torneos-page #usuarios .btn-success,
+.torneos-page #auditoria .btn-success,
+.torneos-page #equipos .btn-success,
+.torneos-page #jugadores .btn-success {
+  background-color: var(--tab-action);
+  border-color: var(--tab-action);
+  color: #fff;
+}
+
+.torneos-page #partidos .btn-primary:hover,
+.torneos-page #finanzas .btn-primary:hover,
+.torneos-page #estadisticas .btn-primary:hover,
+.torneos-page #items .btn-primary:hover,
+.torneos-page #usuarios .btn-primary:hover,
+.torneos-page #auditoria .btn-primary:hover,
+.torneos-page #equipos .btn-primary:hover,
+.torneos-page #jugadores .btn-primary:hover,
+.torneos-page #partidos .btn-success:hover,
+.torneos-page #finanzas .btn-success:hover,
+.torneos-page #estadisticas .btn-success:hover,
+.torneos-page #items .btn-success:hover,
+.torneos-page #usuarios .btn-success:hover,
+.torneos-page #auditoria .btn-success:hover,
+.torneos-page #equipos .btn-success:hover,
+.torneos-page #jugadores .btn-success:hover {
+  background-color: var(--tab-action-2);
+  border-color: var(--tab-action-2);
+}
+
+.torneos-page #partidos .btn-outline-primary,
+.torneos-page #finanzas .btn-outline-primary,
+.torneos-page #estadisticas .btn-outline-primary,
+.torneos-page #items .btn-outline-primary,
+.torneos-page #usuarios .btn-outline-primary,
+.torneos-page #auditoria .btn-outline-primary,
+.torneos-page #equipos .btn-outline-primary,
+.torneos-page #jugadores .btn-outline-primary {
+  border-color: var(--tab-action);
+  color: var(--tab-action);
+}
+
+.torneos-page #partidos .btn-outline-primary:hover,
+.torneos-page #finanzas .btn-outline-primary:hover,
+.torneos-page #estadisticas .btn-outline-primary:hover,
+.torneos-page #items .btn-outline-primary:hover,
+.torneos-page #usuarios .btn-outline-primary:hover,
+.torneos-page #auditoria .btn-outline-primary:hover,
+.torneos-page #equipos .btn-outline-primary:hover,
+.torneos-page #jugadores .btn-outline-primary:hover {
+  background-color: var(--tab-action);
+  border-color: var(--tab-action);
+  color: #fff;
+}
+
+.torneos-page #partidos .btn-outline-light,
+.torneos-page #finanzas .btn-outline-light,
+.torneos-page #usuarios .btn-outline-light {
+  border-color: rgba(255, 255, 255, 0.82);
+  color: #fff;
+}
+
+.torneos-page #partidos .btn-outline-light:hover,
+.torneos-page #finanzas .btn-outline-light:hover,
+.torneos-page #usuarios .btn-outline-light:hover {
+  background: var(--tab-action);
+  border-color: var(--tab-action);
+  color: #fff;
+}
+
+.fixture-ayuda-horarios {
+  display: block;
+  color: #0b1f3a;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.torneos-page #fechasTab {
+  gap: 0.4rem;
+}
+
+.torneos-page #fechasTab .fixture-fecha-tab {
+  background: #f8fbff;
+  border: 1px solid rgba(13, 110, 253, 0.32);
+  box-shadow: 0 2px 6px rgba(13, 110, 253, 0.18);
+  color: #0a58ca;
+  font-weight: 700;
+}
+
+.torneos-page #fechasTab .fixture-fecha-tab:hover {
+  background: #eaf3ff;
+  border-color: #0d6efd;
+  box-shadow: 0 4px 10px rgba(13, 110, 253, 0.24);
+}
+
+.torneos-page #fechasTab .fixture-fecha-tab.active {
+  background: #0d6efd;
+  border-color: #0a58ca;
+  box-shadow: 0 5px 14px rgba(13, 110, 253, 0.34);
+  color: #fff;
 }
 
 #finanzas .finanzas-panel {
@@ -2310,6 +3005,43 @@ function confirmarToggleEquipo(input) {
   display: inline-flex;
 }
 
+#finanzas.finanzas-vista-publica .table-responsive {
+  overflow-x: visible;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-equipo-col {
+  width: 44%;
+  min-width: 0;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-grupo-col {
+  width: 18%;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-estado-col {
+  width: 18%;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-acciones-col {
+  width: 20%;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-table td,
+#finanzas.finanzas-vista-publica .finanzas-table th {
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+
+#finanzas.finanzas-vista-publica .finanzas-table td:first-child strong {
+  overflow-wrap: anywhere;
+}
+
 .jugadores-panel {
   width: 100%;
   max-width: none;
@@ -2349,6 +3081,388 @@ function confirmarToggleEquipo(input) {
 #usuarios.usuarios-vista-publica .usuarios-admin-only {
   display: none !important;
 }
+
+@media (max-width: 768px) {
+  .torneos-page {
+    padding-top: 142px;
+    font-size: 0.92rem;
+  }
+
+  .torneos-page .navbar {
+    padding: 0.45rem 0;
+  }
+
+  .torneos-page .navbar .container-fluid {
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .torneos-page .navbar-brand {
+    width: 100%;
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.1;
+  }
+
+  .torneos-page .navbar-brand .small {
+    font-size: 0.86rem;
+  }
+
+  .torneos-page .navbar .nav-tabs {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .torneos-page .navbar .nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .torneos-page .navbar .nav-item {
+    flex: 0 0 auto;
+  }
+
+  .torneos-page .navbar .nav-link {
+    min-height: 34px;
+    padding: 0.42rem 0.62rem;
+    font-size: 0.84rem;
+    white-space: nowrap;
+  }
+
+  .torneos-page .app-nav-actions {
+    width: 100%;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding-bottom: 1px;
+  }
+
+  .torneos-page .app-nav-actions .btn {
+    flex: 1 0 auto;
+    min-height: 34px;
+    padding: 0.36rem 0.5rem;
+    font-size: 0.82rem;
+    line-height: 1.1;
+  }
+
+  .torneos-page .tab-content {
+    width: min(100%, calc(100vw - 16px));
+    margin-top: 0 !important;
+  }
+
+  #torneos h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.55rem;
+  }
+
+  #torneos > p.text-white {
+    font-size: 0.9rem;
+    margin-bottom: 0.55rem;
+  }
+
+  #torneos .list-group {
+    margin-bottom: 0.75rem !important;
+  }
+
+  #torneos .list-group-item {
+    padding: 0.55rem 0.7rem;
+    font-size: 0.9rem;
+  }
+
+  .dashboard-quick-actions {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem !important;
+  }
+
+  .dashboard-quick-actions .btn {
+    width: 100%;
+    min-height: 36px;
+    justify-content: center;
+    padding: 0.38rem 0.32rem;
+    font-size: 0.82rem;
+  }
+
+  .torneos-page #torneos .card {
+    border-radius: 8px;
+  }
+
+  .torneos-page #torneos .card-header {
+    padding: 0.62rem 0.75rem;
+  }
+
+  .torneos-page #torneos .card-header strong {
+    font-size: 0.92rem;
+  }
+
+  .torneos-page #torneos .card-header .btn {
+    padding: 0.28rem 0.55rem;
+    font-size: 0.82rem;
+  }
+
+  .torneos-page #torneos .table-sm td {
+    padding: 0.42rem 0.55rem;
+    font-size: 0.9rem;
+  }
+
+  .torneos-page #torneos .table img {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .torneos-page #jugadores > .card {
+    padding: 0.85rem !important;
+    overflow: hidden;
+  }
+
+  .torneos-page #jugadores .jugadores-header {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .torneos-page #jugadores .jugadores-header .btn-group {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+    width: 100%;
+  }
+
+  .torneos-page #jugadores .jugadores-header .btn {
+    width: 100%;
+    margin: 0;
+    white-space: normal;
+  }
+
+  .torneos-page #jugadores .jugadores-buscador {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: 0.45rem !important;
+  }
+
+  .torneos-page #jugadores .jugadores-buscador .form-control {
+    min-width: 0;
+    font-size: 0.92rem;
+  }
+
+  .torneos-page #jugadores .jugadores-buscador .btn {
+    margin: 0;
+    min-height: 42px;
+    padding: 0.42rem 0.55rem;
+  }
+
+  .torneos-page #jugadores .jugadores-buscador .jugadores-admin-only {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile,
+  .torneos-page #jugadores .jugadores-table-mobile tbody,
+  .torneos-page #jugadores .jugadores-table-mobile tr,
+  .torneos-page #jugadores .jugadores-table-mobile td {
+    display: block;
+    width: 100%;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile {
+    border-collapse: separate;
+    border-spacing: 0 0.75rem;
+    margin-bottom: 0;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile thead {
+    display: none;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile tr {
+    background: #fff !important;
+    border: 1px solid rgba(13, 110, 253, 0.18);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile tr.table-warning {
+    border-color: rgba(255, 193, 7, 0.45);
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile tr.table-secondary {
+    opacity: 0.9;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile td {
+    border: 0;
+    border-bottom: 1px solid #edf1f7;
+    padding: 0.62rem 0.75rem;
+    font-size: 0.92rem;
+    text-align: left;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile td:last-child {
+    border-bottom: 0;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.22rem;
+    color: #0d6efd;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile td[data-label="Nombre"] {
+    background: #f7fbff;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .torneos-page #jugadores .jugadores-table-mobile .btn-group,
+  .torneos-page #jugadores .jugadores-table-mobile .btn {
+    width: 100%;
+    margin: 0;
+  }
+
+  .torneos-page #finanzas .table-responsive {
+    overflow-x: visible;
+  }
+
+  .torneos-page #finanzas .finanzas-panel .card-body {
+    padding: 0.65rem;
+  }
+
+  .torneos-page #finanzas .finanzas-table,
+  .torneos-page #finanzas .finanzas-table tbody,
+  .torneos-page #finanzas .finanzas-table tr,
+  .torneos-page #finanzas .finanzas-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .torneos-page #finanzas .finanzas-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 0.75rem;
+    margin-bottom: 0;
+  }
+
+  .torneos-page #finanzas .finanzas-table thead {
+    display: none;
+  }
+
+  .torneos-page #finanzas .finanzas-table tr {
+    background: #fff;
+    border: 1px solid rgba(13, 110, 253, 0.16);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+
+  .torneos-page #finanzas .finanzas-table td {
+    border: 0;
+    border-bottom: 1px solid #edf1f7;
+    padding: 0.62rem 0.75rem;
+    text-align: left !important;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .torneos-page #finanzas .finanzas-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .torneos-page #finanzas .finanzas-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.22rem;
+    color: #0d6efd;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .torneos-page #finanzas .finanzas-table td[data-label="Equipo"] {
+    background: #f7fbff;
+  }
+
+  .torneos-page #finanzas .finanzas-table td[data-label="Acciones"] .btn {
+    width: 100%;
+    margin: 0;
+  }
+
+  .torneos-page #estadisticas .table-responsive {
+    overflow-x: visible;
+  }
+
+  .torneos-page #estadisticas table {
+    table-layout: fixed;
+    width: 100%;
+    font-size: 0.86rem;
+  }
+
+  .torneos-page #estadisticas th,
+  .torneos-page #estadisticas td {
+    padding: 0.55rem 0.32rem;
+    vertical-align: middle;
+  }
+
+  .torneos-page #estadisticas th:first-child,
+  .torneos-page #estadisticas td:first-child {
+    width: 42%;
+  }
+
+  .torneos-page #estadisticas .estadisticas-col-detalle {
+    display: none;
+  }
+
+  .torneos-page #estadisticas .estadisticas-equipo {
+    grid-template-columns: 1.4ch 24px minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .torneos-page #estadisticas .estadisticas-icono {
+    width: 22px;
+    height: 22px;
+  }
+
+  .torneos-page #estadisticas .estadisticas-nombre {
+    display: block;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
+    font-size: 0.9rem;
+    line-height: 1.12;
+  }
+
+  .torneos-page #estadisticas td small {
+    font-size: 0.78rem;
+    line-height: 1.1;
+  }
+}
+
+@media (max-width: 420px) {
+  .torneos-page {
+    padding-top: 150px;
+  }
+
+  .dashboard-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-quick-actions .btn {
+    justify-content: flex-start;
+    padding-left: 0.6rem;
+  }
+}
 </style>
 
 <div class="modal fade" id="modalPersonalizarTorneo" tabindex="-1" aria-labelledby="modalPersonalizarTorneoTitulo" aria-hidden="true">
@@ -2377,7 +3491,11 @@ function confirmarToggleEquipo(input) {
 
         <hr>
         <form id="formEliminarPortadaTorneo" action="" method="POST"
-              onsubmit="return confirm('Eliminar la portada de este torneo?')">
+              class="form-confirmar-app"
+              data-confirm-title="Eliminar portada"
+              data-confirm-message="¿Eliminar la portada de este torneo?"
+              data-confirm-accept="Sí, eliminar"
+              data-confirm-cancel="Cancelar">
           <button type="submit" class="btn btn-outline-danger w-100">
             <i class="bi bi-trash"></i> Eliminar portada
           </button>
@@ -2406,6 +3524,15 @@ function confirmarToggleEquipo(input) {
             <label for="horarioHora" class="form-label">Hora</label>
             <input type="time" class="form-control" id="horarioHora" name="hora">
           </div>
+          <div class="mb-3">
+            <label for="horarioCancha" class="form-label">Cancha</label>
+            <select class="form-select" id="horarioCancha" name="id_cancha">
+              <option value="">Sin cancha</option>
+              <% (canchas || []).filter(cancha => cancha.estado).forEach(cancha => { %>
+                <option value="<%= cancha.id_cancha %>"><%= cancha.nombre %></option>
+              <% }) %>
+            </select>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -2420,9 +3547,9 @@ function confirmarToggleEquipo(input) {
 <div class="modal fade" id="modalEditarMarcador" tabindex="-1" aria-labelledby="marcadorTitulo" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header bg-warning text-dark">
+      <div class="modal-header bg-primary text-white">
         <h5 class="modal-title" id="marcadorTitulo">Editar marcador</h5>
-        <button type="button" class="btn-close" onclick="cerrarModalBootstrapSeguro('modalEditarMarcador')" aria-label="Cerrar"></button>
+        <button type="button" class="btn-close btn-close-white" onclick="cerrarModalBootstrapSeguro('modalEditarMarcador')" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="marcadorPartidoId">
@@ -2442,7 +3569,7 @@ function confirmarToggleEquipo(input) {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="cerrarModalBootstrapSeguro('modalEditarMarcador')">Cancelar</button>
-        <button type="button" class="btn btn-warning" onclick="guardarMarcador()">Guardar</button>
+        <button type="button" class="btn btn-success" onclick="guardarMarcador()">Guardar</button>
       </div>
     </div>
   </div>
@@ -2457,7 +3584,7 @@ function confirmarToggleEquipo(input) {
 <div class="modal fade" id="modalCargaEquipoPartido" tabindex="-1" aria-labelledby="cargaPartidoTitulo" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
+      <div class="modal-header bg-primary text-white">
         <div>
           <h5 class="modal-title" id="cargaPartidoTitulo">Carga del encuentro</h5>
           <small id="cargaPartidoSubtitulo" class="text-white-50"></small>
@@ -2555,7 +3682,7 @@ function confirmarToggleEquipo(input) {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="cerrarModalBootstrapSeguro('modalCargaEquipoPartido')">Cancelar</button>
-        <button type="button" class="btn btn-dark" onclick="guardarCargaEquipoPartido()">
+        <button type="button" class="btn btn-success" onclick="guardarCargaEquipoPartido()">
           <i class="bi bi-save"></i> Registrar carga
         </button>
       </div>
@@ -2567,7 +3694,7 @@ function confirmarToggleEquipo(input) {
 <div class="modal fade" id="modalDetalleFinanzas" tabindex="-1" aria-labelledby="finanzasDetalleTitulo" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
+      <div class="modal-header bg-primary text-white">
         <div>
           <h5 class="modal-title" id="finanzasDetalleTitulo">Detalle financiero</h5>
           <small id="finanzasDetalleSubtitulo" class="text-white-50"></small>
@@ -2615,7 +3742,7 @@ function confirmarToggleEquipo(input) {
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-dark" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>
@@ -2625,7 +3752,7 @@ function confirmarToggleEquipo(input) {
 <div class="modal fade" id="modalAvisoApp" tabindex="-1" aria-labelledby="modalAvisoAppTitulo" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
+      <div class="modal-header bg-primary text-white">
         <h5 class="modal-title" id="modalAvisoAppTitulo">Atencion</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
@@ -2633,9 +3760,40 @@ function confirmarToggleEquipo(input) {
         <p class="mb-0 text-dark" id="modalAvisoAppMensaje"></p>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary d-none" id="modalAvisoAppCancelar">Cancelar</button>
-        <button type="button" class="btn btn-dark" id="modalAvisoAppAceptar">Aceptar</button>
+        <button type="button" class="btn btn-outline-primary d-none" id="modalAvisoAppCancelar">Cancelar</button>
+        <button type="button" class="btn btn-success" id="modalAvisoAppAceptar">Aceptar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalEditarUsuarioAdmin" tabindex="-1" aria-labelledby="editarUsuarioAdminTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form action="" method="POST" id="formEditarUsuarioAdmin">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="editarUsuarioAdminTitulo">Editar datos de usuario</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body text-dark">
+          <div class="mb-3">
+            <label for="editarUsuarioNombre" class="form-label fw-bold">Nombre</label>
+            <input type="text" class="form-control" id="editarUsuarioNombre" name="nombre" maxlength="100" required>
+          </div>
+          <div class="mb-3">
+            <label for="editarUsuarioDocumento" class="form-label fw-bold">Documento</label>
+            <input type="text" class="form-control" id="editarUsuarioDocumento" name="documento" maxlength="50" required>
+          </div>
+          <div class="mb-0">
+            <label for="editarUsuarioCorreo" class="form-label fw-bold">Correo</label>
+            <input type="email" class="form-control text-lowercase" id="editarUsuarioCorreo" name="correo" maxlength="150">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar datos</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -2646,7 +3804,7 @@ function confirmarToggleEquipo(input) {
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <form action="/partidos" method="POST" id="formCruceManual">
-        <div class="modal-header bg-dark text-white">
+        <div class="modal-header bg-primary text-white">
           <h5 class="modal-title" id="cruceManualTitulo">Cruce manual</h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
@@ -2659,7 +3817,7 @@ function confirmarToggleEquipo(input) {
           <div class="mb-3">
             <label for="manualGrupoId" class="form-label">Grupo</label>
             <select class="form-select" name="id_grupo" id="manualGrupoId">
-              <% (grupos || []).forEach(grupo => { %>
+              <% ((typeof gruposFixture !== 'undefined' && gruposFixture) || grupos || []).forEach(grupo => { %>
                 <option value="<%= grupo.id_grupo %>"><%= grupo.nombre_grupo %></option>
               <% }) %>
             </select>
@@ -2682,7 +3840,7 @@ function confirmarToggleEquipo(input) {
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Crear cruce</button>
+          <button type="submit" class="btn btn-success">Crear cruce</button>
         </div>
       </form>
     </div>
@@ -2694,7 +3852,7 @@ function confirmarToggleEquipo(input) {
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <form action="/torneos/<%= torneo.id_torneo %>/regla-tarjetas" method="POST">
-        <div class="modal-header bg-dark text-white">
+        <div class="modal-header bg-primary text-white">
           <h5 class="modal-title" id="modalReglaTarjetasTitulo">Regla de tarjetas</h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
@@ -2741,9 +3899,107 @@ function confirmarToggleEquipo(input) {
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-dark">Guardar regla</button>
+          <button type="submit" class="btn btn-success">Guardar regla</button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalCanchas" tabindex="-1" aria-labelledby="modalCanchasTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalCanchasTitulo">Sedes/canchas</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <form action="/torneos/<%= torneo.id_torneo %>/canchas" method="POST" class="row g-2 align-items-end mb-3">
+          <div class="col-md-5">
+            <label class="form-label text-dark fw-bold" for="canchaNombre">Nombre</label>
+            <input type="text" class="form-control" id="canchaNombre" name="nombre" maxlength="120" required>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label text-dark fw-bold" for="canchaDireccion">Direccion</label>
+            <input type="text" class="form-control" id="canchaDireccion" name="direccion" maxlength="255">
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-success w-100">
+              <i class="bi bi-plus-lg"></i> Agregar
+            </button>
+          </div>
+        </form>
+
+        <form action="" method="POST" id="formEditarCancha" class="row g-2 align-items-end mb-3 d-none border rounded p-2 bg-light">
+          <div class="col-md-5">
+            <label class="form-label text-dark fw-bold" for="editarCanchaNombre">Editar nombre</label>
+            <input type="text" class="form-control" id="editarCanchaNombre" name="nombre" maxlength="120" required>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label text-dark fw-bold" for="editarCanchaDireccion">Editar direccion</label>
+            <input type="text" class="form-control" id="editarCanchaDireccion" name="direccion" maxlength="255">
+          </div>
+          <div class="col-md-2 d-grid gap-1">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-save"></i> Guardar
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="btnCancelarEditarCancha">
+              Cancelar
+            </button>
+          </div>
+        </form>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Nombre</th>
+                <th>Direccion</th>
+                <th>Estado</th>
+                <th class="text-end">Accion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (!(canchas || []).length) { %>
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-3">No hay sedes/canchas cargadas.</td>
+                </tr>
+              <% } %>
+              <% (canchas || []).forEach(cancha => { %>
+                <tr>
+                  <td><strong><%= cancha.nombre %></strong></td>
+                  <td><%= cancha.direccion || '-' %></td>
+                  <td>
+                    <span class="badge <%= cancha.estado ? 'text-bg-success' : 'text-bg-secondary' %>">
+                      <%= cancha.estado ? 'Activa' : 'Inactiva' %>
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    <div class="btn-group btn-group-sm" role="group">
+                      <button type="button"
+                              class="btn btn-outline-primary btn-editar-cancha"
+                              data-id="<%= cancha.id_cancha %>"
+                              data-nombre="<%= cancha.nombre %>"
+                              data-direccion="<%= cancha.direccion || '' %>"
+                              title="Editar cancha">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <form action="/torneos/<%= torneo.id_torneo %>/canchas/<%= cancha.id_cancha %>/toggle" method="POST">
+                        <button type="submit" class="btn <%= cancha.estado ? 'btn-outline-warning' : 'btn-outline-success' %>">
+                          <%= cancha.estado ? 'Desactivar' : 'Activar' %>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2786,16 +4042,32 @@ function confirmarToggleEquipo(input) {
   <!-- pestaña Partidos -->
   <div class="tab-pane fade" id="partidos">
   <div class="card-partidos p-3 shadow">
-    <p>
-
-
-    </p>
+    <div class="d-flex justify-content-between align-items-center mb-3 fixture-header">
+      <h3 class="mb-0">Fixture</h3>
+      <% if (rol_id == 3 || rol_id == 99) { %>
+        <div class="btn-group btn-group-sm" role="group">
+          <% const proximaFechaPartidos = ((partidosPorFecha || []).reduce((max, fecha) => Math.max(max, Number(fecha.numero_fecha || 0)), 0) || 0) + 1; %>
+          <button type="button"
+                  class="btn btn-success fw-bold partidos-admin-only"
+                  onclick="abrirModalCruceManual(<%= proximaFechaPartidos %>, '<%= grupoSeleccionadoId || '' %>')"
+                  title="Agregar fecha adicional">
+            <i class="bi bi-calendar-plus"></i> Agregar fecha
+          </button>
+          <button type="button" class="btn btn-outline-light" id="btnVistaPublicaPartidos" title="Vista usuario">
+            <i class="bi bi-eye"></i> Vista usuario
+          </button>
+          <button type="button" class="btn btn-outline-warning d-none" id="btnVistaAdminPartidos" title="Habilitar administracion">
+            <i class="bi bi-tools"></i> Habilitar admin
+          </button>
+        </div>
+      <% } %>
+    </div>
     <div class="row g-2 align-items-end mb-3">
       <div class="col-md-4">
-        <label class="form-label text-white mb-1">Filtrar por grupo</label>
+        <label class="form-label text-dark fw-bold mb-1">Filtrar por grupo</label>
         <select class="form-select form-select-sm" onchange="window.location = '<%= '/torneos/gestionar/' + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#partidos'">
           <option value="">Vista general</option>
-          <% (grupos || []).forEach(grupo => { %>
+          <% ((typeof gruposFixture !== 'undefined' && gruposFixture) || grupos || []).forEach(grupo => { %>
             <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
               <%= grupo.nombre_grupo %>
             </option>
@@ -2803,14 +4075,14 @@ function confirmarToggleEquipo(input) {
         </select>
       </div>
       <div class="col-md-4">
-        <label class="form-label text-white mb-1" for="filtroPartidosFechaCalendario">Filtrar por fecha calendario</label>
+        <label class="form-label text-dark fw-bold mb-1" for="filtroPartidosFechaCalendario">Filtrar por fecha calendario</label>
         <div class="input-group input-group-sm">
           <input type="date"
                  class="form-control"
                  id="filtroPartidosFechaCalendario"
                  value="<%= fechaCalendarioSeleccionada || '' %>">
-          <button type="button" class="btn btn-outline-light" id="btnFiltrarPartidosFecha">
-            <i class="bi bi-calendar-check"></i> Ver dia
+          <button type="button" class="btn btn-primary fw-bold" id="btnFiltrarPartidosFecha">
+            <i class="bi bi-calendar-check"></i> Ver día
           </button>
           <button type="button" class="btn btn-outline-secondary" id="btnLimpiarPartidosFecha" title="Limpiar fecha">
             <i class="bi bi-x-lg"></i>
@@ -2826,45 +4098,31 @@ function confirmarToggleEquipo(input) {
       <% } %>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h3 class="mb-0">Partidos</h3>
-      <% if (rol_id == 3 || rol_id == 99) { %>
-        <div class="btn-group btn-group-sm" role="group">
-          <% const proximaFechaPartidos = ((partidosPorFecha || []).reduce((max, fecha) => Math.max(max, Number(fecha.numero_fecha || 0)), 0) || 0) + 1; %>
-          <button type="button"
-                  class="btn btn-outline-success partidos-admin-only"
-                  onclick="abrirModalCruceManual(<%= proximaFechaPartidos %>, '<%= grupoSeleccionadoId || '' %>')"
-                  title="Agregar fecha adicional">
-            <i class="bi bi-calendar-plus"></i> Agregar fecha
-          </button>
-          <button type="button" class="btn btn-outline-light" id="btnVistaPublicaPartidos" title="Vista usuario">
-            <i class="bi bi-eye"></i> Vista usuario
-          </button>
-          <button type="button" class="btn btn-outline-warning d-none" id="btnVistaAdminPartidos" title="Habilitar administracion">
-            <i class="bi bi-tools"></i> Habilitar admin
-          </button>
-        </div>
-      <% } %>
-    </div>
-
     <% if (torneo.portada) { %>
       <div class="torneo-portada mb-3">
         <img src="<%= torneo.portada %>" alt="Portada de <%= torneo.nombre_torneo %>">
       </div>
-    <% } %>
+      <% } %>
 
       <% if (partidosPorFecha && partidosPorFecha.length > 0) { %>
+        <%
+          const fechaActivaFixture =
+            (partidosPorFecha.find(f =>
+              (f.partidos || []).some(p => String(p.estado || '').trim().toLowerCase() !== 'finalizado')
+            ) || partidosPorFecha[0] || {}).numero_fecha;
+        %>
         <ul class="nav nav-pills mb-3" id="fechasTab" role="tablist">
           <% partidosPorFecha.forEach((fecha, index) => { %>
+            <% const fechaEsActiva = String(fecha.numero_fecha) === String(fechaActivaFixture); %>
             <li class="nav-item" role="presentation">
-              <button class="nav-link <%= index === 0 ? 'active' : '' %>"
+              <button class="nav-link fixture-fecha-tab <%= fechaEsActiva ? 'active' : '' %>"
                       id="fecha-<%= fecha.numero_fecha %>-tab"
                       data-bs-toggle="pill"
                       data-bs-target="#fecha-<%= fecha.numero_fecha %>"
                       type="button"
                       role="tab"
                       aria-controls="fecha-<%= fecha.numero_fecha %>"
-                      aria-selected="<%= index === 0 ? 'true' : 'false' %>">
+                      aria-selected="<%= fechaEsActiva ? 'true' : 'false' %>">
                 Fecha <%= fecha.numero_fecha %>
                 <% if (fecha.fecha_general) { %>
                   <% const fechaGeneralVisible = String(fecha.fecha_general).slice(0, 10).split('-').reverse().join('/'); %>
@@ -2877,7 +4135,8 @@ function confirmarToggleEquipo(input) {
 
         <div class="tab-content">
           <% partidosPorFecha.forEach((fecha, index) => { %>
-            <div class="tab-pane fade <%= index === 0 ? 'show active' : '' %>"
+            <% const fechaEsActiva = String(fecha.numero_fecha) === String(fechaActivaFixture); %>
+            <div class="tab-pane fade <%= fechaEsActiva ? 'show active' : '' %>"
                  id="fecha-<%= fecha.numero_fecha %>"
                  role="tabpanel"
                  aria-labelledby="fecha-<%= fecha.numero_fecha %>-tab">
@@ -2886,22 +4145,25 @@ function confirmarToggleEquipo(input) {
               <form id="formFechaComun-<%= fecha.numero_fecha %>" class="mb-4 partidos-admin-only">
                 <input type="hidden" name="numero_fecha" value="<%= fecha.numero_fecha %>">
                 <input type="hidden" name="torneo_id" value="<%= torneo.id_torneo %>">
+                <% if (grupoSeleccionadoId) { %>
+                  <input type="hidden" name="grupo_id" value="<%= grupoSeleccionadoId %>">
+                <% } %>
                 <div class="row g-3 align-items-end">
                   <div class="col-md-3">
-                    <label class="form-label fw-bold">📅 Fecha común</label>
+                    <label class="form-label fw-bold text-dark">📅 Fecha común</label>
                     <input type="date" class="form-control" id="fechaComun-<%= fecha.numero_fecha %>" name="fecha_comun" value="<%= fecha.fecha_general ? fecha.fecha_general : '' %>">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label fw-bold">⏰ Hora inicial</label>
+                    <label class="form-label fw-bold text-dark">⏰ Hora inicial</label>
                     <input type="time" class="form-control" id="horaInicial-<%= fecha.numero_fecha %>" name="hora_inicial" placeholder="14:00">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label fw-bold">⏱️ Intervalo (min)</label>
+                    <label class="form-label fw-bold text-dark">⏱️ Intervalo (min)</label>
                     <input type="number" class="form-control" id="intervalo-<%= fecha.numero_fecha %>" name="intervalo_minutos" placeholder="20" min="5" max="120">
                   </div>
                   <div class="col-md-3">
                     <button type="button"
-                            class="btn btn-outline-warning w-100 mb-2 abrir-cruce-manual-btn"
+                            class="btn btn-primary w-100 mb-2 abrir-cruce-manual-btn"
                             data-numero-fecha="<%= fecha.numero_fecha %>"
                             data-grupo-id="<%= fecha.partidos && fecha.partidos.length > 0 ? fecha.partidos[0].id_grupo || '' : '' %>">
                       <i class="bi bi-diagram-3"></i> Cruce manual
@@ -2911,8 +4173,8 @@ function confirmarToggleEquipo(input) {
                     </button>
                   </div>
                   <div class="col-md-2">
-                    <small class="text-muted">
-                      Asigna fecha y horarios espaciados a todos los partidos de esta fecha
+                    <small class="fixture-ayuda-horarios">
+                      Asigna fecha y horarios espaciados a los encuentros visibles de esta fecha
                     </small>
                   </div>
                 </div>
@@ -2930,8 +4192,11 @@ function confirmarToggleEquipo(input) {
                 <% } else { %>
                   <form action="/partidos/torneos/<%= torneo.id_torneo %>/fecha/<%= fecha.numero_fecha %>/eliminar"
                         method="POST"
-                        class="mb-3 partidos-admin-only"
-                        onsubmit="return confirm('¿Eliminar todos los encuentros de la fecha <%= fecha.numero_fecha %>?');">
+                        class="mb-3 partidos-admin-only form-confirmar-app"
+                        data-confirm-title="Eliminar fecha"
+                        data-confirm-message="¿Eliminar todos los encuentros de la fecha <%= fecha.numero_fecha %>?"
+                        data-confirm-accept="Sí, eliminar fecha"
+                        data-confirm-cancel="Cancelar">
                     <% if (grupoSeleccionadoId) { %>
                       <input type="hidden" name="id_grupo" value="<%= grupoSeleccionadoId %>">
                     <% } %>
@@ -2972,14 +4237,15 @@ function confirmarToggleEquipo(input) {
                       <th style="width: 8%;">Grupo</th>
                       <th style="width: 8%;">Fecha</th>
                       <th style="width: 7%;">Hora</th>
+                      <th style="width: 10%;">Cancha</th>
                       <th style="width: 10%;">Estado</th>
-                      <th class="partidos-admin-only" style="width: 17%; text-align: center;">Acciones</th>
+                      <th class="partidos-admin-only" style="width: 15%; text-align: center;">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     <% if (!fecha.partidos || fecha.partidos.length === 0) { %>
                       <tr>
-                        <td colspan="8" class="text-center text-muted py-3">
+                        <td colspan="9" class="text-center text-muted py-3">
                           Fecha sin encuentros programados. Use Cruce manual para agregar partidos en esta fecha.
                         </td>
                       </tr>
@@ -3008,7 +4274,7 @@ function confirmarToggleEquipo(input) {
                             data-equipo-a="<%= partido.nombre_equipo_a || '' %>"
                             data-equipo-b="<%= partido.nombre_equipo_b || '' %>"
                             data-grupo-id="<%= partido.id_grupo || '' %>"
-                            data-estado="<%= partido.estado || 'programado' %>"
+                            data-estado="<%= String(partido.estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_') %>"
                             data-goles-a="<%= partido.goles_a || 0 %>"
                             data-goles-b="<%= partido.goles_b || 0 %>">
                           <span style="font-weight: bold;"><%= partido.goles_a ?? 0 %> - <%= partido.goles_b ?? 0 %></span>
@@ -3038,13 +4304,18 @@ function confirmarToggleEquipo(input) {
                         </td>
                         <td><small><%= partido.fecha_formateada || '-' %></small></td>
                         <td><small><strong><%= partido.hora || '-' %></strong></small></td>
+                        <td><small><%= partido.nombre_cancha || '-' %></small></td>
                         <td>
-                          <select class="form-select form-select-sm estado-select partidos-admin-only" data-id="<%= partido.id_partido %>">
-                            <option value="programado" <%= partido.estado === 'programado' ? 'selected' : '' %>>Programado</option>
-                            <option value="suspendido" <%= partido.estado === 'suspendido' ? 'selected' : '' %>>Suspendido</option>
-                            <option value="finalizado" <%= partido.estado === 'finalizado' ? 'selected' : '' %>>Finalizado</option>
+                          <% const estadoPartidoValor = String(partido.estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_'); %>
+                          <% const estadoPartidoTexto = estadoPartidoValor === 'en_curso' ? 'En curso' : (estadoPartidoValor.charAt(0).toUpperCase() + estadoPartidoValor.slice(1)); %>
+                          <% const estadoPartidoBadge = estadoPartidoValor === 'en_curso' ? 'estado-badge-en-curso' : (estadoPartidoValor === 'finalizado' ? 'text-bg-success' : (estadoPartidoValor === 'suspendido' ? 'text-bg-secondary' : 'text-bg-light')); %>
+                          <select class="form-select form-select-sm estado-select partidos-admin-only <%= estadoPartidoValor === 'en_curso' ? 'estado-en-curso' : '' %>" data-id="<%= partido.id_partido %>">
+                            <option value="programado" <%= estadoPartidoValor === 'programado' ? 'selected' : '' %>>Programado</option>
+                            <option value="en_curso" <%= estadoPartidoValor === 'en_curso' ? 'selected' : '' %>>En curso</option>
+                            <option value="suspendido" <%= estadoPartidoValor === 'suspendido' ? 'selected' : '' %>>Suspendido</option>
+                            <option value="finalizado" <%= estadoPartidoValor === 'finalizado' ? 'selected' : '' %>>Finalizado</option>
                           </select>
-                          <span class="partidos-public-only badge text-bg-light"><%= partido.estado || 'programado' %></span>
+                          <span class="partidos-public-only badge <%= estadoPartidoBadge %>"><%= estadoPartidoTexto %></span>
                         </td>
                         <td class="partidos-admin-only" style="text-align: center;">
                           <div class="btn-group btn-group-sm" role="group">
@@ -3089,6 +4360,7 @@ function confirmarToggleEquipo(input) {
                                       data-equipo-b="<%= partido.nombre_equipo_b || '' %>"
                                       data-fecha="<%= partido.fecha_input || partido.fecha || '' %>"
                                       data-hora="<%= partido.hora || '' %>"
+                                      data-cancha-id="<%= partido.id_cancha || '' %>"
                                       data-torneo-id="<%= torneo.id_torneo %>"
                                       title="Editar horario"
                                       style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
@@ -3164,14 +4436,14 @@ function confirmarToggleEquipo(input) {
                   <th class="finanzas-grupo-col">Grupo</th>
                   <th class="text-center finanzas-estado-col">Estado</th>
                   <th class="text-end finanzas-saldo-col finanzas-admin-only">Saldo actual</th>
-                  <th class="text-end finanzas-acciones-col finanzas-admin-only">Acciones</th>
+                  <th class="text-end finanzas-acciones-col">Acciones</th>
                 </tr>
               </thead>
               <tbody id="finanzasResumenTbody">
                 <% if (finanzasResumen && finanzasResumen.length > 0) { %>
                   <% finanzasResumen.forEach(equipoFinanza => { %>
                     <tr data-finanzas-equipo-id="<%= equipoFinanza.id_equipo %>">
-                      <td>
+                      <td data-label="Equipo">
                         <div class="d-flex align-items-center gap-2">
                           <img src="<%= equipoFinanza.icono || '/images/default_team.png' %>"
                                alt=""
@@ -3179,18 +4451,18 @@ function confirmarToggleEquipo(input) {
                           <strong class="text-dark"><%= equipoFinanza.nombre %></strong>
                         </div>
                       </td>
-                      <td class="text-dark"><%= equipoFinanza.nombre_grupo || 'Sin grupo' %></td>
-                      <td class="text-center finanzas-estado-cell">
+                      <td class="text-dark" data-label="Grupo"><%= equipoFinanza.nombre_grupo || 'Sin grupo' %></td>
+                      <td class="text-center finanzas-estado-cell" data-label="Estado">
                         <% if (equipoFinanza.adeuda) { %>
                           <span class="fw-bold text-danger" title="Equipo con deuda">‼️‼️</span>
                         <% } else { %>
                           <span class="badge text-bg-success">Al dia</span>
                         <% } %>
                       </td>
-                      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell <%= equipoFinanza.adeuda ? 'text-danger' : 'text-dark' %>">
+                      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell <%= equipoFinanza.adeuda ? 'text-danger' : 'text-dark' %>" data-label="Saldo">
                         <%= Number(equipoFinanza.saldo_actual || 0).toLocaleString('es-PY') %>
                       </td>
-                      <td class="text-end finanzas-admin-only">
+                      <td class="text-end" data-label="Acciones">
                         <button type="button"
                                 class="btn btn-sm btn-outline-dark"
                                 onclick="abrirDetalleFinanzas('<%= equipoFinanza.id_equipo %>')">
@@ -3259,12 +4531,12 @@ function confirmarToggleEquipo(input) {
                   <th style="width: 38%;">Equipo</th>
                   <th>Grupo</th>
                   <th>PJ</th>
-                  <th>G</th>
-                  <th>E</th>
-                  <th>P</th>
-                  <th>GF</th>
-                  <th>GC</th>
-                  <th>DF</th>
+                  <th class="estadisticas-col-detalle">G</th>
+                  <th class="estadisticas-col-detalle">E</th>
+                  <th class="estadisticas-col-detalle">P</th>
+                  <th class="estadisticas-col-detalle">GF</th>
+                  <th class="estadisticas-col-detalle">GC</th>
+                  <th>DG</th>
                   <th>PTS</th>
                 </tr>
               </thead>
@@ -3283,11 +4555,11 @@ function confirmarToggleEquipo(input) {
                     </td>
                     <td><small><%= item.nombre_grupo %></small></td>
                     <td><%= item.pj %>/<%= item.pj_total %></td>
-                    <td><%= item.pg %></td>
-                    <td><%= item.pe %></td>
-                    <td><%= item.pp %></td>
-                    <td><%= item.gf %></td>
-                    <td><%= item.gc %></td>
+                    <td class="estadisticas-col-detalle"><%= item.pg %></td>
+                    <td class="estadisticas-col-detalle"><%= item.pe %></td>
+                    <td class="estadisticas-col-detalle"><%= item.pp %></td>
+                    <td class="estadisticas-col-detalle"><%= item.gf %></td>
+                    <td class="estadisticas-col-detalle"><%= item.gc %></td>
                     <td><%= item.gf - item.gc %></td>
                     <td><strong><%= item.puntos %></strong></td>
                   </tr>
@@ -3339,6 +4611,9 @@ function confirmarToggleEquipo(input) {
           <button type="button" class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#modalReglaTarjetas">
             <i class="bi bi-shield-exclamation"></i> Regla tarjetas
           </button>
+          <button type="button" class="btn btn-outline-light" data-bs-toggle="modal" data-bs-target="#modalCanchas">
+            <i class="bi bi-geo-alt"></i> Sedes/canchas
+          </button>
           <button type="button" class="btn btn-primary btn-item-nuevo">
             <i class="bi bi-plus-circle"></i> Nuevo item
           </button>
@@ -3371,7 +4646,7 @@ function confirmarToggleEquipo(input) {
                             data-monto="<%= item.monto %>">
                       <i class="bi bi-pencil"></i>
                     </button>
-                    <form action="/items/<%= item.id_item %>/eliminar" method="POST" onsubmit="return confirm('¿Eliminar este item?')" style="display:inline-block;">
+                    <form action="/items/<%= item.id_item %>/eliminar" method="POST" class="form-confirmar-app" data-confirm-title="Eliminar item" data-confirm-message="¿Eliminar este item?" data-confirm-accept="Sí, eliminar" data-confirm-cancel="Cancelar" style="display:inline-block;">
                       <button type="submit" class="btn btn-outline-danger">
                         <i class="bi bi-trash"></i>
                       </button>
@@ -3417,9 +4692,7 @@ function confirmarToggleEquipo(input) {
           <select class="form-select" id="filtroUsuariosRol">
             <option value="">Todos los roles</option>
             <option value="1">Espectador</option>
-            <% if (rol_id == 99) { %>
-              <option value="2">Delegado</option>
-            <% } %>
+            <option value="2">Delegado</option>
             <option value="3">Admin</option>
             <% if (rol_id == 99) { %>
               <option value="99">Super admin</option>
@@ -3429,8 +4702,8 @@ function confirmarToggleEquipo(input) {
         <div class="col-md-2">
           <label class="form-label text-white mb-1" for="filtroUsuariosEstado">Estado</label>
           <select class="form-select" id="filtroUsuariosEstado">
-            <option value="">Todos</option>
-            <option value="1" selected>Activos</option>
+            <option value="" selected>Todos</option>
+            <option value="1">Activos</option>
             <option value="0">Inactivos</option>
           </select>
         </div>
@@ -3526,12 +4799,9 @@ function confirmarToggleEquipo(input) {
                     <% if (rol_id == 99 || Number(u.rol_id) !== 99) { %>
                       <form action="/torneos/<%= torneo.id_torneo %>/usuarios/<%= u.id_usuario %>/permisos" method="POST"
                             class="d-flex gap-1"
-                            onsubmit="return confirm('Cambiar permisos de este usuario?')">
+                            onsubmit="confirmarCambioPermisosUsuario(event)">
                         <select name="rol_id" class="form-select form-select-sm" aria-label="Cambiar permisos">
                           <option value="1" <%= Number(u.rol_id) === 1 ? 'selected' : '' %>>Espectador</option>
-                          <% if (rol_id == 99) { %>
-                            <option value="2" <%= Number(u.rol_id) === 2 ? 'selected' : '' %>>Delegado</option>
-                          <% } %>
                           <option value="3" <%= Number(u.rol_id) === 3 ? 'selected' : '' %>>Admin</option>
                           <% if (rol_id == 99) { %>
                             <option value="99" <%= Number(u.rol_id) === 99 ? 'selected' : '' %>>Super admin</option>
@@ -3552,6 +4822,16 @@ function confirmarToggleEquipo(input) {
                         </button>
                       </form>
                     <% } %>
+                    <% if (rol_id == 99) { %>
+                      <button type="button"
+                              class="btn btn-sm btn-outline-dark btn-editar-usuario-admin"
+                              data-id="<%= u.id_usuario %>"
+                              data-nombre="<%= u.nombre || '' %>"
+                              data-documento="<%= u.documento || '' %>"
+                              data-correo="<%= u.correo || '' %>">
+                        <i class="bi bi-pencil-square"></i> Editar datos
+                      </button>
+                    <% } %>
                   </div>
                 </td>
               </tr>
@@ -3563,9 +4843,105 @@ function confirmarToggleEquipo(input) {
   </div>
   <% } %>
 
+  <% if (rol_id == 3 || rol_id == 99) { %>
+  <div class="tab-pane fade" id="auditoria">
+    <div class="p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h3 class="text-white mb-0">Auditoría</h3>
+          <small class="text-white-50">
+            <%= (contextoAuditoria || {}).entidad || '' %> · <%= (contextoAuditoria || {}).torneo || '' %>
+          </small>
+        </div>
+        <span class="badge text-bg-light">Últimos <%= (auditoria || []).length %> movimientos</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle bg-white" id="tablaAuditoria">
+          <thead class="table-dark">
+            <tr>
+              <th>Fecha</th>
+              <th>Pantalla</th>
+              <th>Equipo / afectado</th>
+              <th>Acción</th>
+              <th>Usuario</th>
+              <th>Detalle</th>
+            </tr>
+            <tr class="table-light">
+              <th></th>
+              <th><input type="text" class="form-control form-control-sm audit-filter" data-col="pantalla" placeholder="Filtrar"></th>
+              <th><input type="text" class="form-control form-control-sm audit-filter" data-col="afectado" placeholder="Filtrar"></th>
+              <th><input type="text" class="form-control form-control-sm audit-filter" data-col="accion" placeholder="Filtrar"></th>
+              <th><input type="text" class="form-control form-control-sm audit-filter" data-col="usuario" placeholder="Filtrar"></th>
+              <th><input type="text" class="form-control form-control-sm audit-filter" data-col="detalle" placeholder="Filtrar"></th>
+            </tr>
+          </thead>
+          <tbody id="auditoriaTbody">
+            <% if (!(auditoria || []).length) { %>
+              <tr>
+                <td colspan="6" class="text-center text-muted py-4">No hay movimientos de auditoría para este contexto.</td>
+              </tr>
+            <% } %>
+            <% (auditoria || []).forEach(registro => { %>
+              <% const fechaAudit = registro.fecha_hora ? new Date(registro.fecha_hora) : null; %>
+              <tr data-pantalla="<%= registro.pantalla || '' %>"
+                  data-afectado="<%= registro.afectado || '' %>"
+                  data-accion="<%= registro.accion || '' %>"
+                  data-usuario="<%= [registro.usuario_display, registro.usuario_documento_display].filter(Boolean).join(' ') %>"
+                  data-detalle="<%= registro.detalle_legible || '' %>">
+                <td>
+                  <small>
+                    <%= fechaAudit && !Number.isNaN(fechaAudit.getTime()) ? fechaAudit.toLocaleString('es-PY', { dateStyle: 'short', timeStyle: 'short' }) : '-' %>
+                  </small>
+                </td>
+                <td><%= registro.pantalla || '-' %></td>
+                <td><%= registro.afectado || '-' %></td>
+                <td>
+                  <span class="badge <%= registro.accion === 'DELETE' ? 'text-bg-danger' : (registro.accion === 'UPDATE' ? 'text-bg-primary' : (registro.accion === 'INGRESO' ? 'text-bg-dark' : 'text-bg-success')) %>">
+                    <%= registro.accion %>
+                  </span>
+                </td>
+                <td>
+                  <strong><%= registro.usuario_display || 'Sistema' %></strong>
+                  <% if (registro.usuario_documento_display) { %>
+                    <br><small class="text-muted"><%= registro.usuario_documento_display %></small>
+                  <% } %>
+                </td>
+                <td><%= registro.detalle_legible || '-' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <% } %>
+
   <div class="tab-pane fade tab-pane-spaced" id="equipos">
   <div class="card bg-light bg-opacity-75 p-3 shadow">
-    <h3>Equipos</h3>
+    <div class="d-flex justify-content-between align-items-center mb-3 jugadores-header">
+      <h3 class="mb-0">Equipos</h3>
+      <% if (rol_id == 3 || rol_id == 99) { %>
+        <form action="/torneos/<%= torneo.id_torneo %>/permitir-agregar-jugadores"
+              method="POST"
+              class="form-switch-agregar-jugadores">
+          <input type="hidden"
+                 name="permitir_agregar_jugadores"
+                 value="<%= torneo.permitir_agregar_jugadores === false ? '1' : '0' %>">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input"
+                   type="checkbox"
+                   role="switch"
+                   id="switchAgregarJugadoresDelegados"
+                   onchange="confirmarPermisoAgregarJugadores(this)"
+                   <%= torneo.permitir_agregar_jugadores === false ? '' : 'checked' %>>
+            <label class="form-check-label" for="switchAgregarJugadoresDelegados">
+              Delegados agregan jugadores
+            </label>
+          </div>
+        </form>
+      <% } %>
+    </div>
 
     <% if (torneo.Equipos && torneo.Equipos.length > 0) { %>
       <ul class="list-group">
@@ -3625,6 +5001,27 @@ function confirmarToggleEquipo(input) {
 
 
   <!-- pestaña jugadores -->
+  <script>
+    async function confirmarPermisoAgregarJugadores(input) {
+      const activar = input.checked;
+      const mensaje = activar
+        ? 'Si activa esta opcion, permitira que los delegados puedan ingresar nuevos jugadores a sus equipos.'
+        : 'Si desactiva esta opcion, los delegados ya no podran agregar jugadores a sus equipos.';
+
+      const confirmado = await confirmarApp(mensaje, 'Confirmar permiso', {
+        aceptar: 'Aceptar',
+        cancelar: 'Cancelar'
+      });
+
+      if (!confirmado) {
+        input.checked = !activar;
+        return;
+      }
+
+      input.closest('form').submit();
+    }
+  </script>
+
   <div class="tab-pane fade tab-pane-spaced" id="jugadores">
   <div class="card bg-light bg-opacity-75 p-3 shadow jugadores-panel">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -3661,7 +5058,7 @@ function confirmarToggleEquipo(input) {
     </div>
 
     <!-- Tabla de jugadores -->
-    <table class="table table-striped table-hover align-middle shadow-sm">
+    <table class="table table-striped table-hover align-middle shadow-sm jugadores-table-mobile">
       <thead class="table-dark">
         <tr>
           <th>Nombre</th>
@@ -3682,15 +5079,15 @@ function confirmarToggleEquipo(input) {
               data-documento="<%= j.documento || '' %>"
               data-equipo="<%= j.equipo || '' %>"
               data-nombre="<%= [j.nombre, j.apellido].filter(Boolean).join(' ') %>">
-            <td>
+            <td data-label="Nombre">
               <%= j.nombre %>
               <% if (j.capitan) { %>
                 <span class="badge text-bg-warning ms-1">c</span>
               <% } %>
             </td>
-            <td><%= j.apellido %></td>
-            <td><%= j.documento %></td>
-            <td>
+            <td data-label="Apellido"><%= j.apellido %></td>
+            <td data-label="Documento"><%= j.documento %></td>
+            <td data-label="Fecha Nac.">
               <% if (j.fecha_nacimiento_fmt) { %>
                 <% const partesFechaNacimiento = String(j.fecha_nacimiento_fmt).slice(0, 10).split('-'); %>
                 <%= partesFechaNacimiento.length === 3 ? `${partesFechaNacimiento[2]}/${partesFechaNacimiento[1]}/${partesFechaNacimiento[0]}` : j.fecha_nacimiento_fmt %>
@@ -3698,11 +5095,11 @@ function confirmarToggleEquipo(input) {
                 -
               <% } %>
             </td>
-            <td>
+            <td data-label="Edad">
               <span class="badge bg-primary"><%= j.edad %> años</span>
               <span class="badge bg-info text-dark"><%= j.meses %> meses</span>
             </td>
-            <td>
+            <td data-label="Estado">
               <span class="badge <%= j.estado_vinculo_bool ? 'text-bg-primary' : 'text-bg-warning' %>">
                 <%= j.estado_vinculo_bool ? 'Activo' : 'Inactivo' %>
               </span>
@@ -3714,8 +5111,8 @@ function confirmarToggleEquipo(input) {
 
 
 
-            <td class="jugador-observaciones-cell"><%= j.observaciones || '' %></td>
-            <td>
+            <td class="jugador-observaciones-cell" data-label="Observaciones"><%= j.observaciones || '' %></td>
+            <td data-label="Equipo">
               <span class="jugador-equipo-estado <%= j.estado_vinculo === 'Activo' ? 'text-primary' : (j.estado_vinculo === 'Inactivo' ? 'text-warning' : 'text-muted') %>">
                 <%= j.equipo %> <%= j.estado_vinculo === 'Inactivo' ? '(Inactivo)' : '' %>
               </span>
@@ -3725,7 +5122,7 @@ function confirmarToggleEquipo(input) {
               <br>
               <small class="text-muted"><%= j.tipo_vinculo %></small>
             </td>
-            <td class="jugadores-admin-only">
+            <td class="jugadores-admin-only" data-label="Acciones">
               <div class="btn-group">
                 <a href="/jugadores/editar/<%= j.id_jugador %>" 
                    class="btn btn-sm btn-outline-secondary" title="Editar">
@@ -3745,9 +5142,9 @@ function confirmarToggleEquipo(input) {
   <div class="modal fade" id="modalAsignarJugador" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header bg-dark text-white">
+      <div class="modal-header bg-primary text-white">
         <h5 class="modal-title">Asignar Jugadores</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <%- include('../partials/listaJugadores', { jugadores: jugadores }) %>
@@ -3767,9 +5164,9 @@ function confirmarToggleEquipo(input) {
   <div class="modal fade" id="modalAsignarDelegado" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
-        <div class="modal-header bg-dark text-white">
+        <div class="modal-header bg-primary text-white">
           <h5 class="modal-title">Asignar Delegados</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
 
         <div class="modal-body">
@@ -3804,12 +5201,20 @@ document.querySelectorAll('.form-agregar-equipo').forEach(form => {
       const data = await response.json();
 
       if (!data.ok) {
-        alert(data.message || 'No se pudo validar el equipo.');
+        mostrarAvisoApp(data.message || 'No se pudo validar el equipo.', 'Equipos');
         return;
       }
 
       if (data.requiereConfirmacion) {
-        if (!confirm(data.message)) return;
+        const confirmado = await confirmarApp(
+          data.message || 'Este equipo ya pertenece a otro grupo. ¿Desea moverlo?',
+          'Mover equipo',
+          {
+            aceptar: 'Sí, mover equipo',
+            cancelar: 'Cancelar'
+          }
+        );
+        if (!confirmado) return;
 
         const input = document.createElement('input');
         input.type = 'hidden';
@@ -3822,7 +5227,7 @@ document.querySelectorAll('.form-agregar-equipo').forEach(form => {
       form.submit();
     } catch (error) {
       console.error('Error al validar mudanza:', error);
-      alert('Error al validar el equipo.');
+      mostrarAvisoApp('Error al validar el equipo.', 'Equipos');
     }
   });
 });
@@ -3903,6 +5308,98 @@ document.getElementById('filtroUsuariosTorneo')?.addEventListener('change', apli
 document.getElementById('filtroUsuariosRol')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
 document.getElementById('filtroUsuariosEstado')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
 aplicarFiltrosUsuariosAdmin();
+
+function aplicarFiltrosAuditoria() {
+  const filtros = {};
+  document.querySelectorAll('.audit-filter').forEach(input => {
+    filtros[input.dataset.col] = (input.value || '').trim().toUpperCase();
+  });
+
+  document.querySelectorAll('#tablaAuditoria tbody tr').forEach(row => {
+    if (!row.dataset.pantalla) return;
+    const visible = Object.entries(filtros).every(([col, valor]) => {
+      if (!valor) return true;
+      return String(row.dataset[col] || '').toUpperCase().includes(valor);
+    });
+    row.classList.toggle('d-none', !visible);
+  });
+}
+
+document.querySelectorAll('.audit-filter').forEach(input => {
+  input.addEventListener('input', aplicarFiltrosAuditoria);
+});
+
+document.querySelectorAll('.dashboard-tab-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetTab = btn.dataset.targetTab;
+    const targetSubtab = btn.dataset.targetSubtab;
+    const trigger = document.querySelector(`.navbar [href="${targetTab}"]`);
+
+    if (trigger) {
+      bootstrap.Tab.getOrCreateInstance(trigger).show();
+      window.location.hash = targetTab;
+    }
+
+    if (targetSubtab) {
+      setTimeout(() => {
+        const subtrigger = document.querySelector(`[data-bs-target="${targetSubtab}"]`);
+        if (subtrigger) bootstrap.Tab.getOrCreateInstance(subtrigger).show();
+      }, 60);
+    }
+  });
+});
+
+function claseAccionAuditoria(accion) {
+  if (accion === 'DELETE') return 'text-bg-danger';
+  if (accion === 'UPDATE') return 'text-bg-primary';
+  if (accion === 'INGRESO') return 'text-bg-dark';
+  return 'text-bg-success';
+}
+
+function formatoFechaAuditoria(valor) {
+  const fecha = valor ? new Date(valor) : null;
+  return fecha && !Number.isNaN(fecha.getTime())
+    ? fecha.toLocaleString('es-PY', { dateStyle: 'short', timeStyle: 'short' })
+    : '-';
+}
+
+async function refrescarAuditoria() {
+  const tbody = document.getElementById('auditoriaTbody');
+  if (!tbody) return;
+
+  try {
+    const response = await fetch('/torneos/<%= torneo.id_torneo %>/auditoria/resumen');
+    const data = await response.json();
+    if (!data.success) return;
+
+    const registros = data.auditoria || [];
+    if (!registros.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No hay movimientos de auditoría para este contexto.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = registros.map(registro => `
+      <tr data-pantalla="${escaparHtml(registro.pantalla || '')}"
+          data-afectado="${escaparHtml(registro.afectado || '')}"
+          data-accion="${escaparHtml(registro.accion || '')}"
+          data-usuario="${escaparHtml([registro.usuario_display, registro.usuario_documento_display].filter(Boolean).join(' '))}"
+          data-detalle="${escaparHtml(registro.detalle_legible || '')}">
+        <td><small>${formatoFechaAuditoria(registro.fecha_hora)}</small></td>
+        <td>${escaparHtml(registro.pantalla || '-')}</td>
+        <td>${escaparHtml(registro.afectado || '-')}</td>
+        <td><span class="badge ${claseAccionAuditoria(registro.accion)}">${escaparHtml(registro.accion || '-')}</span></td>
+        <td>
+          <strong>${escaparHtml(registro.usuario_display || 'Sistema')}</strong>
+          ${registro.usuario_documento_display ? `<br><small class="text-muted">${escaparHtml(registro.usuario_documento_display)}</small>` : ''}
+        </td>
+        <td>${escaparHtml(registro.detalle_legible || '-')}</td>
+      </tr>
+    `).join('');
+    aplicarFiltrosAuditoria();
+  } catch (error) {
+    console.error('Error al refrescar auditoria:', error);
+  }
+}
 
 function aplicarFiltroPartidosFechaCalendario() {
   const fecha = document.getElementById('filtroPartidosFechaCalendario')?.value || '';
@@ -4002,6 +5499,10 @@ document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
     } else if (sessionStorage.getItem('usuariosModoAdmin') !== '1') {
       activarVistaPublicaUsuarios();
     }
+
+    if (href === '#auditoria') {
+      refrescarAuditoria();
+    }
   });
 });
 
@@ -4047,6 +5548,83 @@ if (sessionStorage.getItem('usuariosModoAdmin') === '1') {
 } else {
   activarVistaPublicaUsuarios();
 }
+
+function inicializarPullToRefresh() {
+  const indicador = document.getElementById('pullRefreshIndicator');
+  if (!indicador || !window.matchMedia('(pointer: coarse)').matches) return;
+
+  const texto = indicador.querySelector('span');
+  const umbralActivacion = 92;
+  const umbralVisible = 24;
+  let inicioY = 0;
+  let distancia = 0;
+  let arrastrando = false;
+  let actualizando = false;
+
+  function scrollArriba() {
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    return scrollTop <= 0;
+  }
+
+  function objetivoInteractivo(target) {
+    return Boolean(target?.closest('input, textarea, select, button, a, .modal, .dropdown-menu'));
+  }
+
+  function limpiarIndicador() {
+    indicador.classList.remove('is-visible', 'is-ready');
+    indicador.style.transform = '';
+    if (texto) texto.textContent = 'Desliza para actualizar';
+  }
+
+  document.addEventListener('touchstart', event => {
+    if (actualizando || event.touches.length !== 1 || objetivoInteractivo(event.target) || !scrollArriba()) return;
+    inicioY = event.touches[0].clientY;
+    distancia = 0;
+    arrastrando = true;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', event => {
+    if (!arrastrando || actualizando || event.touches.length !== 1) return;
+    distancia = event.touches[0].clientY - inicioY;
+
+    if (distancia <= umbralVisible || !scrollArriba()) {
+      if (distancia < 0) arrastrando = false;
+      limpiarIndicador();
+      return;
+    }
+
+    event.preventDefault();
+    const desplazamiento = Math.min(46, (distancia - umbralVisible) * 0.45);
+    const listo = distancia >= umbralActivacion;
+    indicador.classList.add('is-visible');
+    indicador.classList.toggle('is-ready', listo);
+    indicador.style.transform = `translate(-50%, ${desplazamiento}px)`;
+    if (texto) texto.textContent = listo ? 'Suelta para actualizar' : 'Desliza para actualizar';
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!arrastrando || actualizando) return;
+    arrastrando = false;
+
+    if (distancia >= umbralActivacion) {
+      actualizando = true;
+      indicador.classList.add('is-visible', 'is-ready', 'is-refreshing');
+      indicador.style.transform = 'translate(-50%, 46px)';
+      if (texto) texto.textContent = 'Actualizando...';
+      window.location.reload();
+      return;
+    }
+
+    limpiarIndicador();
+  }, { passive: true });
+
+  document.addEventListener('touchcancel', () => {
+    arrastrando = false;
+    if (!actualizando) limpiarIndicador();
+  }, { passive: true });
+}
+
+inicializarPullToRefresh();
 </script>
 
 

@@ -8,7 +8,12 @@ router.get('/', async (req, res) => {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }
-  const entidades = await Entity.findAll();
+  const entidades = await Entity.findAll({
+    order: [
+      ['activo', 'DESC'],
+      ['codigo', 'ASC']
+    ]
+  });
   res.render('admin/index', { entidades});
 });
 

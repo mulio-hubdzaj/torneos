@@ -7,11 +7,19 @@ const { Torneo, sequelize } = require('../models');
 const torneoController = require('../controllers/torneoController');
 const upload = multer({ dest: 'public/uploads/' });
 
+function requiereAdmin(req, res, next) {
+  if (![3, 99].includes(Number(req.session.rol_id))) {
+    req.flash('danger', 'No tiene permisos para administrar torneos');
+    return res.redirect(req.get('referer') || '/torneos');
+  }
+  next();
+}
+
 // Listar torneos (vista general)
 router.get('/', torneoController.listar);
 
 // Formulario de creación
-router.get('/crear', (req, res) => {
+router.get('/crear', requiereAdmin, (req, res) => {
   const entityId = req.query.entity_id;
   res.render('torneos/crear', {
     entityId,
@@ -20,21 +28,27 @@ router.get('/crear', (req, res) => {
 });
 
 // Guardar torneo nuevo
-router.post('/crear', async (req, res) => {
+router.post('/crear', requiereAdmin, async (req, res) => {
   try {
     await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
     const { nombre_torneo, temporada, fecha_inicio, entity_id } = req.body;
+    const entityIdSeguro = Number(req.session.rol_id) === 99 ? Number(entity_id) : Number(req.session.entity_id);
+
+    if (!entityIdSeguro || (Number(req.session.rol_id) !== 99 && Number(entity_id) !== entityIdSeguro)) {
+      req.flash("danger", "No puede crear torneos para otra entidad");
+      return res.redirect(req.get('referer') || '/torneos');
+    }
 
     await Torneo.create({
       nombre_torneo,
       temporada,
       fecha_inicio,
       estado: true,
-      entity_id
+      entity_id: entityIdSeguro
     });
 
     req.flash("success", "Torneo creado correctamente");
-    res.redirect(`/entidad/gestionar/${entity_id}`);
+    res.redirect(`/entidad/gestionar/${entityIdSeguro}`);
   } catch (error) {
     console.error("Error al crear torneo:", error);
     req.flash("danger", "No se pudo crear el torneo");
@@ -43,13 +57,18 @@ router.post('/crear', async (req, res) => {
 });
 
 // Cambiar estado
-router.post('/cambiar-estado/:id', async (req, res) => {
+router.post('/cambiar-estado/:id', requiereAdmin, async (req, res) => {
   try {
     await sequelize.query("SET app.usuario_id = '" + req.session.usuario_id + "'");
     const torneo = await Torneo.findByPk(req.params.id);
     if (!torneo) {
       req.flash("danger", "Torneo no encontrado");
       return res.redirect('back');
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      req.flash("danger", "No puede modificar torneos de otra entidad");
+      return res.redirect('/torneos');
     }
 
     torneo.estado = !torneo.estado;
@@ -67,18 +86,30 @@ router.post('/cambiar-estado/:id', async (req, res) => {
 // Gestionar torneo específico
 router.get('/gestionar/:id_torneo', torneoController.gestionar);
 router.get('/:id_torneo/finanzas/resumen', torneoController.resumenFinanzas);
-router.post('/:id_torneo/portada', upload.single('portada'), torneoController.actualizarPortada);
-router.post('/:id_torneo/portada/eliminar', torneoController.eliminarPortada);
-router.post('/:id_torneo/regla-tarjetas', torneoController.actualizarReglaTarjetas);
+router.get('/:id_torneo/auditoria/resumen', torneoController.auditoriaResumen);
+router.post('/:id_torneo/portada', requiereAdmin, upload.single('portada'), torneoController.actualizarPortada);
+router.post('/:id_torneo/portada/eliminar', requiereAdmin, torneoController.eliminarPortada);
+router.post('/:id_torneo/permitir-agregar-jugadores', requiereAdmin, torneoController.actualizarPermitirAgregarJugadores);
+router.post('/:id_torneo/regla-tarjetas', requiereAdmin, torneoController.actualizarReglaTarjetas);
+router.post('/:id_torneo/canchas', requiereAdmin, torneoController.crearCancha);
+router.post('/:id_torneo/canchas/:id_cancha', requiereAdmin, torneoController.actualizarCancha);
+router.post('/:id_torneo/canchas/:id_cancha/toggle', requiereAdmin, torneoController.toggleCancha);
 router.post('/:id_torneo/usuarios/:id_usuario/toggle', torneoController.toggleUsuarioAdmin);
 router.post('/:id_torneo/usuarios/:id_usuario/permisos', torneoController.cambiarPermisosUsuario);
 router.post('/:id_torneo/usuarios/:id_usuario/reset-password', torneoController.resetearContrasenaUsuario);
+router.post('/:id_torneo/usuarios/:id_usuario/editar', torneoController.editarDatosUsuarioSuperAdmin);
 
 
 // Ver torneos activos y grupos (solo lectura)
 router.get('/grupos', async (req, res) => {
   try {
-    const entityId = req.query.entity_id || req.session.entity_id;
+    const rolSesion = Number(req.session.rol_id);
+    const entityId = rolSesion === 99 ? (req.query.entity_id || req.session.entity_id) : req.session.entity_id;
+
+    if (!entityId || (rolSesion !== 99 && req.query.entity_id && Number(req.query.entity_id) !== Number(req.session.entity_id))) {
+      req.flash("danger", "No puede consultar grupos de otra entidad");
+      return res.redirect('/torneos');
+    }
 
     // Traer torneos activos de la entidad
     const torneos = await Torneo.findAll({
@@ -88,6 +119,19 @@ router.get('/grupos', async (req, res) => {
     // Si se selecciona un torneo, traer sus grupos activos
     let grupos = [];
     if (req.query.torneo_id) {
+      const torneoSeleccionado = await Torneo.findOne({
+        where: {
+          id_torneo: req.query.torneo_id,
+          entity_id: entityId
+        },
+        attributes: ['id_torneo']
+      });
+
+      if (!torneoSeleccionado) {
+        req.flash("danger", "No puede consultar grupos de un torneo ajeno");
+        return res.redirect('/torneos');
+      }
+
       grupos = await sequelize.query(
         "SELECT * FROM grupos WHERE id_torneo = :torneo_id AND estado = true",
         { replacements: { torneo_id: req.query.torneo_id }, type: sequelize.QueryTypes.SELECT }

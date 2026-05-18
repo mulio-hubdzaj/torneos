@@ -54,6 +54,10 @@ module.exports = (sequelize) => {
     id_grupo: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    id_cancha: {
+      type: DataTypes.INTEGER,
+      allowNull: true
     }
   }, {
     tableName: 'partidos',

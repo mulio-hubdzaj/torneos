@@ -2,33 +2,34 @@
 <html>
 <head>
   <title>Bienvenido al sistema</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
-<body class="d-flex justify-content-center align-items-center vh-100">
+<body class="welcome-index-page d-flex justify-content-center align-items-center min-vh-100">
 
-  <div class="card shadow p-4" style="min-width: 350px;">
+  <div class="card shadow p-4 welcome-card">
     <h1 class="mb-4 text-center">Bienvenido a la App de gestion deportiva</h1>
 
-<!-- Bloque de mensajes flash -->
-<% if (locals.messages) { %>
-  <% if (locals.messages.success && locals.messages.success.length > 0) { %>
-    <div class="alert alert-success"><%= locals.messages.success[0] %></div>
-  <% } %>
-  <% if (locals.messages.error && locals.messages.error.length > 0) { %>
-    <div class="alert alert-danger"><%= locals.messages.error[0] %></div>
-  <% } %>
-  <% if (locals.messages.danger && locals.messages.danger.length > 0) { %>
-    <div class="alert alert-danger"><%= locals.messages.danger[0] %></div>
-  <% } %>
-  <% if (locals.messages.info && locals.messages.info.length > 0) { %>
-    <div class="alert alert-info"><%= locals.messages.info[0] %></div>
-  <% } %>
-<% } %>
+    <% if (locals.messages) { %>
+      <% if (locals.messages.success && locals.messages.success.length > 0) { %>
+        <div class="alert alert-success"><%= locals.messages.success[0] %></div>
+      <% } %>
+      <% if (locals.messages.error && locals.messages.error.length > 0) { %>
+        <div class="alert alert-danger"><%= locals.messages.error[0] %></div>
+      <% } %>
+      <% if (locals.messages.danger && locals.messages.danger.length > 0) { %>
+        <div class="alert alert-danger"><%= locals.messages.danger[0] %></div>
+      <% } %>
+      <% if (locals.messages.info && locals.messages.info.length > 0) { %>
+        <div class="alert alert-info"><%= locals.messages.info[0] %></div>
+      <% } %>
+    <% } %>
 
-  <p>
-    <a href="/login" class="btn btn-primary">Iniciar sesión</a>
-    <a href="/registro" class="btn btn-secondary">Crear cuenta</a>
-  </p>
+    <div class="welcome-actions">
+      <a href="/login" class="btn btn-primary">Iniciar sesion</a>
+      <a href="/registro" class="btn btn-secondary">Crear cuenta</a>
+    </div>
+  </div>
 </body>
 </html>

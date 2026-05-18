@@ -51,7 +51,18 @@
 
       <div class="mb-3">
         <label for="fecha_nacimiento" class="form-label">Fecha de Nacimiento</label>
-        <input type="date" class="form-control" id="fecha_nacimiento" name="fecha_nacimiento" required>
+        <input type="text"
+               class="form-control fecha-manual"
+               id="fecha_nacimiento"
+               name="fecha_nacimiento"
+               inputmode="numeric"
+               autocomplete="off"
+               maxlength="10"
+               placeholder="DD/MM/AAAA"
+               pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}"
+               title="Ingrese la fecha con formato DD/MM/AAAA"
+               required>
+        <div class="form-text">Formato: DD/MM/AAAA</div>
       </div>
 
       <% if (Number(rol_id) === 2) { %>
@@ -95,6 +106,15 @@
     if (this.value.length > 11) {
       this.value = this.value.slice(0, 11);
     }
+  });
+
+  document.getElementById("fecha_nacimiento").addEventListener("input", function() {
+    const numeros = this.value.replace(/\D/g, "").slice(0, 8);
+    const partes = [];
+    if (numeros.length > 0) partes.push(numeros.slice(0, 2));
+    if (numeros.length > 2) partes.push(numeros.slice(2, 4));
+    if (numeros.length > 4) partes.push(numeros.slice(4, 8));
+    this.value = partes.join("/");
   });
 </script>
 
