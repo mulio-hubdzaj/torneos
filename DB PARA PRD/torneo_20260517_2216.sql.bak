@@ -1,0 +1,4136 @@
+﻿--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 12.3
+-- Dumped by pg_dump version 12.3
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+--
+-- Name: audit_jugadores(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.audit_jugadores() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_old jsonb;
+  v_new jsonb;
+  v_registro jsonb;
+  v_entity_id integer;
+  v_usuario uuid;
+BEGIN
+  v_old := CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END;
+  v_new := CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END;
+  v_registro := COALESCE(v_new, v_old);
+
+  v_entity_id := COALESCE(
+    NULLIF(v_registro->>'entity_id', '')::integer,
+    NULLIF(current_setting('app.entity_id', true), '')::integer
+  );
+
+  v_usuario := NULLIF(current_setting('app.usuario_id', true), '')::uuid;
+
+  INSERT INTO public.auditoria(id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+  VALUES (
+    v_usuario,
+    TG_OP,
+    'jugadores',
+    to_jsonb(public.fn_auditoria_detalle_simple('jugadores', TG_OP, v_old, v_new)),
+    now(),
+    v_entity_id
+  );
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.audit_jugadores() OWNER TO postgres;
+
+--
+-- Name: fn_asignar_espectador_a_delegado(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_asignar_espectador_a_delegado() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Cambiar rol del usuario a delegado (2) si era espectador (1)
+  UPDATE usuarios
+  SET rol_id = 2
+  WHERE id_usuario = NEW.id_usuario
+    AND rol_id = 1;
+
+  -- Registrar en auditorÃ­a la asignaciÃ³n
+  INSERT INTO auditoria(id_usuario, accion, tabla_afectada, detalle, entity_id)
+  VALUES (
+    NEW.id_usuario,
+    'UPDATE',
+    'usuarios',
+    jsonb_build_object(
+      'rol', 'Espectador â†’ Delegado',
+      'id_equipo', NEW.id_equipo,
+      'id_torneo', NEW.id_torneo
+    ),
+    NEW.id_torneo
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_asignar_espectador_a_delegado() OWNER TO postgres;
+
+--
+-- Name: fn_audit_jugadores_equipos(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_audit_jugadores_equipos() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_old jsonb;
+  v_new jsonb;
+  v_registro jsonb;
+  v_entity_id integer;
+  v_usuario uuid;
+BEGIN
+  v_old := CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END;
+  v_new := CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END;
+  v_registro := COALESCE(v_new, v_old);
+
+  SELECT j.entity_id INTO v_entity_id
+  FROM public.jugadores j
+  WHERE j.id_jugador = NULLIF(v_registro->>'id_jugador', '')::integer;
+
+  v_entity_id := COALESCE(v_entity_id, NULLIF(current_setting('app.entity_id', true), '')::integer);
+  v_usuario := NULLIF(current_setting('app.usuario_id', true), '')::uuid;
+
+  INSERT INTO public.auditoria(id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+  VALUES (
+    v_usuario,
+    TG_OP,
+    'jugadores_equipos',
+    to_jsonb(public.fn_auditoria_detalle_simple('jugadores_equipos', TG_OP, v_old, v_new)),
+    now(),
+    v_entity_id
+  );
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_audit_jugadores_equipos() OWNER TO postgres;
+
+--
+-- Name: fn_auditar_entity(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditar_entity() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_id_usuario UUID;
+BEGIN
+    -- Leer variable de sesiÃ³n
+    BEGIN
+        v_id_usuario := current_setting('app.usuario_id', true)::UUID;
+    EXCEPTION WHEN others THEN
+        v_id_usuario := NULL;
+    END;
+
+    INSERT INTO auditoria(
+        id_usuario,
+        accion,
+        tabla_afectada,
+        detalle,
+        entity_id,
+        fecha_hora
+    )
+    VALUES (
+        v_id_usuario,
+        TG_OP,
+        'entity',
+        row_to_json(CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END),
+        COALESCE(NEW.entity_id, OLD.entity_id),
+        NOW()
+    );
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditar_entity() OWNER TO postgres;
+
+--
+-- Name: fn_auditoria(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_old jsonb;
+  v_new jsonb;
+  v_registro jsonb;
+  v_entity_id integer;
+  v_usuario uuid;
+BEGIN
+  v_old := CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END;
+  v_new := CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END;
+  v_registro := COALESCE(v_new, v_old);
+
+  v_entity_id := COALESCE(
+    NULLIF(v_registro->>'entity_id', '')::integer,
+    NULLIF(current_setting('app.entity_id', true), '')::integer
+  );
+
+  v_usuario := NULLIF(current_setting('app.usuario_id', true), '')::uuid;
+
+  INSERT INTO public.auditoria(id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+  VALUES (
+    v_usuario,
+    TG_OP,
+    TG_TABLE_NAME,
+    to_jsonb(public.fn_auditoria_detalle_simple(TG_TABLE_NAME, TG_OP, v_old, v_new)),
+    now(),
+    v_entity_id
+  );
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria() OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_campo_legible(text); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_campo_legible(p_campo text) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RETURN CASE p_campo
+    WHEN 'nombre_grupo' THEN 'nombre'
+    WHEN 'nombre_torneo' THEN 'nombre'
+    WHEN 'id_grupo' THEN 'grupo'
+    WHEN 'id_torneo' THEN 'torneo'
+    WHEN 'id_equipo' THEN 'equipo'
+    WHEN 'id_jugador' THEN 'jugador'
+    WHEN 'id_usuario' THEN 'usuario'
+    WHEN 'rol_id' THEN 'rol'
+    WHEN 'contrasena_hash' THEN 'contrasena'
+    ELSE replace(p_campo, '_', ' ')
+  END;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_campo_legible(p_campo text) OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_detalle_simple(text, text, jsonb, jsonb); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_detalle_simple(p_tabla text, p_accion text, p_old jsonb, p_new jsonb) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_detalle text;
+  v_grupo_origen text;
+  v_grupo_destino text;
+  v_registro jsonb;
+  v_usuario_afectado text;
+  v_rol_anterior text;
+  v_rol_nuevo text;
+BEGIN
+  v_registro := COALESCE(p_new, p_old);
+
+  IF p_accion = 'INSERT' THEN
+    RETURN 'Se creo ' || p_tabla || ': ' || public.fn_auditoria_nombre_registro(p_tabla, v_registro);
+  END IF;
+
+  IF p_accion = 'DELETE' THEN
+    RETURN 'Se elimino ' || p_tabla || ': ' || public.fn_auditoria_nombre_registro(p_tabla, v_registro);
+  END IF;
+
+  IF p_accion = 'UPDATE' THEN
+    IF p_tabla = 'usuarios' AND p_old->'rol_id' IS DISTINCT FROM p_new->'rol_id' THEN
+      v_usuario_afectado := public.fn_auditoria_nombre_registro('usuarios', p_new);
+
+      v_rol_anterior := CASE p_old->>'rol_id'
+        WHEN '1' THEN 'espectador'
+        WHEN '2' THEN 'delegado'
+        WHEN '3' THEN 'admin'
+        WHEN '99' THEN 'super admin'
+        ELSE 'rol ' || COALESCE(p_old->>'rol_id', '-')
+      END;
+
+      v_rol_nuevo := CASE p_new->>'rol_id'
+        WHEN '1' THEN 'espectador'
+        WHEN '2' THEN 'delegado'
+        WHEN '3' THEN 'admin'
+        WHEN '99' THEN 'super admin'
+        ELSE 'rol ' || COALESCE(p_new->>'rol_id', '-')
+      END;
+
+      RETURN 'usuarios: ' || v_usuario_afectado
+        || '; Se cambio permisos de ' || v_usuario_afectado
+        || ': ' || v_rol_anterior || ' -> ' || v_rol_nuevo;
+    END IF;
+
+    IF p_tabla = 'equipos' AND p_old->'id_grupo' IS DISTINCT FROM p_new->'id_grupo' THEN
+      SELECT nombre_grupo INTO v_grupo_origen
+      FROM public.grupos
+      WHERE id_grupo = NULLIF(p_old->>'id_grupo', '')::integer;
+
+      SELECT nombre_grupo INTO v_grupo_destino
+      FROM public.grupos
+      WHERE id_grupo = NULLIF(p_new->>'id_grupo', '')::integer;
+
+      RETURN 'Se movio de grupo '
+        || COALESCE(v_grupo_origen, public.fn_auditoria_valor_texto(p_old->'id_grupo'))
+        || ' a grupo '
+        || COALESCE(v_grupo_destino, public.fn_auditoria_valor_texto(p_new->'id_grupo'));
+    END IF;
+
+    SELECT string_agg(
+      'Se cambio '
+        || public.fn_auditoria_campo_legible(n.key)
+        || ' de '
+        || public.fn_auditoria_valor_texto(o.value)
+        || ' a '
+        || public.fn_auditoria_valor_texto(n.value),
+      '; ' ORDER BY n.key
+    )
+    INTO v_detalle
+    FROM jsonb_each(COALESCE(p_new, '{}'::jsonb)) n
+    LEFT JOIN jsonb_each(COALESCE(p_old, '{}'::jsonb)) o ON o.key = n.key
+    WHERE n.key NOT IN (
+      'entity_id',
+      'fecha_hora',
+      'fecha_movimiento',
+      'fecha_asignacion',
+      'creado_en',
+      'updated_at',
+      'created_at'
+    )
+    AND o.value IS DISTINCT FROM n.value;
+
+    RETURN COALESCE(v_detalle, 'Se actualizo ' || p_tabla || ': ' || public.fn_auditoria_nombre_registro(p_tabla, v_registro));
+  END IF;
+
+  RETURN 'Se registro accion ' || p_accion || ' en ' || p_tabla;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_detalle_simple(p_tabla text, p_accion text, p_old jsonb, p_new jsonb) OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_entity(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_entity() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    detalle_id INTEGER;
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        detalle_id := NEW.entity_id;
+    ELSIF TG_OP = 'UPDATE' THEN
+        detalle_id := NEW.entity_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        detalle_id := OLD.entity_id;
+    END IF;
+
+    INSERT INTO auditoria(
+        tabla_afectada,
+        accion,
+        detalle,
+        fecha_hora,
+        entity_id
+    )
+    VALUES (
+        TG_TABLE_NAME,
+        TG_OP,
+        jsonb_build_object('id', detalle_id),
+        CURRENT_TIMESTAMP,
+        detalle_id
+    );
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_entity() OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_grupos(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_grupos() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    INSERT INTO auditoria(
+        tabla_afectada,
+        accion,
+        detalle,
+        fecha_hora,
+        entity_id
+    )
+    VALUES (
+        TG_TABLE_NAME,
+        TG_OP,
+        jsonb_build_object(
+            'id_grupo', NEW.id_grupo,
+            'nombre_grupo', NEW.nombre_grupo,
+            'id_torneo', NEW.id_torneo,
+            'entity_id', NEW.entity_id,
+            'estado', NEW.estado
+        ),
+        CURRENT_TIMESTAMP,
+        NEW.entity_id
+    );
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_grupos() OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_nombre_registro(text, jsonb); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_nombre_registro(p_tabla text, p_registro jsonb) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_nombre text;
+BEGIN
+  IF p_registro IS NULL THEN
+    RETURN 'registro';
+  END IF;
+
+  v_nombre := CASE p_tabla
+    WHEN 'grupos' THEN p_registro->>'nombre_grupo'
+    WHEN 'torneos' THEN p_registro->>'nombre_torneo'
+    WHEN 'finanzas' THEN p_registro->>'concepto'
+    WHEN 'jugadores' THEN concat_ws(' ', p_registro->>'nombre', p_registro->>'apellido')
+    WHEN 'usuarios' THEN concat_ws(' ', p_registro->>'nombre', p_registro->>'documento')
+    ELSE p_registro->>'nombre'
+  END;
+
+  RETURN COALESCE(NULLIF(trim(v_nombre), ''), 'registro');
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_nombre_registro(p_tabla text, p_registro jsonb) OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_torneos(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_torneos() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_old jsonb;
+  v_new jsonb;
+  v_registro jsonb;
+  v_entity_id integer;
+  v_usuario uuid;
+BEGIN
+  v_old := CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END;
+  v_new := CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END;
+  v_registro := COALESCE(v_new, v_old);
+
+  v_entity_id := COALESCE(
+    NULLIF(v_registro->>'entity_id', '')::integer,
+    NULLIF(current_setting('app.entity_id', true), '')::integer
+  );
+
+  v_usuario := NULLIF(current_setting('app.usuario_id', true), '')::uuid;
+
+  INSERT INTO public.auditoria(id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+  VALUES (
+    v_usuario,
+    TG_OP,
+    TG_TABLE_NAME,
+    to_jsonb(public.fn_auditoria_detalle_simple(TG_TABLE_NAME, TG_OP, v_old, v_new)),
+    now(),
+    v_entity_id
+  );
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_torneos() OWNER TO postgres;
+
+--
+-- Name: fn_auditoria_valor_texto(jsonb); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_auditoria_valor_texto(p_valor jsonb) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF p_valor IS NULL OR p_valor = 'null'::jsonb THEN
+    RETURN 'vacio';
+  END IF;
+
+  IF jsonb_typeof(p_valor) = 'string' THEN
+    RETURN p_valor #>> '{}';
+  END IF;
+
+  RETURN p_valor::text;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_auditoria_valor_texto(p_valor jsonb) OWNER TO postgres;
+
+--
+-- Name: fn_entity_audit(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_entity_audit() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO entity_audit(entity_id, accion, usuario, detalle)
+        VALUES (NEW.entity_id, 'INSERT', current_user,
+                'Se creÃ³ entity con cÃ³digo ' || NEW.codigo);
+        RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        -- Detectar cambio de estado activo/desactivado
+        IF NEW.activo <> OLD.activo THEN
+            INSERT INTO entity_audit(entity_id, accion, usuario, detalle)
+            VALUES (NEW.entity_id,
+                    CASE WHEN NEW.activo THEN 'ACTIVAR' ELSE 'DESACTIVAR' END,
+                    current_user,
+                    'Cambio de estado para cÃ³digo ' || NEW.codigo);
+        ELSE
+            INSERT INTO entity_audit(entity_id, accion, usuario, detalle)
+            VALUES (NEW.entity_id, 'UPDATE', current_user,
+                    'Se modificÃ³ entity con cÃ³digo ' || NEW.codigo);
+        END IF;
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_entity_audit() OWNER TO postgres;
+
+--
+-- Name: fn_entity_set_activo(text, boolean); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_entity_set_activo(p_codigo text, p_activo boolean) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  UPDATE public.entity
+  SET activo = p_activo
+  WHERE codigo = p_codigo;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_entity_set_activo(p_codigo text, p_activo boolean) OWNER TO postgres;
+
+--
+-- Name: fn_entity_update_descripcion(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_entity_update_descripcion() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Permitir cambios en descripcion y activo
+  IF NEW.descripcion IS DISTINCT FROM OLD.descripcion
+     OR NEW.activo IS DISTINCT FROM OLD.activo THEN
+    RETURN NEW;
+  ELSE
+    RAISE EXCEPTION 'Solo se permite modificar la descripciÃ³n o el estado de Entity';
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_entity_update_descripcion() OWNER TO postgres;
+
+--
+-- Name: fn_equipos_movimientos_grupo_auditoria(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_equipos_movimientos_grupo_auditoria() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_usuario uuid;
+  v_grupo_origen text;
+  v_grupo_destino text;
+BEGIN
+  v_usuario := COALESCE(
+    NEW.id_usuario,
+    NULLIF(current_setting('app.usuario_id', true), '')::uuid
+  );
+
+  SELECT nombre_grupo INTO v_grupo_origen
+  FROM public.grupos
+  WHERE id_grupo = NEW.id_grupo_origen;
+
+  SELECT nombre_grupo INTO v_grupo_destino
+  FROM public.grupos
+  WHERE id_grupo = NEW.id_grupo_destino;
+
+  INSERT INTO public.auditoria(id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+  VALUES (
+    v_usuario,
+    TG_OP,
+    'equipos_movimientos_grupo',
+    to_jsonb(
+      'Se movio de grupo '
+      || COALESCE(v_grupo_origen, NEW.id_grupo_origen::text)
+      || ' a grupo '
+      || COALESCE(v_grupo_destino, NEW.id_grupo_destino::text)
+    ),
+    now(),
+    NEW.entity_id
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_equipos_movimientos_grupo_auditoria() OWNER TO postgres;
+
+--
+-- Name: fn_grupos_crear_items_tarjetas(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_grupos_crear_items_tarjetas() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  INSERT INTO public.items (nombre, descripcion, monto, entity_id, id_torneo)
+  SELECT v.nombre, v.descripcion, 1, NEW.entity_id, NEW.id_torneo
+  FROM (
+    VALUES
+      ('TARJETA AMARILLA', 'Item automatico generado al crear grupo'),
+      ('TARJETA ROJA', 'Item automatico generado al crear grupo')
+  ) AS v(nombre, descripcion)
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.items i
+    WHERE i.id_torneo = NEW.id_torneo
+      AND i.entity_id = NEW.entity_id
+      AND lower(trim(i.nombre)) = lower(trim(v.nombre))
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_grupos_crear_items_tarjetas() OWNER TO postgres;
+
+--
+-- Name: fn_items_auditoria(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_items_auditoria() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  v_old jsonb;
+  v_new jsonb;
+  v_registro jsonb;
+  v_entity_id integer;
+  v_usuario uuid;
+BEGIN
+  v_old := CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) ELSE NULL END;
+  v_new := CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) ELSE NULL END;
+  v_registro := COALESCE(v_new, v_old);
+
+  v_entity_id := COALESCE(
+    NULLIF(v_registro->>'entity_id', '')::integer,
+    NULLIF(current_setting('app.entity_id', true), '')::integer
+  );
+
+  v_usuario := NULLIF(current_setting('app.usuario_id', true), '')::uuid;
+
+  INSERT INTO public.auditoria(id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+  VALUES (
+    v_usuario,
+    TG_OP,
+    'items',
+    to_jsonb(public.fn_auditoria_detalle_simple('items', TG_OP, v_old, v_new)),
+    now(),
+    v_entity_id
+  );
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_items_auditoria() OWNER TO postgres;
+
+--
+-- Name: fn_items_set_context(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_items_set_context() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.entity_id IS NULL THEN
+    NEW.entity_id := NULLIF(current_setting('app.entity_id', true), '')::integer;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_items_set_context() OWNER TO postgres;
+
+--
+-- Name: fn_manage_jugadores_equipos(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_manage_jugadores_equipos() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- lÃ³gica adicional si querÃ©s validar duplicados o asignar numero_camiseta
+    RETURN NEW;
+  ELSIF TG_OP = 'UPDATE' THEN
+    -- actualizar campos especÃ­ficos, por ejemplo estado y observaciones
+    RETURN NEW;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_manage_jugadores_equipos() OWNER TO postgres;
+
+--
+-- Name: fn_reasignar_delegado_a_espectador(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_reasignar_delegado_a_espectador() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Cambiar rol del usuario a espectador (1) si era delegado (2)
+  UPDATE usuarios
+  SET rol_id = 1
+  WHERE id_usuario = OLD.id_usuario
+    AND rol_id = 2;
+
+  -- Registrar en auditorÃ­a la reasignaciÃ³n
+  INSERT INTO auditoria(id_usuario, accion, tabla_afectada, detalle, entity_id)
+  VALUES (
+    OLD.id_usuario,
+    'UPDATE',
+    'usuarios',
+    jsonb_build_object(
+      'rol', 'Delegado â†’ Espectador',
+      'id_equipo', OLD.id_equipo,
+      'id_torneo', OLD.id_torneo
+    ),
+    OLD.id_torneo
+  );
+
+  RETURN OLD;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_reasignar_delegado_a_espectador() OWNER TO postgres;
+
+--
+-- Name: fn_sync_jugadores_equipos(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_sync_jugadores_equipos() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO jugadores_equipos (
+      id_jugador,
+      id_torneo,
+      estado,
+      observaciones
+    )
+    VALUES (
+      NEW.id_jugador,
+      current_setting('app.torneo_id', true)::int,
+      NEW.estado,
+      NEW.observaciones
+    );
+  ELSIF TG_OP = 'UPDATE' THEN
+    UPDATE jugadores_equipos
+    SET estado = NEW.estado,
+        observaciones = NEW.observaciones
+    WHERE id_jugador = NEW.id_jugador
+      AND id_torneo = current_setting('app.torneo_id', true)::int;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_sync_jugadores_equipos() OWNER TO postgres;
+
+--
+-- Name: fn_torneos_crear_items_tarjetas(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_torneos_crear_items_tarjetas() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  INSERT INTO public.items (nombre, descripcion, monto, entity_id, id_torneo)
+  SELECT v.nombre, v.descripcion, 1, NEW.entity_id, NEW.id_torneo
+  FROM (
+    VALUES
+      ('TARJETA AMARILLA', 'Item automatico generado al crear torneo'),
+      ('TARJETA ROJA', 'Item automatico generado al crear torneo')
+  ) AS v(nombre, descripcion)
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.items i
+    WHERE i.id_torneo = NEW.id_torneo
+      AND i.entity_id = NEW.entity_id
+      AND lower(trim(i.nombre)) = lower(trim(v.nombre))
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_torneos_crear_items_tarjetas() OWNER TO postgres;
+
+--
+-- Name: fn_vincular_jugador_equipo(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fn_vincular_jugador_equipo() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Al crear jugador, insertar vÃ­nculo
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO jugadores_equipos (
+      id_jugador,
+      id_torneo,
+      estado,
+      observaciones
+    )
+    VALUES (
+      NEW.id_jugador,
+      current_setting('app.torneo_id', true)::int,
+      NEW.estado,
+      NEW.observaciones
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_vincular_jugador_equipo() OWNER TO postgres;
+
+--
+-- Name: registrar_auditoria(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.registrar_auditoria() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    INSERT INTO auditoria (id_usuario, accion, tabla_afectada, detalle, fecha_hora)
+    VALUES (
+        current_setting('app.current_user')::uuid, -- usuario actual seteado desde la app
+        TG_OP,                                     -- operaciÃ³n: INSERT, UPDATE, DELETE
+        TG_TABLE_NAME,                             -- tabla afectada
+        CASE
+            WHEN TG_OP = 'DELETE' THEN row_to_json(OLD)::jsonb
+            ELSE row_to_json(NEW)::jsonb
+        END,
+        CURRENT_TIMESTAMP
+    );
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.registrar_auditoria() OWNER TO postgres;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: auditoria; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.auditoria (
+    id_auditoria integer NOT NULL,
+    id_usuario uuid,
+    accion character varying(100),
+    tabla_afectada character varying(50),
+    detalle jsonb,
+    fecha_hora timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    entity_id integer
+);
+
+
+ALTER TABLE public.auditoria OWNER TO postgres;
+
+--
+-- Name: auditoria_id_auditoria_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.auditoria_id_auditoria_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.auditoria_id_auditoria_seq OWNER TO postgres;
+
+--
+-- Name: auditoria_id_auditoria_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.auditoria_id_auditoria_seq OWNED BY public.auditoria.id_auditoria;
+
+
+--
+-- Name: canchas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.canchas (
+    id_cancha integer NOT NULL,
+    id_torneo integer NOT NULL,
+    entity_id integer NOT NULL,
+    nombre character varying(120) NOT NULL,
+    direccion character varying(255),
+    estado boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.canchas OWNER TO postgres;
+
+--
+-- Name: canchas_id_cancha_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.canchas_id_cancha_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.canchas_id_cancha_seq OWNER TO postgres;
+
+--
+-- Name: canchas_id_cancha_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.canchas_id_cancha_seq OWNED BY public.canchas.id_cancha;
+
+
+--
+-- Name: delegados_equipos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.delegados_equipos (
+    id_delegado_equipo integer NOT NULL,
+    id_usuario uuid NOT NULL,
+    id_equipo integer NOT NULL,
+    rol character varying(50) DEFAULT 'delegado'::character varying,
+    fecha_asignacion timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    estado boolean DEFAULT true
+);
+
+
+ALTER TABLE public.delegados_equipos OWNER TO postgres;
+
+--
+-- Name: delegados_equipos_id_delegado_equipo_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.delegados_equipos_id_delegado_equipo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.delegados_equipos_id_delegado_equipo_seq OWNER TO postgres;
+
+--
+-- Name: delegados_equipos_id_delegado_equipo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.delegados_equipos_id_delegado_equipo_seq OWNED BY public.delegados_equipos.id_delegado_equipo;
+
+
+--
+-- Name: entities; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.entities (
+    id integer NOT NULL,
+    nombre character varying(255) NOT NULL,
+    descripcion character varying(255)
+);
+
+
+ALTER TABLE public.entities OWNER TO postgres;
+
+--
+-- Name: entities_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.entities_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.entities_id_seq OWNER TO postgres;
+
+--
+-- Name: entities_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.entities_id_seq OWNED BY public.entities.id;
+
+
+--
+-- Name: entity; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.entity (
+    entity_id integer NOT NULL,
+    codigo character varying(20) NOT NULL,
+    descripcion text,
+    activo boolean DEFAULT true
+);
+
+
+ALTER TABLE public.entity OWNER TO postgres;
+
+--
+-- Name: entity_audit; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.entity_audit (
+    audit_id integer NOT NULL,
+    entity_id integer NOT NULL,
+    accion character varying(20) NOT NULL,
+    usuario character varying(50),
+    fecha timestamp without time zone DEFAULT now(),
+    detalle text
+);
+
+
+ALTER TABLE public.entity_audit OWNER TO postgres;
+
+--
+-- Name: entity_audit_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.entity_audit_audit_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.entity_audit_audit_id_seq OWNER TO postgres;
+
+--
+-- Name: entity_audit_audit_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.entity_audit_audit_id_seq OWNED BY public.entity_audit.audit_id;
+
+
+--
+-- Name: entity_entity_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.entity_entity_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.entity_entity_id_seq OWNER TO postgres;
+
+--
+-- Name: entity_entity_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.entity_entity_id_seq OWNED BY public.entity.entity_id;
+
+
+--
+-- Name: equipos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.equipos (
+    id_equipo integer NOT NULL,
+    nombre character varying(100) NOT NULL,
+    icono character varying(255),
+    id_torneo integer,
+    estado boolean DEFAULT true,
+    id_grupo integer,
+    entity_id integer,
+    observaciones character varying(255)
+);
+
+
+ALTER TABLE public.equipos OWNER TO postgres;
+
+--
+-- Name: equipos_id_equipo_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.equipos_id_equipo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.equipos_id_equipo_seq OWNER TO postgres;
+
+--
+-- Name: equipos_id_equipo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.equipos_id_equipo_seq OWNED BY public.equipos.id_equipo;
+
+
+--
+-- Name: equipos_movimientos_grupo; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.equipos_movimientos_grupo (
+    id_movimiento integer NOT NULL,
+    id_equipo integer NOT NULL,
+    id_torneo integer NOT NULL,
+    id_grupo_origen integer NOT NULL,
+    id_grupo_destino integer NOT NULL,
+    observacion text NOT NULL,
+    fecha_movimiento timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    id_usuario uuid,
+    entity_id integer,
+    CONSTRAINT equipos_movimientos_grupo_origen_destino_check CHECK ((id_grupo_origen <> id_grupo_destino))
+);
+
+
+ALTER TABLE public.equipos_movimientos_grupo OWNER TO postgres;
+
+--
+-- Name: equipos_movimientos_grupo_id_movimiento_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.equipos_movimientos_grupo ALTER COLUMN id_movimiento ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.equipos_movimientos_grupo_id_movimiento_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: estadisticas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.estadisticas (
+    id_estadistica integer NOT NULL,
+    id_jugador integer,
+    id_partido integer,
+    goles integer DEFAULT 0,
+    tarjetas_amarillas integer DEFAULT 0,
+    tarjetas_rojas integer DEFAULT 0,
+    entity_id integer
+);
+
+
+ALTER TABLE public.estadisticas OWNER TO postgres;
+
+--
+-- Name: estadisticas_id_estadistica_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.estadisticas_id_estadistica_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.estadisticas_id_estadistica_seq OWNER TO postgres;
+
+--
+-- Name: estadisticas_id_estadistica_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.estadisticas_id_estadistica_seq OWNED BY public.estadisticas.id_estadistica;
+
+
+--
+-- Name: eventos_partido; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.eventos_partido (
+    id_evento integer NOT NULL,
+    id_partido integer NOT NULL,
+    id_jugador integer,
+    tipo_evento character varying(50) NOT NULL,
+    minuto integer,
+    detalle text,
+    id_item integer,
+    monto numeric(10,2)
+);
+
+
+ALTER TABLE public.eventos_partido OWNER TO postgres;
+
+--
+-- Name: eventos_partido_id_evento_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.eventos_partido_id_evento_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.eventos_partido_id_evento_seq OWNER TO postgres;
+
+--
+-- Name: eventos_partido_id_evento_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.eventos_partido_id_evento_seq OWNED BY public.eventos_partido.id_evento;
+
+
+--
+-- Name: finanzas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.finanzas (
+    id_finanza integer NOT NULL,
+    id_equipo integer,
+    monto_inscripcion numeric(10,2),
+    monto_aportado numeric(10,2),
+    deuda_total numeric(10,2),
+    entity_id integer,
+    id_torneo integer,
+    fecha_registro date DEFAULT CURRENT_DATE,
+    concepto character varying(100),
+    tipo character varying(20),
+    saldo numeric(10,2),
+    deuda_inicial numeric(10,2)
+);
+
+
+ALTER TABLE public.finanzas OWNER TO postgres;
+
+--
+-- Name: finanzas_id_finanza_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.finanzas_id_finanza_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.finanzas_id_finanza_seq OWNER TO postgres;
+
+--
+-- Name: finanzas_id_finanza_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.finanzas_id_finanza_seq OWNED BY public.finanzas.id_finanza;
+
+
+--
+-- Name: grupos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.grupos (
+    id_grupo integer NOT NULL,
+    nombre_grupo character varying(50) NOT NULL,
+    id_torneo integer NOT NULL,
+    estado boolean DEFAULT true,
+    entity_id integer,
+    visible_fixture boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.grupos OWNER TO postgres;
+
+--
+-- Name: COLUMN grupos.visible_fixture; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.grupos.visible_fixture IS 'Controla si los partidos del grupo se muestran en Fixture. Si es false, el historico sigue disponible para dashboard/estadisticas.';
+
+
+--
+-- Name: grupos_id_grupo_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.grupos_id_grupo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.grupos_id_grupo_seq OWNER TO postgres;
+
+--
+-- Name: grupos_id_grupo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.grupos_id_grupo_seq OWNED BY public.grupos.id_grupo;
+
+
+--
+-- Name: items; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.items (
+    id_item integer NOT NULL,
+    nombre character varying(100) NOT NULL,
+    descripcion text,
+    monto numeric(10,2) NOT NULL,
+    entity_id integer,
+    id_torneo integer
+);
+
+
+ALTER TABLE public.items OWNER TO postgres;
+
+--
+-- Name: items_equipo; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.items_equipo (
+    id_item_equipo integer NOT NULL,
+    id_equipo integer NOT NULL,
+    id_partido integer,
+    nombre character varying(100),
+    monto numeric(10,2),
+    cantidad integer DEFAULT 1,
+    observaciones text,
+    fecha_registro timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.items_equipo OWNER TO postgres;
+
+--
+-- Name: items_equipo_id_item_equipo_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.items_equipo_id_item_equipo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.items_equipo_id_item_equipo_seq OWNER TO postgres;
+
+--
+-- Name: items_equipo_id_item_equipo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.items_equipo_id_item_equipo_seq OWNED BY public.items_equipo.id_item_equipo;
+
+
+--
+-- Name: items_id_item_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.items_id_item_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.items_id_item_seq OWNER TO postgres;
+
+--
+-- Name: items_id_item_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.items_id_item_seq OWNED BY public.items.id_item;
+
+
+--
+-- Name: jugadores; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.jugadores (
+    id_jugador integer NOT NULL,
+    nombre character varying(100) NOT NULL,
+    apellido character varying(100),
+    documento character varying(20),
+    fecha_nacimiento date,
+    estado boolean DEFAULT true,
+    entity_id integer,
+    observaciones text
+);
+
+
+ALTER TABLE public.jugadores OWNER TO postgres;
+
+--
+-- Name: jugadores_equipos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.jugadores_equipos (
+    id_jugador_equipo integer NOT NULL,
+    id_jugador integer,
+    id_equipo integer,
+    tipo_vinculo character varying(20),
+    estado boolean DEFAULT true,
+    fecha_inicio date,
+    fecha_fin date,
+    id_torneo integer,
+    observaciones text,
+    numero_camiseta integer,
+    capitan boolean DEFAULT false,
+    CONSTRAINT jugadores_equipos_tipo_vinculo_check CHECK (((tipo_vinculo)::text = ANY ((ARRAY['titular'::character varying, 'prestamo'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.jugadores_equipos OWNER TO postgres;
+
+--
+-- Name: jugadores_equipos_id_jugador_equipo_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.jugadores_equipos_id_jugador_equipo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.jugadores_equipos_id_jugador_equipo_seq OWNER TO postgres;
+
+--
+-- Name: jugadores_equipos_id_jugador_equipo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.jugadores_equipos_id_jugador_equipo_seq OWNED BY public.jugadores_equipos.id_jugador_equipo;
+
+
+--
+-- Name: jugadores_id_jugador_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.jugadores_id_jugador_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.jugadores_id_jugador_seq OWNER TO postgres;
+
+--
+-- Name: jugadores_id_jugador_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.jugadores_id_jugador_seq OWNED BY public.jugadores.id_jugador;
+
+
+--
+-- Name: partidos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.partidos (
+    id_partido integer NOT NULL,
+    id_torneo integer,
+    equipo_a integer,
+    equipo_b integer,
+    fecha date,
+    hora time without time zone,
+    estado character varying(20) DEFAULT 'programado'::character varying,
+    entity_id integer,
+    numero_fecha integer,
+    goles_a integer DEFAULT 0,
+    goles_b integer DEFAULT 0,
+    observaciones text,
+    id_grupo integer,
+    id_cancha integer
+);
+
+
+ALTER TABLE public.partidos OWNER TO postgres;
+
+--
+-- Name: partidos_id_partido_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.partidos_id_partido_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.partidos_id_partido_seq OWNER TO postgres;
+
+--
+-- Name: partidos_id_partido_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.partidos_id_partido_seq OWNED BY public.partidos.id_partido;
+
+
+--
+-- Name: resultados; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.resultados (
+    id_resultado integer NOT NULL,
+    id_partido integer,
+    goles_equipo_a integer DEFAULT 0,
+    goles_equipo_b integer DEFAULT 0,
+    observaciones text,
+    entity_id integer
+);
+
+
+ALTER TABLE public.resultados OWNER TO postgres;
+
+--
+-- Name: resultados_id_resultado_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.resultados_id_resultado_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.resultados_id_resultado_seq OWNER TO postgres;
+
+--
+-- Name: resultados_id_resultado_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.resultados_id_resultado_seq OWNED BY public.resultados.id_resultado;
+
+
+--
+-- Name: roles; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.roles (
+    id_rol integer NOT NULL,
+    nombre_rol character varying(50) NOT NULL,
+    entity_id integer
+);
+
+
+ALTER TABLE public.roles OWNER TO postgres;
+
+--
+-- Name: roles_id_rol_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.roles_id_rol_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.roles_id_rol_seq OWNER TO postgres;
+
+--
+-- Name: roles_id_rol_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.roles_id_rol_seq OWNED BY public.roles.id_rol;
+
+
+--
+-- Name: sanciones; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sanciones (
+    id_sancion integer NOT NULL,
+    id_jugador integer NOT NULL,
+    id_partido integer,
+    partidos_suspendidos integer,
+    partidos_restantes integer,
+    fecha_inicio integer,
+    observaciones text,
+    fecha_registro timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.sanciones OWNER TO postgres;
+
+--
+-- Name: sanciones_id_sancion_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.sanciones_id_sancion_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.sanciones_id_sancion_seq OWNER TO postgres;
+
+--
+-- Name: sanciones_id_sancion_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.sanciones_id_sancion_seq OWNED BY public.sanciones.id_sancion;
+
+
+--
+-- Name: torneos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.torneos (
+    id_torneo integer NOT NULL,
+    nombre_torneo character varying(100) NOT NULL,
+    temporada character varying(20),
+    estado boolean DEFAULT true,
+    fecha_inicio date,
+    entity_id integer,
+    portada character varying(255),
+    permitir_agregar_jugadores boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.torneos OWNER TO postgres;
+
+--
+-- Name: torneos_id_torneo_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.torneos_id_torneo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.torneos_id_torneo_seq OWNER TO postgres;
+
+--
+-- Name: torneos_id_torneo_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.torneos_id_torneo_seq OWNED BY public.torneos.id_torneo;
+
+
+--
+-- Name: torneos_reglas_tarjetas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.torneos_reglas_tarjetas (
+    id_regla integer NOT NULL,
+    id_torneo integer NOT NULL,
+    entity_id integer NOT NULL,
+    acumula_amarillas boolean DEFAULT false NOT NULL,
+    amarillas_para_suspension integer DEFAULT 5 NOT NULL,
+    fechas_suspension_acumulacion integer DEFAULT 1 NOT NULL,
+    reiniciar_al_sancionar boolean DEFAULT true NOT NULL,
+    aplicar_item_amarilla boolean DEFAULT true NOT NULL,
+    aplicar_item_roja boolean DEFAULT true NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT torneos_reglas_tarjetas_amarillas_check CHECK ((amarillas_para_suspension > 0)),
+    CONSTRAINT torneos_reglas_tarjetas_fechas_check CHECK ((fechas_suspension_acumulacion > 0))
+);
+
+
+ALTER TABLE public.torneos_reglas_tarjetas OWNER TO postgres;
+
+--
+-- Name: torneos_reglas_tarjetas_id_regla_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.torneos_reglas_tarjetas_id_regla_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.torneos_reglas_tarjetas_id_regla_seq OWNER TO postgres;
+
+--
+-- Name: torneos_reglas_tarjetas_id_regla_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.torneos_reglas_tarjetas_id_regla_seq OWNED BY public.torneos_reglas_tarjetas.id_regla;
+
+
+--
+-- Name: usuarios; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.usuarios (
+    id_usuario uuid DEFAULT public.gen_random_uuid() NOT NULL,
+    nombre character varying(100) NOT NULL,
+    correo character varying(150),
+    contrasena_hash character varying(255) NOT NULL,
+    rol_id integer,
+    estado boolean DEFAULT true,
+    creado_en timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    documento character varying(50) NOT NULL,
+    entity_id integer,
+    debe_cambiar_contrasena boolean DEFAULT false NOT NULL,
+    reset_contrasena_en timestamp without time zone
+);
+
+
+ALTER TABLE public.usuarios OWNER TO postgres;
+
+--
+-- Name: vista_jugadores; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.vista_jugadores AS
+ SELECT j.id_jugador,
+    j.nombre,
+    j.apellido,
+    j.entity_id,
+    COALESCE(e.nombre, 'Libre'::character varying) AS equipo,
+    COALESCE(t.id_torneo, 0) AS id_torneo,
+    COALESCE(t.nombre_torneo, 'Sin torneo'::character varying) AS torneo,
+    COALESCE(je.tipo_vinculo, 'Libre'::character varying) AS tipo_vinculo,
+        CASE
+            WHEN (je.id_jugador IS NULL) THEN 'Libre'::text
+            WHEN je.estado THEN 'Activo'::text
+            ELSE 'Inactivo'::text
+        END AS estado
+   FROM (((public.jugadores j
+     LEFT JOIN public.jugadores_equipos je ON (((j.id_jugador = je.id_jugador) AND (je.id_torneo = 2))))
+     LEFT JOIN public.equipos e ON ((je.id_equipo = e.id_equipo)))
+     LEFT JOIN public.torneos t ON ((je.id_torneo = t.id_torneo)));
+
+
+ALTER TABLE public.vista_jugadores OWNER TO postgres;
+
+--
+-- Name: auditoria id_auditoria; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auditoria ALTER COLUMN id_auditoria SET DEFAULT nextval('public.auditoria_id_auditoria_seq'::regclass);
+
+
+--
+-- Name: canchas id_cancha; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.canchas ALTER COLUMN id_cancha SET DEFAULT nextval('public.canchas_id_cancha_seq'::regclass);
+
+
+--
+-- Name: delegados_equipos id_delegado_equipo; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.delegados_equipos ALTER COLUMN id_delegado_equipo SET DEFAULT nextval('public.delegados_equipos_id_delegado_equipo_seq'::regclass);
+
+
+--
+-- Name: entities id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entities ALTER COLUMN id SET DEFAULT nextval('public.entities_id_seq'::regclass);
+
+
+--
+-- Name: entity entity_id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entity ALTER COLUMN entity_id SET DEFAULT nextval('public.entity_entity_id_seq'::regclass);
+
+
+--
+-- Name: entity_audit audit_id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entity_audit ALTER COLUMN audit_id SET DEFAULT nextval('public.entity_audit_audit_id_seq'::regclass);
+
+
+--
+-- Name: equipos id_equipo; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos ALTER COLUMN id_equipo SET DEFAULT nextval('public.equipos_id_equipo_seq'::regclass);
+
+
+--
+-- Name: estadisticas id_estadistica; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.estadisticas ALTER COLUMN id_estadistica SET DEFAULT nextval('public.estadisticas_id_estadistica_seq'::regclass);
+
+
+--
+-- Name: eventos_partido id_evento; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eventos_partido ALTER COLUMN id_evento SET DEFAULT nextval('public.eventos_partido_id_evento_seq'::regclass);
+
+
+--
+-- Name: finanzas id_finanza; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.finanzas ALTER COLUMN id_finanza SET DEFAULT nextval('public.finanzas_id_finanza_seq'::regclass);
+
+
+--
+-- Name: grupos id_grupo; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.grupos ALTER COLUMN id_grupo SET DEFAULT nextval('public.grupos_id_grupo_seq'::regclass);
+
+
+--
+-- Name: items id_item; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items ALTER COLUMN id_item SET DEFAULT nextval('public.items_id_item_seq'::regclass);
+
+
+--
+-- Name: items_equipo id_item_equipo; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items_equipo ALTER COLUMN id_item_equipo SET DEFAULT nextval('public.items_equipo_id_item_equipo_seq'::regclass);
+
+
+--
+-- Name: jugadores id_jugador; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores ALTER COLUMN id_jugador SET DEFAULT nextval('public.jugadores_id_jugador_seq'::regclass);
+
+
+--
+-- Name: jugadores_equipos id_jugador_equipo; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores_equipos ALTER COLUMN id_jugador_equipo SET DEFAULT nextval('public.jugadores_equipos_id_jugador_equipo_seq'::regclass);
+
+
+--
+-- Name: partidos id_partido; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos ALTER COLUMN id_partido SET DEFAULT nextval('public.partidos_id_partido_seq'::regclass);
+
+
+--
+-- Name: resultados id_resultado; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resultados ALTER COLUMN id_resultado SET DEFAULT nextval('public.resultados_id_resultado_seq'::regclass);
+
+
+--
+-- Name: roles id_rol; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.roles ALTER COLUMN id_rol SET DEFAULT nextval('public.roles_id_rol_seq'::regclass);
+
+
+--
+-- Name: sanciones id_sancion; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sanciones ALTER COLUMN id_sancion SET DEFAULT nextval('public.sanciones_id_sancion_seq'::regclass);
+
+
+--
+-- Name: torneos id_torneo; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos ALTER COLUMN id_torneo SET DEFAULT nextval('public.torneos_id_torneo_seq'::regclass);
+
+
+--
+-- Name: torneos_reglas_tarjetas id_regla; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos_reglas_tarjetas ALTER COLUMN id_regla SET DEFAULT nextval('public.torneos_reglas_tarjetas_id_regla_seq'::regclass);
+
+
+--
+-- Data for Name: auditoria; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.auditoria (id_auditoria, id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id) FROM stdin;
+2012	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	entity	"Se creo entity: registro"	2026-05-13 22:39:18.65494	27
+2013	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-13 22:39:21.317827	27
+2062	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-13 22:50:58.539202	27
+2063	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:50:59.812853	27
+2064	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	equipos	"Se cambio icono de /images/default_team.png a /uploads/6027778f7ca6f203e383abd7ced1a031"	2026-05-13 22:51:11.57462	27
+2088	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-14 14:15:30.608072	27
+2089	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-14 14:15:32.345566	27
+2106	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 14:22:35.40006	2
+2124	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:48:33.362782	2
+2138	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:32:55.688372	2
+2139	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:32:58.682571	2
+2156	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio contrasena de $2b$10$TadXJvc2G085RRBVFbaeSuAK3Pg1Q1xoyDzKOhpuCtg2XWUeg.1Y6 a $2b$10$fbBIMDSSftqSJubBwOXepup1PVF8u8TCRWFrirsWU31OSLShw3zQu; Se cambio debe cambiar contrasena de false a true; Se cambio reset contrasena en de vacio a 2026-05-14T18:48:35.215"	2026-05-14 18:48:35.233027	2
+2172	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio fecha de 2026-05-15 a 2026-05-16"	2026-05-14 19:14:16.059994	2
+2189	\N	INSERT	usuarios	"Se creo usuarios: LEONARDO TOLEDO 4930301"	2026-05-14 20:37:22.618314	2
+2201	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores	"Se creo jugadores: pedro gonzales"	2026-05-14 20:57:34.760039	2
+2202	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 20:57:34.760039	2
+2203	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 20:57:34.760039	2
+2204	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 20:57:34.760039	2
+2224	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: SPORT VITO"	2026-05-14 21:09:45.805968	2
+2244	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.385072	2
+2245	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.476454	2
+2246	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.484262	2
+2247	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.494463	2
+2248	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.500744	2
+2249	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.506152	2
+2250	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.5147	2
+2251	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.519018	2
+2252	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.52288	2
+2253	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:00.532956	2
+2283	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio estado de programado a suspendido"	2026-05-14 21:25:47.566949	2
+2284	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio estado de programado a suspendido"	2026-05-14 21:25:48.275988	2
+2285	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio estado de programado a finalizado"	2026-05-14 21:25:49.198368	2
+2312	\N	INSERT	usuarios	"Se creo usuarios: LEO TOLEDO 4930301"	2026-05-14 21:45:48.124948	28
+2349	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 18:01:45.170927	2
+2350	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 18:01:46.489361	2
+2372	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	jugadores	"Se creo jugadores: Jul Mmm"	2026-05-17 22:27:53.382128	2
+2373	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-17 22:27:53.382128	2
+2374	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-17 22:27:53.382128	2
+2375	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-17 22:27:53.382128	2
+2387	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:54:06.615012	2
+2405	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:26:53.099658	2
+2406	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:27:00.941529	2
+2419	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	grupos	"Se cambio visible fixture de true a false"	2026-05-17 23:53:18.653195	2
+2421	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	grupos	"Se cambio visible fixture de true a false"	2026-05-17 23:53:31.276579	2
+2014	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	torneos	"Se creo torneos: prueba"	2026-05-13 22:39:32.439908	27
+2015	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items	"Se creo items: TARJETA AMARILLA"	2026-05-13 22:39:32.439908	27
+2016	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items	"Se creo items: TARJETA ROJA"	2026-05-13 22:39:32.439908	27
+2017	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-13 22:39:32.47537	27
+2018	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:33.780533	27
+2019	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	grupos	"Se creo grupos: A"	2026-05-13 22:39:37.310625	27
+2020	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:37.324112	27
+2021	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	equipos	"Se creo equipos: AA"	2026-05-13 22:39:39.692823	27
+2022	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:39.781156	27
+2023	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	equipos	"Se creo equipos: BB"	2026-05-13 22:39:42.077823	27
+2024	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:42.094584	27
+2025	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	equipos	"Se creo equipos: CC"	2026-05-13 22:39:45.141991	27
+2026	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:45.157334	27
+2027	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	equipos	"Se creo equipos: DD"	2026-05-13 22:39:47.5349	27
+2028	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:47.55114	27
+2029	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	partidos	"Se creo partidos: registro"	2026-05-13 22:39:53.142818	27
+2030	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	partidos	"Se creo partidos: registro"	2026-05-13 22:39:53.163421	27
+2031	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	partidos	"Se creo partidos: registro"	2026-05-13 22:39:53.166126	27
+2032	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	partidos	"Se creo partidos: registro"	2026-05-13 22:39:53.1686	27
+2033	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	partidos	"Se creo partidos: registro"	2026-05-13 22:39:53.171383	27
+2034	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	partidos	"Se creo partidos: registro"	2026-05-13 22:39:53.173525	27
+2035	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:39:54.489511	27
+2065	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items_equipo	"Se creo items_equipo: derecho de partido"	2026-05-13 22:51:53.433031	27
+2066	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	finanzas	"Se creo finanzas: Encuentro #427 - CC"	2026-05-13 22:51:53.433031	27
+2090	b54db6fd-3d2f-4517-bfc0-0340cf3a8a90	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-14 14:15:53.173862	27
+2107	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INSERT	jugadores	"Se creo jugadores: aaa bbb"	2026-05-14 14:23:15.336431	2
+2108	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 14:23:15.336431	2
+2109	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 14:23:15.336431	2
+2110	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 14:23:15.336431	2
+2125	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de false a true"	2026-05-14 14:48:41.622285	2
+2140	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: juan 888889; Se cambio permisos de juan 888889: admin -> delegado"	2026-05-14 18:33:33.618097	2
+2157	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio estado de false a true"	2026-05-14 18:48:57.382018	2
+2173	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 19:15:03.118349	2
+2190	\N	UPDATE	usuarios	"Se cambio contrasena de $2b$10$GN.kAXTQGEMl4rxCzacrkeozxVXIQgL6Qg5uLsLBMZHIGc7r9yvDi a $2b$10$lzz8mpYC9dnkyTdlbAzr2.Vsx3jtrhdqni8EI6yGjcXrHgOwxARD2; Se cambio reset contrasena en de vacio a 2026-05-14T20:38:53.444"	2026-05-14 20:38:53.448656	2
+2205	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 20:58:13.578872	2
+2225	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: CENTU"	2026-05-14 21:10:01.481056	2
+2254	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:20.090915	2
+2255	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:20.12198	2
+2256	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:20.127405	2
+2257	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:20.132336	2
+2258	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:20.139628	2
+2259	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	partidos	"Se creo partidos: registro"	2026-05-14 21:13:20.144644	2
+2286	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 21:27:04.711156	2
+2313	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 21:57:52.10103	2
+2314	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-14 21:57:55.893157	2
+2351	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-17 22:11:36.090578	2
+2352	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-17 22:11:41.680552	1
+2353	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-17 22:11:43.044895	4
+2354	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-17 22:11:44.852846	3
+2355	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-17 22:11:46.252355	27
+2356	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-17 22:11:48.015926	28
+2357	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de false a true"	2026-05-17 22:11:56.709738	2
+2036	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	canchas	"Se creo canchas: mita`i"	2026-05-13 22:40:12.750119	27
+2037	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:40:12.794883	27
+2067	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio equipo a de 141 a 142; Se cambio equipo b de 142 a 141"	2026-05-13 22:52:53.437088	27
+2073	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 13:32:47.958505	2
+2074	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 13:32:50.088251	2
+2091	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de true a false"	2026-05-14 14:16:18.002303	27
+2111	b54db6fd-3d2f-4517-bfc0-0340cf3a8a90	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-14 14:32:28.909734	27
+2126	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de true a false"	2026-05-14 14:48:58.061636	2
+2141	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: ALEJANDRO CACERES 999888; Se cambio permisos de ALEJANDRO CACERES 999888: delegado -> espectador"	2026-05-14 18:34:37.351898	2
+2158	\N	UPDATE	usuarios	"Se cambio contrasena de $2b$10$fbBIMDSSftqSJubBwOXepup1PVF8u8TCRWFrirsWU31OSLShw3zQu a $2b$10$49e4Su0Wk5YpyFaw0Q8pJ.GExlVlZndPl22W3V5CljGxYGOTcBXfa; Se cambio debe cambiar contrasena de true a false; Se cambio reset contrasena en de 2026-05-14T18:48:35.215 a vacio"	2026-05-14 18:49:30.551126	2
+2159	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:49:30.5902	2
+2160	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 18:49:38.247128	2
+2174	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 19:16:12.87208	2
+2191	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 20:39:55.108939	2
+2206	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de false a true"	2026-05-14 20:59:43.272218	2
+2226	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: CHAU LOCO"	2026-05-14 21:10:08.410932	2
+2260	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	items	"Se cambio monto de 1.00 a 10000.00"	2026-05-14 21:14:03.294746	2
+2287	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-14 21:27:13.669059	2
+2315	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	delegados_equipos	"Se creo delegados_equipos: registro"	2026-05-14 21:59:13.062321	2
+2316	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	usuarios	"usuarios: JUAN 777888; Se cambio permisos de JUAN 777888: espectador -> delegado"	2026-05-14 21:59:13.10754	2
+2317	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 21:59:23.094294	2
+2328	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 15:52:53.353051	2
+2329	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 15:52:58.415619	2
+2358	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:12:03.660903	2
+2359	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:12:09.028691	2
+2376	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	equipos	"Se cambio icono de /images/default_team.png a /uploads/832b3a5d1ec7f74590a5a41c45d5806e"	2026-05-17 22:28:31.974242	2
+2388	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de programado a en_curso"	2026-05-17 22:54:36.58763	2
+2389	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de en_curso a suspendido"	2026-05-17 22:54:45.734731	2
+2390	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de suspendido a programado"	2026-05-17 22:54:49.201329	2
+2407	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio goles b de 0 a 1"	2026-05-17 23:30:18.046833	2
+2420	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	grupos	"Se cambio visible fixture de true a false"	2026-05-17 23:53:24.855017	2
+2038	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	torneos_reglas_tarjetas	"Se creo torneos_reglas_tarjetas: registro"	2026-05-13 22:40:26.740133	27
+2039	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:40:26.762752	27
+2068	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-13 22:56:02.045768	27
+2069	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:56:03.192001	27
+2075	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 13:33:56.848697	2
+2076	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 13:33:58.953483	2
+2092	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	entity	"Se cambio activo de false a true"	2026-05-14 14:18:20.943678	27
+2093	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 14:18:23.671475	2
+2094	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 14:18:25.689732	2
+2112	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:33:30.869931	2
+2127	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 14:54:00.103159	2
+2142	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 18:35:32.412279	2
+2161	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:49:56.257132	2
+2162	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 18:49:58.263475	2
+2175	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A3", "entidad": "A3", "pantalla": "Entidad", "id_entidad": 4}	2026-05-14 19:17:52.156797	4
+2176	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "sa 2025", "detalle": "Ingreso a torneo sa", "pantalla": "Torneo", "id_torneo": 6, "id_entidad": 4}	2026-05-14 19:17:54.112082	4
+2192	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 20:40:45.268234	2
+2207	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 21:00:15.153798	2
+2227	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	torneos	"Se cambio estado de true a false"	2026-05-14 21:10:22.277606	2
+2228	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	torneos	"Se cambio estado de true a false"	2026-05-14 21:10:24.016851	2
+2261	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items	"Se creo items: transferencias"	2026-05-14 21:14:28.567777	2
+2288	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items_equipo	"Se creo items_equipo: TARJETA AMARILLA"	2026-05-14 21:28:02.423241	2
+2289	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items_equipo	"Se creo items_equipo: transferencias"	2026-05-14 21:28:02.423241	2
+2290	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	finanzas	"Se creo finanzas: Fecha libre #1 - SPORT VITO"	2026-05-14 21:28:02.423241	2
+2318	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio numero camiseta de vacio a 5"	2026-05-14 21:59:37.729285	2
+2319	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:59:37.729285	2
+2320	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio capitan de false a true"	2026-05-14 21:59:37.729285	2
+2330	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 15:53:04.827082	2
+2360	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:14:22.950598	2
+2361	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:14:32.147301	2
+2377	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:31:00.969485	2
+2378	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:31:06.843252	2
+2391	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de programado a en_curso"	2026-05-17 22:56:03.045972	2
+2392	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio goles a de 0 a 2"	2026-05-17 22:56:09.489845	2
+2408	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:31:13.068927	2
+2409	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:31:20.200629	2
+2422	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:55:29.915459	2
+2423	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:55:31.863811	2
+2040	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items	"Se creo items: derecho de partido"	2026-05-13 22:40:45.603631	27
+2041	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:40:45.62827	27
+2042	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	items	"Se cambio monto de 1.00 a 15000.00"	2026-05-13 22:40:54.931326	27
+2043	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:40:54.948325	27
+2070	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-13 23:11:16.315001	2
+2071	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-13 23:11:18.138094	2
+2077	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 13:38:21.245296	2
+2078	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 13:38:23.750197	2
+2095	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio estado de false a true"	2026-05-14 14:18:38.220509	2
+2113	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	UPDATE	jugadores_equipos	"Se cambio fecha inicio de vacio a 2026-05-14; Se cambio equipo de vacio a 131; Se cambio tipo vinculo de vacio a titular"	2026-05-14 14:33:58.432565	2
+2114	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	UPDATE	jugadores_equipos	"Se cambio numero camiseta de vacio a 22"	2026-05-14 14:34:04.909524	2
+2115	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 14:34:04.909524	2
+2116	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	UPDATE	jugadores_equipos	"Se cambio capitan de false a true"	2026-05-14 14:34:04.909524	2
+2128	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:54:15.104362	2
+2143	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 18:40:35.432854	2
+2163	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:50:01.926511	2
+2177	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 19:18:23.205042	2
+2178	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 19:18:25.615203	2
+2193	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 20:41:28.458089	2
+2208	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:01:30.120305	2
+2209	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:01:30.120305	2
+2210	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:01:30.120305	2
+2211	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio numero camiseta de vacio a 10"	2026-05-14 21:01:30.120305	2
+2212	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:01:30.120305	2
+2213	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:01:30.120305	2
+2214	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio capitan de true a false"	2026-05-14 21:01:30.120305	2
+2215	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:01:30.120305	2
+2216	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio capitan de false a true"	2026-05-14 21:01:30.120305	2
+2229	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	torneos	"Se creo torneos: misiones i"	2026-05-14 21:10:52.593554	2
+2230	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items	"Se creo items: TARJETA AMARILLA"	2026-05-14 21:10:52.593554	2
+2231	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items	"Se creo items: TARJETA ROJA"	2026-05-14 21:10:52.593554	2
+2262	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 21:16:45.388415	2
+2263	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores	"Se actualizo jugadores: juan perez"	2026-05-14 21:16:51.78726	2
+2264	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio estado de true a false"	2026-05-14 21:16:51.78726	2
+2291	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	DELETE	items_equipo	"Se elimino items_equipo: TARJETA AMARILLA"	2026-05-14 21:28:21.437981	2
+2292	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	DELETE	items_equipo	"Se elimino items_equipo: transferencias"	2026-05-14 21:28:21.437981	2
+2293	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items_equipo	"Se creo items_equipo: TARJETA AMARILLA"	2026-05-14 21:28:21.437981	2
+2294	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items_equipo	"Se creo items_equipo: transferencias"	2026-05-14 21:28:21.437981	2
+2295	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	DELETE	finanzas	"Se elimino finanzas: Fecha libre #1 - SPORT VITO"	2026-05-14 21:28:21.437981	2
+2296	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	finanzas	"Se creo finanzas: Fecha libre #1 - SPORT VITO"	2026-05-14 21:28:21.437981	2
+2321	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	equipos	"Se cambio estado de true a false"	2026-05-14 22:00:00.204469	2
+2331	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	estadisticas	"Se elimino estadisticas: registro"	2026-05-17 15:58:41.56076	2
+2332	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	sanciones	"Se elimino sanciones: registro"	2026-05-17 15:58:41.56076	2
+2333	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	sanciones	"Se creo sanciones: registro"	2026-05-17 15:58:41.56076	2
+2334	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-17 15:58:41.56076	2
+2335	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	items_equipo	"Se elimino items_equipo: DERECHO DE PARTIDOS"	2026-05-17 15:58:41.56076	2
+2336	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items_equipo	"Se creo items_equipo: DERECHO DE PARTIDOS"	2026-05-17 15:58:41.56076	2
+2337	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items_equipo	"Se creo items_equipo: DERECHO DE PARTIDOS"	2026-05-17 15:58:41.56076	2
+2338	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	finanzas	"Se elimino finanzas: Encuentro #350 - MENDOZA"	2026-05-17 15:58:41.56076	2
+2339	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	finanzas	"Se creo finanzas: Encuentro #350 - MENDOZA"	2026-05-17 15:58:41.56076	2
+2362	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:16:15.213703	2
+2044	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio fecha de vacio a 2026-05-17; Se cambio hora de vacio a 14:00:00"	2026-05-13 22:42:39.907554	27
+2045	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio fecha de vacio a 2026-05-17; Se cambio hora de vacio a 14:30:00"	2026-05-13 22:42:39.916929	27
+2046	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:42:46.840826	27
+2072	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-13 23:11:36.673367	2
+2079	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-14 13:38:52.181405	27
+2080	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-14 13:38:54.154346	27
+2096	\N	UPDATE	usuarios	"Se cambio contrasena de $2b$10$SQQM/ThSMpoYssAuLzZfFOtkNSnLccN9IeDXgwaHzwzsf40oREd6i a $2b$10$VmGQ6a5jNRvfxoXWfbnduOwl1COhcSSVQcy9i7nkluK3L5rR2wAJy; Se cambio debe cambiar contrasena de true a false; Se cambio reset contrasena en de 2026-05-13T18:22:40.224 a 2026-05-14T14:19:30.654"	2026-05-14 14:19:30.656949	2
+2117	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 14:45:38.569731	2
+2118	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:45:42.022286	2
+2129	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 18:12:46.347608	2
+2144	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:42:03.43713	2
+2145	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:42:05.720832	2
+2164	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	UPDATE	usuarios	"usuarios: juan 888889; Se cambio permisos de juan 888889: delegado -> espectador"	2026-05-14 18:51:34.424776	2
+2179	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 19:56:31.605994	2
+2180	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 19:56:35.839482	2
+2194	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 20:52:59.596391	2
+2217	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	equipos	"Se cambio icono de /uploads/57fe4cb13dbf7d77a90790941d04107e a /uploads/6c15d0020e256a2c22794e672d193a23"	2026-05-14 21:02:30.684037	2
+2232	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-14 21:11:03.929592	2
+2233	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	grupos	"Se creo grupos: GRUPO 1"	2026-05-14 21:11:12.445283	2
+2234	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	grupos	"Se creo grupos: GRUPO 2"	2026-05-14 21:11:21.976677	2
+2236	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: ARSENAL"	2026-05-14 21:11:34.37003	2
+2238	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: CHICO 10"	2026-05-14 21:11:48.552829	2
+2265	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	delegados_equipos	"Se creo delegados_equipos: registro"	2026-05-14 21:18:51.314339	2
+2266	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	usuarios	"usuarios: JUN PUEBLO 445566; Se cambio permisos de JUN PUEBLO 445566: espectador -> delegado"	2026-05-14 21:18:51.336791	2
+2297	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio goles a de 0 a 1"	2026-05-14 21:28:39.155907	2
+2298	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio goles a de 1 a 3"	2026-05-14 21:28:46.158462	2
+2322	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-14 22:01:56.215505	27
+2323	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-14 22:01:59.090927	27
+2324	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 22:02:08.198557	2
+2325	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio estado de false a true"	2026-05-14 22:02:17.874423	2
+2326	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 22:02:20.845874	2
+2340	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos_reglas_tarjetas	"Se cambio amarillas para suspension de 2 a 5"	2026-05-17 16:00:32.692844	2
+2363	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:16:52.907692	2
+2379	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:32:03.496853	2
+2380	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:32:10.113253	2
+2393	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:57:49.781609	2
+2394	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:58:00.018729	2
+2410	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio goles b de 1 a 2"	2026-05-17 23:31:36.879266	2
+2424	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de false a true"	2026-05-17 23:55:46.122132	2
+2047	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items_equipo	"Se creo items_equipo: derecho de partido"	2026-05-13 22:43:24.816749	27
+2048	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	items_equipo	"Se creo items_equipo: TARJETA AMARILLA"	2026-05-13 22:43:24.816749	27
+2049	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	finanzas	"Se creo finanzas: Encuentro #426 - AA"	2026-05-13 22:43:24.816749	27
+2050	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de programado a finalizado; Se cambio goles a de 0 a 2"	2026-05-13 22:43:31.423954	27
+2081	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 13:45:18.466317	2
+2082	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 13:45:21.558791	2
+2097	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:19:45.192543	2
+2119	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de true a false"	2026-05-14 14:45:57.104136	2
+2130	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:13:04.176572	2
+2146	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	delegados_equipos	"Se creo delegados_equipos: registro"	2026-05-14 18:42:41.400084	2
+2147	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: ALEJANDRO CACERES 999888; Se cambio permisos de ALEJANDRO CACERES 999888: espectador -> delegado"	2026-05-14 18:42:41.415992	2
+2165	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	UPDATE	usuarios	"usuarios: JULIO PRUEBA 4444444; Se cambio permisos de JULIO PRUEBA 4444444: delegado -> espectador"	2026-05-14 18:53:12.85626	2
+2166	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 18:53:12.868539	2
+2181	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 20:02:27.779494	2
+2182	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 20:02:29.009287	2
+2195	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio estado de false a true"	2026-05-14 20:53:13.60863	2
+2218	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 21:06:31.334596	2
+2235	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: SPORT VITO"	2026-05-14 21:11:28.765184	2
+2237	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: CENTU"	2026-05-14 21:11:42.672464	2
+2267	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	equipos	"Se cambio icono de /images/default_team.png a /uploads/13dff3446021f0545377a6fa29b5cfd1"	2026-05-14 21:19:03.810239	2
+2299	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	estadisticas	"Se creo estadisticas: registro"	2026-05-14 21:29:22.163163	2
+2300	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	sanciones	"Se creo sanciones: registro"	2026-05-14 21:29:22.163163	2
+2301	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio estado de true a false; Se cambio observaciones de vacio a Suspendido por 1 fecha(s) desde la fecha 2"	2026-05-14 21:29:22.163163	2
+2302	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	finanzas	"Se creo finanzas: Encuentro #434 - SPORT VITO"	2026-05-14 21:29:22.163163	2
+2327	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio contrasena de $2b$10$lzz8mpYC9dnkyTdlbAzr2.Vsx3jtrhdqni8EI6yGjcXrHgOwxARD2 a $2b$10$c/lPM3LOD6B0CrdBMJz5TuH6..Y50aOESHGldCVoYBOXftS1aLvNu; Se cambio debe cambiar contrasena de false a true; Se cambio reset contrasena en de 2026-05-14T20:38:53.444 a 2026-05-14T22:02:39.166"	2026-05-14 22:02:39.172484	2
+2341	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 17:03:11.006079	2
+2342	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 17:03:13.042455	2
+2364	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:17:09.61986	2
+2381	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:37:18.06229	2
+2395	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:59:00.575497	2
+2396	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:59:04.568203	2
+2411	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:38:39.085727	2
+2412	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:38:41.566826	2
+2425	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de true a false"	2026-05-17 23:55:51.650217	2
+2051	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:43:48.63956	27
+2083	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio estado de true a false"	2026-05-14 13:46:20.074989	2
+2098	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 14:20:05.688713	2
+2099	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:20:07.888265	2
+2120	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 14:46:31.536839	2
+2131	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:15:23.896159	2
+2132	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 18:15:26.015352	2
+2148	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: ALEJANDRO CACERES 999888; Se cambio permisos de ALEJANDRO CACERES 999888: delegado -> espectador"	2026-05-14 18:43:21.577487	2
+2149	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 18:43:21.598636	2
+2167	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	UPDATE	usuarios	"usuarios: PRUEBA  111222; Se cambio permisos de PRUEBA  111222: delegado -> espectador"	2026-05-14 18:54:42.991743	2
+2168	39b0e85c-c9f4-4bcb-be34-3a17d4d6b638	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 18:54:43.009603	2
+2183	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 20:04:02.49828	2
+2184	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 20:04:04.682529	2
+2196	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio estado de true a false"	2026-05-14 20:53:21.804734	2
+2219	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: LEONARDO TOLEDO 4930301; Se cambio permisos de LEONARDO TOLEDO 4930301: delegado -> admin"	2026-05-14 21:07:19.809657	2
+2220	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 21:07:19.828067	2
+2239	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: SAN JUAN"	2026-05-14 21:12:04.355181	2
+2241	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: JULIO"	2026-05-14 21:12:14.462007	2
+2268	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 21:21:27.989515	2
+2269	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 21:21:28.028148	2
+2270	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	jugadores_equipos	"Se creo jugadores_equipos: registro"	2026-05-14 21:21:28.032882	2
+2303	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores	"Se actualizo jugadores: alan batista"	2026-05-14 21:29:58.54104	2
+2304	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio estado de false a true; Se cambio observaciones de Suspendido por 1 fecha(s) desde la fecha 2 a \\r\\n"	2026-05-14 21:29:58.54104	2
+2343	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 17:09:44.83537	2
+2344	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 17:09:53.075874	2
+2365	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	torneos	"Se cambio permitir agregar jugadores de true a false"	2026-05-17 22:17:21.418625	2
+2382	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:37:30.236887	2
+2397	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:07:18.362016	2
+2398	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:07:21.536775	2
+2413	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:42:13.079367	2
+2426	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de programado a finalizado"	2026-05-17 23:56:38.555778	2
+2052	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	items_equipo	"Se elimino items_equipo: derecho de partido"	2026-05-13 22:44:31.090503	27
+2053	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	items_equipo	"Se elimino items_equipo: TARJETA AMARILLA"	2026-05-13 22:44:31.090503	27
+2054	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	finanzas	"Se elimino finanzas: Encuentro #426 - AA"	2026-05-13 22:44:31.090503	27
+2055	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	finanzas	"Se creo finanzas: Encuentro #426 - AA"	2026-05-13 22:44:31.090503	27
+2056	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:44:34.46206	27
+2084	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 13:47:47.976854	2
+2085	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 13:47:52.894031	2
+2100	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 14:21:17.54382	2
+2101	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 14:21:19.226429	2
+2102	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio rol de 2 a 1"	2026-05-14 14:21:19.229881	2
+2121	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 14:47:09.238106	2
+2133	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:18:49.327085	2
+2150	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	delegados_equipos	"Se creo delegados_equipos: registro"	2026-05-14 18:44:06.763653	2
+2151	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: ALEJANDRO CACERES 999888; Se cambio permisos de ALEJANDRO CACERES 999888: espectador -> delegado"	2026-05-14 18:44:06.793488	2
+2169	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 19:11:55.080669	2
+2185	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 20:04:09.8043	2
+2197	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 20:55:32.313205	2
+2221	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 21:07:31.640582	2
+2240	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: LEO"	2026-05-14 21:12:09.957107	2
+2271	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio numero camiseta de vacio a 15"	2026-05-14 21:21:45.016406	2
+2272	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio numero camiseta de vacio a 16"	2026-05-14 21:21:45.016406	2
+2273	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio numero camiseta de vacio a 17"	2026-05-14 21:21:45.016406	2
+2274	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:21:45.016406	2
+2275	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:21:45.016406	2
+2276	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se actualizo jugadores_equipos: registro"	2026-05-14 21:21:45.016406	2
+2277	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	jugadores_equipos	"Se cambio capitan de false a true"	2026-05-14 21:21:45.016406	2
+2305	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	DELETE	items_equipo	"Se elimino items_equipo: TARJETA AMARILLA"	2026-05-14 21:35:11.894382	2
+2306	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	DELETE	items_equipo	"Se elimino items_equipo: transferencias"	2026-05-14 21:35:11.894382	2
+2307	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	items_equipo	"Se creo items_equipo: TARJETA AMARILLA"	2026-05-14 21:35:11.894382	2
+2308	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	DELETE	finanzas	"Se elimino finanzas: Fecha libre #1 - SPORT VITO"	2026-05-14 21:35:11.894382	2
+2309	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	finanzas	"Se creo finanzas: Fecha libre #1 - SPORT VITO"	2026-05-14 21:35:11.894382	2
+2345	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	equipos	"Se cambio estado de false a true"	2026-05-17 17:10:25.781755	2
+2366	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:18:23.482601	2
+2367	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:18:25.497585	2
+2383	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:45:55.050052	2
+2384	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 22:46:00.378048	2
+2399	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:08:45.790571	2
+2400	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:08:47.171243	2
+2414	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:42:29.158504	2
+2427	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	grupos	"Se cambio visible fixture de false a true"	2026-05-17 23:57:43.401763	2
+2057	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	equipos	"Se cambio icono de /images/default_team.png a /uploads/6022a751f7b5738a6f9a47337a270d3f"	2026-05-13 22:45:29.602358	27
+2058	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:45:38.469918	27
+2059	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:45:43.738923	27
+2086	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio estado de true a false"	2026-05-14 13:48:10.129329	2
+2103	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	delegados_equipos	"Se creo delegados_equipos: registro"	2026-05-14 14:21:36.245039	2
+2104	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio rol de 1 a 2"	2026-05-14 14:21:36.266319	2
+2122	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 14:48:01.801698	2
+2134	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"Se cambio rol de 1 a 3"	2026-05-14 18:22:37.96232	2
+2152	79552bf7-8e05-4583-bc88-23c4696e69d6	DELETE	delegados_equipos	"Se elimino delegados_equipos: registro"	2026-05-14 18:44:40.366421	2
+2153	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: ALEJANDRO CACERES 999888; Se cambio permisos de ALEJANDRO CACERES 999888: delegado -> espectador"	2026-05-14 18:44:40.385213	2
+2170	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 19:12:27.760181	2
+2186	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 20:11:33.324621	2
+2187	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 20:11:35.14058	2
+2198	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	delegados_equipos	"Se creo delegados_equipos: registro"	2026-05-14 20:56:02.534599	2
+2199	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	usuarios	"usuarios: LEONARDO TOLEDO 4930301; Se cambio permisos de LEONARDO TOLEDO 4930301: espectador -> delegado"	2026-05-14 20:56:02.560338	2
+2222	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 21:07:57.051926	2
+2242	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: JUANJO"	2026-05-14 21:12:27.523612	2
+2278	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio fecha de vacio a 2026-05-16; Se cambio hora de vacio a 15:00:00"	2026-05-14 21:23:09.183049	2
+2279	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio fecha de vacio a 2026-05-16; Se cambio hora de vacio a 15:47:00"	2026-05-14 21:23:09.206762	2
+2280	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio fecha de vacio a 2026-05-16; Se cambio hora de vacio a 16:34:00"	2026-05-14 21:23:09.211792	2
+2281	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio fecha de vacio a 2026-05-16; Se cambio hora de vacio a 17:21:00"	2026-05-14 21:23:09.216728	2
+2310	79552bf7-8e05-4583-bc88-23c4696e69d6	INSERT	entity	"Se creo entity: registro"	2026-05-14 21:43:42.710371	28
+2346	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 17:33:48.676493	2
+2368	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:22:23.298635	2
+2369	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:22:28.971844	2
+2385	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:46:38.52194	2
+2401	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:12:17.054801	2
+2402	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:12:19.658779	2
+2415	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:42:48.623756	2
+2416	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:42:51.175978	2
+2428	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	grupos	"Se cambio visible fixture de false a true"	2026-05-17 23:57:50.37359	2
+2060	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A22", "entidad": "A22", "pantalla": "Entidad", "id_entidad": 27}	2026-05-13 22:47:47.166726	27
+2061	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba 2025", "detalle": "Ingreso a torneo prueba", "pantalla": "Torneo", "id_torneo": 16, "id_entidad": 27}	2026-05-13 22:47:48.214533	27
+2087	\N	INSERT	usuarios	"Se creo usuarios: JUAN PER 999888"	2026-05-14 14:13:22.70915	27
+2105	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:22:26.330697	2
+2011	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-13 22:38:27.966432	2
+2123	ceba6f6e-d1c3-4d8d-a268-84a437d8e3ce	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 14:48:12.825812	2
+2135	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad CCSDC", "entidad": "CCSDC", "pantalla": "Entidad", "id_entidad": 3}	2026-05-14 18:28:15.181718	3
+2136	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:28:19.421631	2
+2137	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:28:22.59764	2
+2154	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-14 18:47:38.293933	2
+2155	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 18:47:41.390242	2
+2171	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 19:13:29.42272	2
+2188	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-14 20:13:55.07028	2
+2200	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INGRESO	pantalla	{"torneo": "CAMPEONES 2026", "detalle": "Ingreso a torneo CAMPEONES", "pantalla": "Torneo", "id_torneo": 15, "id_entidad": 2}	2026-05-14 20:56:15.05672	2
+2223	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	grupos	"Se creo grupos: CUARTO"	2026-05-14 21:09:31.86225	2
+2243	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	INSERT	equipos	"Se creo equipos: VICTOR"	2026-05-14 21:12:31.46404	2
+2282	1dc14b75-4cee-4ef2-8ece-7ea0941c5032	UPDATE	partidos	"Se cambio estado de programado a finalizado"	2026-05-14 21:24:21.766196	2
+2311	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad MISIONEI", "entidad": "MISIONEI", "pantalla": "Entidad", "id_entidad": 28}	2026-05-14 21:44:50.873013	28
+2347	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de suspendido a finalizado; Se cambio goles a de 0 a 2"	2026-05-17 17:57:12.781721	2
+2348	79552bf7-8e05-4583-bc88-23c4696e69d6	UPDATE	partidos	"Se cambio estado de suspendido a finalizado; Se cambio goles a de 0 a 3"	2026-05-17 17:57:18.539731	2
+2370	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:26:19.940888	2
+2371	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "misiones i  clausura", "detalle": "Ingreso a torneo misiones i ", "pantalla": "Torneo", "id_torneo": 17, "id_entidad": 2}	2026-05-17 22:26:26.414542	2
+2386	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 22:53:25.113571	2
+2403	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:25:06.997708	2
+2404	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:25:15.708416	2
+2417	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"detalle": "Ingreso a entidad A2", "entidad": "A2", "pantalla": "Entidad", "id_entidad": 2}	2026-05-17 23:51:31.262548	2
+2418	79552bf7-8e05-4583-bc88-23c4696e69d6	INGRESO	pantalla	{"torneo": "prueba de jugadores 2026", "detalle": "Ingreso a torneo prueba de jugadores", "pantalla": "Torneo", "id_torneo": 12, "id_entidad": 2}	2026-05-17 23:51:35.108976	2
+\.
+
+
+--
+-- Data for Name: canchas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.canchas (id_cancha, id_torneo, entity_id, nombre, direccion, estado) FROM stdin;
+1	12	2	MISIONE`I	luque	t
+2	16	27	mita`i	\N	t
+\.
+
+
+--
+-- Data for Name: delegados_equipos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.delegados_equipos (id_delegado_equipo, id_usuario, id_equipo, rol, fecha_asignacion, estado) FROM stdin;
+27	34593613-cd11-4298-9b14-d157e533edc3	73	delegado	2026-05-03 23:45:34.900939	t
+30	d4dfc7ac-59c3-4bc9-9130-6431cdd029de	50	delegado	2026-05-06 04:55:08.305515	t
+39	bc4f953f-b09c-4a4a-a0ab-a258dc384e32	70	delegado	2026-05-08 19:41:28.09291	t
+49	1b8fdce4-91c6-4175-92ba-0b9b96781406	147	delegado	2026-05-14 21:18:51.314339	t
+50	bc4f953f-b09c-4a4a-a0ab-a258dc384e32	149	delegado	2026-05-14 21:59:13.062321	t
+\.
+
+
+--
+-- Data for Name: entities; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.entities (id, nombre, descripcion) FROM stdin;
+\.
+
+
+--
+-- Data for Name: entity; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.entity (entity_id, codigo, descripcion, activo) FROM stdin;
+1	A1	A01	f
+4	A3	A4	f
+3	CCSDC	ASXAAA	f
+27	A22	PRUEBA	f
+28	MISIONEI	MISIONEI	f
+2	A2	A223	t
+9	A4	A3	f
+8	A5	A5	f
+\.
+
+
+--
+-- Data for Name: entity_audit; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.entity_audit (audit_id, entity_id, accion, usuario, fecha, detalle) FROM stdin;
+\.
+
+
+--
+-- Data for Name: equipos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.equipos (id_equipo, nombre, icono, id_torneo, estado, id_grupo, entity_id, observaciones) FROM stdin;
+130	A	/images/default_team.png	12	t	58	2	\N
+131	B	/images/default_team.png	12	t	58	2	\N
+133	C	/images/default_team.png	12	t	58	2	\N
+134	D	/images/default_team.png	12	t	58	2	\N
+80	AMERIA	/uploads/683d658685782304b1990d8374bde480	12	t	41	2	\N
+135	A	/images/default_team.png	15	t	59	2	\N
+136	B	/images/default_team.png	15	t	59	2	\N
+137	C	/images/default_team.png	15	t	59	2	\N
+43	ARGENTINA	\N	6	t	22	4	\N
+71	BRASIL	/images/default_team.png	6	t	22	4	\N
+14	OLMPIA	\N	1	t	10	2	\N
+138	D	/images/default_team.png	15	t	59	2	\N
+73	PPP	/uploads/5da3176babf4b2122b8416519e068356	3	t	39	2	\N
+50	BRASIL	/uploads/3316986b79a37d09fd9af397a21ab526	3	t	52	2	\N
+139	E	/images/default_team.png	15	t	59	2	\N
+141	BB	/images/default_team.png	16	t	60	27	\N
+143	DD	/images/default_team.png	16	t	60	27	\N
+140	AA	/uploads/6022a751f7b5738a6f9a47337a270d3f	16	t	60	27	\N
+82	ECUADOR	/images/default_team.png	3	t	52	2	\N
+98	PERU	/images/default_team.png	3	t	52	2	\N
+99	DDD	/images/default_team.png	3	t	36	2	\N
+142	CC	/uploads/6027778f7ca6f203e383abd7ced1a031	16	t	60	27	\N
+58	RIVER	/uploads/6c15d0020e256a2c22794e672d193a23	12	t	51	2	\N
+144	SPORT VITO	/images/default_team.png	12	t	61	2	\N
+145	CENTU	/images/default_team.png	12	t	61	2	\N
+146	CHAU LOCO	/images/default_team.png	12	t	61	2	\N
+148	ARSENAL	/images/default_team.png	17	t	62	2	\N
+100	AAAA	/images/default_team.png	3	t	39	2	\N
+149	CENTU	/images/default_team.png	17	t	62	2	\N
+150	CHICO 10	/images/default_team.png	17	t	62	2	\N
+151	SAN JUAN	/images/default_team.png	17	t	62	2	\N
+103	AAA	/images/default_team.png	3	t	36	2	\N
+152	LEO	/images/default_team.png	17	t	63	2	\N
+101	BBB	/images/default_team.png	3	t	36	2	\N
+102	CCC	/images/default_team.png	3	t	36	2	\N
+104	EEE	/images/default_team.png	3	t	36	2	\N
+13	VZXC	/uploads/0bfc72af5ae13d4a163cd5d4e633cf62	1	t	10	2	\N
+97	COLOMBIA	/uploads/4da1b0ba6202bcc872bbab8db393fa9a	3	t	52	2	\N
+154	JUANJO	/images/default_team.png	17	t	63	2	\N
+155	VICTOR	/images/default_team.png	17	t	63	2	\N
+147	SPORT VITO	/uploads/13dff3446021f0545377a6fa29b5cfd1	17	t	62	2	\N
+153	JULIO	/uploads/832b3a5d1ec7f74590a5a41c45d5806e	17	t	63	2	\N
+74	PARAGUAY	/uploads/e732bb347b8133ded1ef33360c100ccf	3	t	52	2	\N
+59	LANUS	/uploads/a6a15c1c14800e6799578f7a5a6f6af0	12	t	40	2	\N
+114	MENDOZA	/images/default_team.png	12	t	51	2	\N
+67	OLIMPIA	\N	12	t	51	2	\N
+83	VENEZUELA	/images/default_team.png	3	t	52	2	\N
+64	EQUIPO 1	\N	9	t	48	8	\N
+65	EQUIPO 2	\N	9	t	50	8	\N
+79	SOL	/images/default_team.png	12	t	51	2	\N
+112	ELSA	/images/default_team.png	8	t	54	2	\N
+117	AA	/images/default_team.png	15	t	57	2	\N
+66	CHILE	/uploads/c6fbdb2309ed643dbf28e51c595d4da6	3	t	52	2	\N
+118	BB	/images/default_team.png	15	t	57	2	\N
+119	CC	/images/default_team.png	15	t	57	2	\N
+120	DD	/images/default_team.png	15	t	57	2	\N
+106	BBB	/images/default_team.png	8	t	54	2	\N
+105	AAA	/images/default_team.png	8	t	54	2	\N
+121	EE	/images/default_team.png	15	t	57	2	\N
+69	GUARANI	/uploads/f654ca9a160d24a659c05b96d0327326	12	t	40	2	\N
+81	TOLEDO	/uploads/a4cc164347ae2d0757143894c17569e4	12	t	41	2	\N
+108	DDD	/images/default_team.png	8	f	54	2	\N
+78	ARGENTINA	/uploads/aa1cbd43f5f27f4067f11b9032690ad5	3	t	52	2	\N
+70	NACIONAL	/uploads/049625da3bc1f98b0e92a7b0eaa73363	12	t	40	2	\N
+122	A	/images/default_team.png	2	t	13	2	\N
+123	B	/images/default_team.png	2	t	13	2	\N
+124	C	/images/default_team.png	2	t	13	2	\N
+125	D	/images/default_team.png	2	t	13	2	\N
+126	E	/images/default_team.png	2	t	13	2	\N
+127	F	/images/default_team.png	2	t	13	2	\N
+128	G	/images/default_team.png	2	t	13	2	\N
+129	H	/images/default_team.png	2	t	13	2	\N
+\.
+
+
+--
+-- Data for Name: equipos_movimientos_grupo; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.equipos_movimientos_grupo (id_movimiento, id_equipo, id_torneo, id_grupo_origen, id_grupo_destino, observacion, fecha_movimiento, id_usuario, entity_id) FROM stdin;
+3	106	8	26	54	Se cambio de A a B	2026-05-07 02:03:21.536	79552bf7-8e05-4583-bc88-23c4696e69d6	2
+5	108	8	26	54	Se cambio de A a B	2026-05-07 02:09:55.158	79552bf7-8e05-4583-bc88-23c4696e69d6	2
+6	58	12	40	51	Se cambio de A a SEMI	2026-05-08 19:24:17.703	79552bf7-8e05-4583-bc88-23c4696e69d6	2
+7	114	12	41	51	Se cambio de B a SEMI	2026-05-08 19:35:00.553	79552bf7-8e05-4583-bc88-23c4696e69d6	2
+8	67	12	40	51	Se cambio de A a SEMI	2026-05-08 19:50:50.256	79552bf7-8e05-4583-bc88-23c4696e69d6	2
+9	79	12	41	51	Se cambio de B a SEMI	2026-05-08 19:52:27.48	79552bf7-8e05-4583-bc88-23c4696e69d6	2
+\.
+
+
+--
+-- Data for Name: estadisticas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.estadisticas (id_estadistica, id_jugador, id_partido, goles, tarjetas_amarillas, tarjetas_rojas, entity_id) FROM stdin;
+67	31	323	0	1	0	2
+69	30	319	0	1	0	2
+74	18	322	0	1	0	2
+81	8	325	0	1	0	2
+82	28	325	3	1	0	2
+84	19	350	0	0	1	2
+86	25	315	0	1	0	2
+87	26	315	0	1	0	2
+88	8	434	0	1	0	2
+42	18	318	0	1	0	2
+43	25	318	0	1	0	2
+48	19	320	0	1	0	2
+49	19	316	0	1	0	2
+50	13	316	0	1	0	2
+51	19	318	0	1	0	2
+52	13	318	0	1	0	2
+\.
+
+
+--
+-- Data for Name: eventos_partido; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.eventos_partido (id_evento, id_partido, id_jugador, tipo_evento, minuto, detalle, id_item, monto) FROM stdin;
+\.
+
+
+--
+-- Data for Name: finanzas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.finanzas (id_finanza, id_equipo, monto_inscripcion, monto_aportado, deuda_total, entity_id, id_torneo, fecha_registro, concepto, tipo, saldo, deuda_inicial) FROM stdin;
+89	147	0.00	20000.00	10000.00	2	17	2026-05-14	Fecha libre #1 - SPORT VITO	fecha_libre	20000.00	30000.00
+90	114	0.00	0.00	200000.00	2	12	2026-05-17	Encuentro #350 - MENDOZA	partido	285000.00	85000.00
+17	59	0.00	0.00	100000.00	2	12	2026-05-07	Fecha libre #2 - LANUS	fecha_libre	100000.00	0.00
+19	69	0.00	100000.00	130000.00	2	12	2026-05-07	Encuentro #318 - GUARANI	partido	190000.00	160000.00
+24	58	0.00	0.00	15000.00	2	12	2026-05-07	Encuentro #320 - RIVER	partido	145000.00	130000.00
+25	81	0.00	0.00	100000.00	2	12	2026-05-07	Encuentro #325 - TOLEDO	partido	100000.00	0.00
+26	58	0.00	0.00	130000.00	2	12	2026-05-08	Encuentro #316 - RIVER	partido	275000.00	145000.00
+27	58	0.00	0.00	30000.00	2	12	2026-05-08	Encuentro #318 - RIVER	partido	305000.00	275000.00
+37	70	0.00	0.00	0.00	2	12	2026-05-08	Encuentro #321 - NACIONAL	partido	30000.00	30000.00
+45	70	0.00	0.00	15000.00	2	12	2026-05-08	Encuentro #323 - NACIONAL	partido	90000.00	75000.00
+50	70	0.00	0.00	15000.00	2	12	2026-05-08	Encuentro #319 - NACIONAL	partido	120000.00	105000.00
+53	69	0.00	0.00	100000.00	2	12	2026-05-08	Fecha libre #3 - GUARANI	fecha_libre	450000.00	350000.00
+54	69	0.00	0.00	115000.00	2	12	2026-05-08	Encuentro #322 - GUARANI	partido	565000.00	450000.00
+55	67	0.00	0.00	200000.00	2	12	2026-05-08	Encuentro #315 - OLIMPIA	partido	200000.00	0.00
+56	67	0.00	100000.00	100000.00	2	12	2026-05-08	Encuentro #317 - OLIMPIA	partido	200000.00	200000.00
+57	67	0.00	0.00	100000.00	2	12	2026-05-08	Encuentro #320 - OLIMPIA	partido	300000.00	200000.00
+58	67	0.00	0.00	100000.00	2	12	2026-05-08	Fecha libre #4 - OLIMPIA	fecha_libre	400000.00	300000.00
+59	67	0.00	0.00	100000.00	2	12	2026-05-08	Encuentro #324 - OLIMPIA	partido	500000.00	400000.00
+62	59	0.00	50000.00	100000.00	2	12	2026-05-08	Encuentro #319 - LANUS	partido	280000.00	230000.00
+65	114	0.00	50000.00	135000.00	2	12	2026-05-08	Encuentro #325 - MENDOZA	partido	85000.00	0.00
+66	67	0.00	0.00	0.00	2	12	2026-05-08	Encuentro #345 - OLIMPIA	partido	500000.00	500000.00
+67	118	0.00	0.00	15000.00	2	15	2026-05-08	Encuentro #370 - BB	partido	15000.00	0.00
+69	79	0.00	0.00	115000.00	2	12	2026-05-11	Encuentro #326 - SOL	partido	115000.00	0.00
+70	79	0.00	0.00	105000.00	2	12	2026-05-11	Encuentro #328 - SOL	partido	220000.00	115000.00
+73	69	0.00	0.00	5000.00	2	12	2026-05-11	Encuentro #372 - GUARANI	partido	570000.00	565000.00
+75	59	0.00	0.00	30000.00	2	12	2026-05-11	Encuentro #316 - LANUS	partido	310000.00	280000.00
+77	70	0.00	15000.00	15000.00	2	12	2026-05-12	Encuentro #317 - NACIONAL	partido	120000.00	120000.00
+78	58	0.00	0.00	100000.00	2	12	2026-05-12	Encuentro #350 - RIVER	partido	405000.00	305000.00
+81	136	0.00	20000.00	30000.00	2	15	2026-05-13	Encuentro #416 - B	partido	10000.00	0.00
+82	69	0.00	150000.00	155000.00	2	12	2026-05-13	Encuentro #315 - GUARANI	partido	575000.00	570000.00
+84	140	0.00	0.00	0.00	27	16	2026-05-13	Encuentro #426 - AA	partido	0.00	0.00
+85	142	0.00	0.00	1000000.00	27	16	2026-05-13	Encuentro #427 - CC	partido	1000000.00	0.00
+88	147	0.00	0.00	0.00	2	17	2026-05-14	Encuentro #434 - SPORT VITO	partido	30000.00	30000.00
+\.
+
+
+--
+-- Data for Name: grupos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.grupos (id_grupo, nombre_grupo, id_torneo, estado, entity_id, visible_fixture) FROM stdin;
+3	GRUBO B	1	t	1	t
+10	 XCVC	1	t	2	t
+13	B	2	t	2	t
+22	1	6	t	4	t
+26	A	8	t	2	t
+36	A	3	t	2	t
+38	B	3	t	2	t
+39	SEMIFINAL	3	t	2	t
+48	A	9	t	8	t
+50	B	9	t	8	t
+51	SEMI	12	t	2	t
+52	CUARTOS	3	t	2	t
+54	B	8	t	2	t
+57	GRUPO A	15	t	2	t
+59	B	15	t	2	t
+60	A	16	t	27	t
+61	CUARTO	12	t	2	t
+62	GRUPO 1	17	t	2	t
+63	GRUPO 2	17	t	2	t
+40	A	12	t	2	f
+58	C	12	t	2	t
+41	B	12	t	2	t
+\.
+
+
+--
+-- Data for Name: items; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.items (id_item, nombre, descripcion, monto, entity_id, id_torneo) FROM stdin;
+4	tarjeta roja	\N	15000.00	2	8
+9	DERECHO DE PARTIDOS	\N	100000.00	2	12
+8	INSCRIPCION	\N	100000.00	2	12
+10	TARJETA AMARILLA	Item automatico generado al crear torneo	1.00	2	14
+11	TARJETA ROJA	Item automatico generado al crear torneo	1.00	2	14
+7	TARJETA AMARILLA	\N	15000.00	2	12
+12	BOTELLA DE AGUA	\N	5000.00	2	12
+14	TARJETA ROJA	Item automatico generado al crear torneo	1.00	2	15
+13	TARJETA AMARILLA	\N	15000.00	2	15
+15	TARJETA ROJA	Item automatico generado al crear grupo	1.00	2	12
+17	TARJETA ROJA	Item automatico generado al crear torneo	1.00	27	16
+18	derecho de partido	\N	1000000.00	27	16
+16	TARJETA AMARILLA	Item automatico generado al crear torneo	15000.00	27	16
+20	TARJETA ROJA	Item automatico generado al crear torneo	1.00	2	17
+19	TARJETA AMARILLA	Item automatico generado al crear torneo	10000.00	2	17
+21	transferencias	transferncias de jugadores	40000.00	2	17
+\.
+
+
+--
+-- Data for Name: items_equipo; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.items_equipo (id_item_equipo, id_equipo, id_partido, nombre, monto, cantidad, observaciones, fecha_registro) FROM stdin;
+87	118	370	TARJETA AMARILLA	15000.00	1		2026-05-08 23:29:40.144706
+89	79	326	DERECHO DE PARTIDOS	100000.00	1		2026-05-11 14:55:25.350643
+90	79	326	TARJETA AMARILLA	15000.00	1		2026-05-11 14:55:25.350643
+91	79	328	DERECHO DE PARTIDOS	100000.00	1		2026-05-11 14:56:09.755654
+92	79	328	BOTELLA DE AGUA	5000.00	1		2026-05-11 14:56:09.755654
+95	69	372	BOTELLA DE AGUA	5000.00	1		2026-05-11 14:59:16.312163
+97	59	316	TARJETA AMARILLA	15000.00	2		2026-05-11 15:40:10.657051
+99	70	317	TARJETA AMARILLA	15000.00	1	Generado por tarjetas del encuentro	2026-05-12 20:24:41.901638
+100	58	350	DERECHO DE PARTIDOS	100000.00	1		2026-05-12 20:25:43.244214
+103	136	416	TARJETA AMARILLA	15000.00	2		2026-05-13 18:30:15.576409
+104	69	315	DERECHO DE PARTIDOS	100000.00	1		2026-05-13 18:55:53.618776
+105	69	315	TARJETA AMARILLA	15000.00	3	Generado por tarjetas del encuentro	2026-05-13 18:55:53.618776
+106	69	315	BOTELLA DE AGUA	5000.00	1		2026-05-13 18:55:53.618776
+107	69	315	BOTELLA DE AGUA	5000.00	1		2026-05-13 18:55:53.618776
+110	142	427	derecho de partido	1000000.00	1		2026-05-13 22:51:53.433031
+115	147	\N	TARJETA AMARILLA	10000.00	1	[fecha_libre:17:1]	2026-05-14 21:35:11.894382
+116	114	350	DERECHO DE PARTIDOS	100000.00	1		2026-05-17 15:58:41.56076
+117	114	350	DERECHO DE PARTIDOS	100000.00	1		2026-05-17 15:58:41.56076
+33	59	\N	DERECHO DE PARTIDOS	100000.00	1	[fecha_libre:12:2]	2026-05-07 20:02:05.693934
+37	69	318	INSCRIPCION	100000.00	1		2026-05-07 20:59:41.087707
+38	69	318	TARJETA AMARILLA	15000.00	2	Generado por tarjetas del encuentro	2026-05-07 20:59:41.087707
+44	58	320	TARJETA AMARILLA	15000.00	1	Generado por tarjetas del encuentro	2026-05-07 21:05:54.071302
+45	81	325	DERECHO DE PARTIDOS	100000.00	1		2026-05-07 21:06:24.886715
+46	58	316	TARJETA AMARILLA	15000.00	2	Generado por tarjetas del encuentro	2026-05-08 13:22:00.617801
+47	58	316	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 13:22:00.617801
+48	58	318	TARJETA AMARILLA	15000.00	2	Generado por tarjetas del encuentro	2026-05-08 13:22:19.665914
+58	70	323	TARJETA AMARILLA	15000.00	1	Generado por tarjetas del encuentro	2026-05-08 18:16:37.816843
+60	70	319	TARJETA AMARILLA	15000.00	1	Generado por tarjetas del encuentro	2026-05-08 18:36:21.293656
+65	69	\N	DERECHO DE PARTIDOS	100000.00	1	[fecha_libre:12:3]	2026-05-08 18:57:56.991323
+66	69	322	TARJETA AMARILLA	15000.00	1	Generado por tarjetas del encuentro	2026-05-08 18:58:26.033603
+67	69	322	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 18:58:26.033603
+68	67	315	INSCRIPCION	100000.00	1		2026-05-08 19:04:39.288024
+69	67	315	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 19:04:39.288024
+70	67	317	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 19:10:19.29246
+71	67	320	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 19:10:31.80983
+72	67	\N	DERECHO DE PARTIDOS	100000.00	1	[fecha_libre:12:4]	2026-05-08 19:10:44.821631
+73	67	324	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 19:10:54.464904
+79	59	319	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 19:44:37.295595
+84	114	325	DERECHO DE PARTIDOS	100000.00	1		2026-05-08 23:04:49.99736
+85	114	325	TARJETA AMARILLA	15000.00	2	Generado por tarjetas del encuentro	2026-05-08 23:04:49.99736
+86	114	325	BOTELLA DE AGUA	5000.00	1		2026-05-08 23:04:49.99736
+\.
+
+
+--
+-- Data for Name: jugadores; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.jugadores (id_jugador, nombre, apellido, documento, fecha_nacimiento, estado, entity_id, observaciones) FROM stdin;
+41	Jul	Mmm	334411	1990-07-30	t	2	
+14	fgfhgf	fhghfh	885858	1990-07-30	t	4	
+15	jul	mmm	5160826	1990-07-30	t	4	
+3	cdscz	cds	65151	2002-10-22	f	2	 cvb
+17	xsas	xas	8885555	2001-01-20	t	2	
+18	xsxax	xasa	111222	2001-10-01	t	2	
+19	jjgjf	hgfhg	552225	2001-01-01	t	2	
+29	rodrigo 	lopez	9999999999	2004-01-02	t	2	
+28	elias	dos santos	888888888888888888	0001-02-02	t	2	
+34	martin	candi	645654	2001-01-22	t	2	
+26	marcos 	martinez	222222222	2002-02-02	t	2	prueba
+33	juan 	perez	5555552	2001-01-22	t	2	
+32	julio	lopez	51608268888	2001-01-22	t	2	
+25	xxx	xx	888889	2001-02-20	t	2	
+13	jul	men	5252524	2021-01-10	t	2	
+20	mathias	franco	888555	2001-01-01	t	2	
+4	cdc	cds	654	2001-12-22	t	2	
+16	elias 	lopez	999999	2001-01-21	t	2	
+35	xsx	cscs	324234234	2002-05-07	t	2	
+36	aaaaa	aaaaa	4534543	2004-05-07	t	2	
+1	julio	mendoza	5160826	1990-07-30	t	2	 bv cbv
+27	rolando	roman	777777777	2004-02-20	t	2	prueba
+31	joel 	lopez	55554	2001-01-22	t	2	
+30	alejandro	aghuero	5222222	2001-05-08	t	2	
+37	prueba de carga	xxxx	4444444	2001-10-22	t	2	
+38	jorg	ama	44444444	1990-07-30	t	2	
+39	aaa	bbb	444455	2000-11-22	t	2	
+40	pedro	gonzales	111111111	1995-02-03	t	2	
+12	juan	perez	55522233	2001-10-22	t	2	
+8	alan	batista	525252	2000-12-10	t	2	
+\.
+
+
+--
+-- Data for Name: jugadores_equipos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.jugadores_equipos (id_jugador_equipo, id_jugador, id_equipo, tipo_vinculo, estado, fecha_inicio, fecha_fin, id_torneo, observaciones, numero_camiseta, capitan) FROM stdin;
+94	1	49	titular	t	2026-05-02	\N	3	\N	2	f
+238	8	147	titular	t	2026-05-14	\N	17	\r\n	15	f
+232	39	131	titular	t	2026-05-14	\N	12		22	t
+220	28	114	titular	t	2026-05-08	\N	12	\N	2	f
+233	40	\N	\N	t	\N	\N	\N		\N	f
+185	35	\N	\N	t	\N	\N	\N		\N	f
+186	35	\N	\N	t	\N	\N	\N		\N	f
+187	35	\N	\N	t	\N	\N	3		\N	f
+188	36	\N	\N	t	\N	\N	\N		\N	f
+189	36	\N	\N	t	\N	\N	\N		\N	f
+190	36	\N	\N	f	\N	\N	3		\N	f
+234	40	\N	\N	t	\N	\N	\N		\N	f
+221	4	114	titular	f	2026-05-08	\N	12	Suspendido por 1 fecha(s) desde la fecha 1	3	f
+150	27	74	titular	t	2026-05-04	\N	3	\N	\N	f
+204	27	80	titular	f	2026-05-07	\N	12		22	f
+192	18	97	titular	t	2026-05-06	\N	3	\N	\N	f
+99	16	66	titular	t	2026-05-02	\N	3	\N	66	t
+235	40	\N	\N	t	\N	\N	15		\N	f
+160	17	50	titular	t	2026-05-04	\N	3	\N	11	f
+173	26	50	titular	t	2026-05-04	\N	3		10	f
+145	33	50	titular	t	2026-05-04	\N	3		55	f
+146	25	50	titular	t	2026-05-04	\N	3		6	f
+124	20	50	titular	t	2026-05-04	\N	3		8	f
+215	31	50	titular	t	2026-05-07	\N	3	\N	22	t
+144	34	82	titular	t	2026-05-04	\N	3		\N	f
+194	30	109	titular	t	2026-05-06	\N	8	\N	22	f
+118	13	82	titular	t	2026-05-03	\N	3		\N	f
+162	19	82	titular	t	2026-05-04	\N	3	\N	\N	f
+142	32	82	titular	t	2026-05-04	\N	3		\N	f
+222	1	59	titular	t	2026-05-09	\N	12	\N	4	f
+174	8	82	titular	t	2026-05-04	\N	3	\N	\N	f
+223	35	59	titular	t	2026-05-09	\N	12	\N	11	t
+224	37	\N	\N	t	\N	\N	\N		\N	f
+225	37	\N	\N	t	\N	\N	\N		\N	f
+226	37	\N	\N	t	\N	\N	12		\N	f
+117	14	71	titular	t	2026-05-03	\N	6	\N	\N	f
+227	38	\N	\N	t	\N	\N	\N		\N	f
+193	1	105	titular	t	2026-05-06	\N	8		\N	f
+228	38	\N	\N	t	\N	\N	\N		\N	f
+158	12	75	titular	t	2026-05-04	\N	3	\N	\N	f
+159	30	75	titular	t	2026-05-04	\N	3	\N	\N	f
+229	38	\N	\N	t	\N	\N	12		\N	f
+161	18	76	titular	t	2026-05-04	\N	3	\N	\N	f
+143	19	\N	titular	t	2026-05-04	\N	3		\N	f
+241	19	149	titular	t	2026-05-14	\N	17	\N	5	t
+179	19	58	titular	f	2026-05-05	\N	12	Suspendido por 1 fecha(s) desde la fecha 1	1	f
+182	32	58	titular	t	2026-05-05	\N	12	\N	2	f
+218	13	58	titular	t	2026-05-07	\N	12	\N	3	f
+178	18	69	titular	f	2026-05-05	\N	12	Suspendido por 1 fecha(s) desde la fecha 5	5	f
+203	26	69	titular	t	2026-05-07	\N	12	\N	22	f
+163	28	76	titular	t	2026-05-04	\N	3	\N	\N	f
+183	25	69	titular	t	2026-05-05	\N	12	\N	10	f
+219	8	114	titular	f	2026-05-08	\N	12	Suspendido por 1 fecha(s) desde la fecha 1	1	t
+217	17	69	titular	t	2026-05-07	\N	12	\N	33	f
+176	30	78	titular	t	2026-05-05	\N	3	\N	\N	f
+216	20	69	titular	t	2026-05-07	\N	12	\N	55	t
+205	31	70	titular	f	2026-05-07	\N	12	Suspendido por 1 fecha(s) desde la fecha 2	1	f
+209	27	112	titular	t	2026-05-07	\N	8	\N	1	f
+210	12	112	titular	t	2026-05-07	\N	8	\N	22	f
+208	31	112	titular	t	2026-05-07	\N	8	\N	22	t
+242	41	\N	\N	t	\N	\N	\N		\N	f
+230	39	\N	\N	t	\N	\N	\N		\N	f
+231	39	\N	\N	t	\N	\N	\N		\N	f
+236	40	58	titular	t	2026-05-14	\N	12	\N	10	t
+237	12	\N	titular	f	2026-05-14	\N	17		\N	f
+243	41	\N	\N	t	\N	\N	\N		\N	f
+244	41	\N	\N	t	\N	\N	17		\N	f
+164	12	73	titular	t	2026-05-04	\N	3	\N	\N	f
+239	17	147	titular	t	2026-05-14	\N	17	\N	16	f
+240	18	147	titular	t	2026-05-14	\N	17	\N	17	t
+212	30	70	titular	f	2026-05-07	\N	12		16	f
+180	29	70	titular	t	2026-05-05	\N	12	\N	25	f
+206	34	70	titular	t	2026-05-07	\N	12	\N	55	f
+181	33	70	titular	t	2026-05-05	\N	12	\N	58	f
+213	16	70	titular	t	2026-05-07	\N	12	\N	16	f
+211	12	70	titular	t	2026-05-07	\N	12	\N	22	f
+214	36	70	titular	t	2026-05-07	\N	12	\N	21	t
+\.
+
+
+--
+-- Data for Name: partidos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.partidos (id_partido, id_torneo, equipo_a, equipo_b, fecha, hora, estado, entity_id, numero_fecha, goles_a, goles_b, observaciones, id_grupo, id_cancha) FROM stdin;
+274	8	106	109	2026-05-09	19:30:00	finalizado	2	1	3	1	\N	26	\N
+287	3	50	78	\N	\N	programado	2	1	0	0	\N	52	\N
+288	3	82	66	\N	\N	programado	2	1	0	0	\N	52	\N
+289	3	98	83	\N	\N	programado	2	1	0	0	\N	52	\N
+290	3	97	74	\N	\N	programado	2	1	0	0	\N	52	\N
+291	3	50	66	\N	\N	programado	2	2	0	0	\N	52	\N
+292	3	78	83	\N	\N	programado	2	2	0	0	\N	52	\N
+293	3	82	74	\N	\N	programado	2	2	0	0	\N	52	\N
+294	3	98	97	\N	\N	programado	2	2	0	0	\N	52	\N
+295	3	50	83	\N	\N	programado	2	3	0	0	\N	52	\N
+296	3	66	74	\N	\N	programado	2	3	0	0	\N	52	\N
+297	3	78	97	\N	\N	programado	2	3	0	0	\N	52	\N
+298	3	82	98	\N	\N	programado	2	3	0	0	\N	52	\N
+299	3	50	74	\N	\N	programado	2	4	0	0	\N	52	\N
+300	3	83	97	\N	\N	programado	2	4	0	0	\N	52	\N
+301	3	66	98	\N	\N	programado	2	4	0	0	\N	52	\N
+302	3	78	82	\N	\N	programado	2	4	0	0	\N	52	\N
+303	3	50	97	\N	\N	programado	2	5	0	0	\N	52	\N
+304	3	74	98	\N	\N	programado	2	5	0	0	\N	52	\N
+305	3	83	82	\N	\N	programado	2	5	0	0	\N	52	\N
+306	3	66	78	\N	\N	programado	2	5	0	0	\N	52	\N
+307	3	50	98	\N	\N	programado	2	6	0	0	\N	52	\N
+308	3	97	82	\N	\N	programado	2	6	0	0	\N	52	\N
+309	3	74	78	\N	\N	programado	2	6	0	0	\N	52	\N
+310	3	83	66	\N	\N	programado	2	6	0	0	\N	52	\N
+311	3	50	82	\N	\N	programado	2	7	0	0	\N	52	\N
+279	8	109	107	\N	\N	programado	2	3	0	0	\N	26	\N
+312	3	98	78	\N	\N	programado	2	7	0	0	\N	52	\N
+313	3	97	66	\N	\N	programado	2	7	0	0	\N	52	\N
+314	3	74	83	\N	\N	programado	2	7	0	0	\N	52	\N
+329	12	114	79	\N	\N	finalizado	2	3	0	0	\N	41	\N
+282	8	105	106	\N	\N	finalizado	2	5	2	0	\N	26	\N
+275	8	107	108	2026-05-09	19:30:00	finalizado	2	1	3	3	\N	26	\N
+284	8	106	108	\N	\N	finalizado	2	1	18	0	\N	26	\N
+322	12	59	69	\N	\N	finalizado	2	4	1	0	\N	40	\N
+321	12	70	58	\N	\N	finalizado	2	4	2	3	\N	40	\N
+278	8	105	108	\N	\N	finalizado	2	3	0	3	\N	26	\N
+323	12	70	69	\N	\N	finalizado	2	5	0	1	\N	40	\N
+280	8	105	107	\N	\N	finalizado	2	4	0	0	\N	26	\N
+277	8	106	107	\N	\N	finalizado	2	2	0	0	\N	26	\N
+276	8	105	109	\N	\N	finalizado	2	2	20	0	\N	26	\N
+286	8	108	109	\N	\N	programado	2	5	0	0	\N	26	\N
+324	12	59	67	\N	\N	finalizado	2	5	0	4	\N	40	\N
+316	12	58	59	2026-05-16	14:40:00	finalizado	2	1	3	2	\N	40	\N
+325	12	114	81	2026-05-16	15:20:00	finalizado	2	1	3	0	\N	41	\N
+326	12	79	80	2026-05-16	16:00:00	finalizado	2	1	2	0	\N	41	\N
+354	15	117	121	\N	\N	programado	2	2	0	0	\N	57	\N
+317	12	70	67	2026-05-23	15:00:00	finalizado	2	2	1	0	\N	40	\N
+318	12	69	58	2026-05-23	15:30:00	finalizado	2	2	0	2	\N	40	\N
+327	12	114	80	2026-05-23	16:00:00	finalizado	2	2	3	3	\N	41	\N
+328	12	81	79	2026-05-23	16:30:00	finalizado	2	2	2	1	\N	41	\N
+319	12	70	59	\N	\N	finalizado	2	3	2	1	\N	40	\N
+320	12	67	58	\N	\N	finalizado	2	3	0	2	\N	40	\N
+330	12	80	81	\N	\N	finalizado	2	3	2	2	\N	41	\N
+379	12	58	114	2026-05-17	14:40:00	finalizado	2	1	0	0	Ida	51	\N
+355	15	118	119	\N	\N	programado	2	2	0	0	\N	57	\N
+356	15	117	120	\N	\N	programado	2	3	0	0	\N	57	\N
+357	15	121	119	\N	\N	programado	2	3	0	0	\N	57	\N
+358	15	117	119	\N	\N	programado	2	4	0	0	\N	57	\N
+359	15	120	118	\N	\N	programado	2	4	0	0	\N	57	\N
+360	15	117	118	\N	\N	programado	2	5	0	0	\N	57	\N
+361	15	120	121	\N	\N	programado	2	5	0	0	\N	57	\N
+362	15	121	118	\N	\N	programado	2	6	0	0	\N	57	\N
+363	15	120	119	\N	\N	programado	2	6	0	0	\N	57	\N
+364	15	121	117	\N	\N	programado	2	7	0	0	\N	57	\N
+365	15	119	118	\N	\N	programado	2	7	0	0	\N	57	\N
+366	15	120	117	\N	\N	programado	2	8	0	0	\N	57	\N
+367	15	119	121	\N	\N	programado	2	8	0	0	\N	57	\N
+368	15	119	117	\N	\N	programado	2	9	0	0	\N	57	\N
+369	15	118	120	\N	\N	programado	2	9	0	0	\N	57	\N
+370	15	118	117	\N	\N	programado	2	10	0	0	\N	57	\N
+371	15	121	120	\N	\N	programado	2	10	0	0	\N	57	\N
+373	12	58	114	\N	\N	programado	2	6	0	0	\N	51	\N
+350	12	114	58	2026-05-17	14:00:00	finalizado	2	1	2	0	\N	51	\N
+353	15	119	120	2026-05-15	14:40:00	programado	2	1	0	0	\N	57	\N
+372	12	69	59	\N	\N	programado	2	5	0	0	\N	40	\N
+380	12	114	58	\N	\N	programado	2	2	0	0	Vuelta	51	\N
+352	15	118	121	2026-05-15	14:00:00	finalizado	2	1	0	0	\N	57	\N
+315	12	69	67	2026-05-16	14:00:00	finalizado	2	1	0	2	\N	40	\N
+381	2	122	129	\N	\N	programado	2	1	0	0	\N	13	\N
+382	2	123	128	\N	\N	programado	2	1	0	0	\N	13	\N
+383	2	124	127	\N	\N	programado	2	1	0	0	\N	13	\N
+384	2	125	126	\N	\N	programado	2	1	0	0	\N	13	\N
+385	2	122	128	\N	\N	programado	2	2	0	0	\N	13	\N
+386	2	129	127	\N	\N	programado	2	2	0	0	\N	13	\N
+387	2	123	126	\N	\N	programado	2	2	0	0	\N	13	\N
+388	2	124	125	\N	\N	programado	2	2	0	0	\N	13	\N
+389	2	122	127	\N	\N	programado	2	3	0	0	\N	13	\N
+390	2	128	126	\N	\N	programado	2	3	0	0	\N	13	\N
+391	2	129	125	\N	\N	programado	2	3	0	0	\N	13	\N
+392	2	123	124	\N	\N	programado	2	3	0	0	\N	13	\N
+393	2	122	126	\N	\N	programado	2	4	0	0	\N	13	\N
+394	2	127	125	\N	\N	programado	2	4	0	0	\N	13	\N
+395	2	128	124	\N	\N	programado	2	4	0	0	\N	13	\N
+396	2	129	123	\N	\N	programado	2	4	0	0	\N	13	\N
+397	2	122	125	\N	\N	programado	2	5	0	0	\N	13	\N
+398	2	126	124	\N	\N	programado	2	5	0	0	\N	13	\N
+399	2	127	123	\N	\N	programado	2	5	0	0	\N	13	\N
+400	2	128	129	\N	\N	programado	2	5	0	0	\N	13	\N
+401	2	122	124	\N	\N	programado	2	6	0	0	\N	13	\N
+402	2	125	123	\N	\N	programado	2	6	0	0	\N	13	\N
+403	2	126	129	\N	\N	programado	2	6	0	0	\N	13	\N
+404	2	127	128	\N	\N	programado	2	6	0	0	\N	13	\N
+405	2	122	123	\N	\N	programado	2	7	0	0	\N	13	\N
+406	2	124	129	\N	\N	programado	2	7	0	0	\N	13	\N
+407	2	125	128	\N	\N	programado	2	7	0	0	\N	13	\N
+408	2	126	127	\N	\N	programado	2	7	0	0	\N	13	\N
+412	12	130	133	\N	\N	programado	2	2	0	0	\N	58	\N
+414	12	130	131	\N	\N	programado	2	3	0	0	\N	58	\N
+415	12	133	134	\N	\N	programado	2	3	0	0	\N	58	\N
+411	12	131	133	2026-05-16	18:40:00	programado	2	1	0	0	\N	58	\N
+413	12	134	131	\N	\N	en_curso	2	2	2	2	\N	58	\N
+418	15	135	139	\N	\N	programado	2	2	0	0	\N	59	\N
+419	15	136	137	\N	\N	programado	2	2	0	0	\N	59	\N
+420	15	135	138	\N	\N	programado	2	3	0	0	\N	59	\N
+421	15	139	137	\N	\N	programado	2	3	0	0	\N	59	\N
+422	15	135	137	\N	\N	programado	2	4	0	0	\N	59	\N
+423	15	138	136	\N	\N	programado	2	4	0	0	\N	59	\N
+424	15	135	136	\N	\N	programado	2	5	0	0	\N	59	\N
+425	15	138	139	\N	\N	programado	2	5	0	0	\N	59	\N
+417	15	137	138	2026-05-15	16:00:00	programado	2	1	0	0	\N	59	\N
+428	16	140	142	\N	\N	programado	27	2	0	0	\N	60	\N
+429	16	143	141	\N	\N	programado	27	2	0	0	\N	60	\N
+430	16	140	141	\N	\N	programado	27	3	0	0	\N	60	\N
+431	16	142	143	\N	\N	programado	27	3	0	0	\N	60	\N
+426	16	140	143	2026-05-17	14:00:00	finalizado	27	1	2	0	\N	60	\N
+427	16	142	141	2026-05-17	14:30:00	programado	27	1	0	0	\N	60	\N
+416	15	136	139	2026-05-16	15:20:00	programado	2	1	0	0	\N	59	\N
+434	17	147	151	\N	\N	programado	2	2	0	0	\N	62	\N
+435	17	148	149	\N	\N	programado	2	2	0	0	\N	62	\N
+436	17	147	150	\N	\N	programado	2	3	0	0	\N	62	\N
+437	17	151	149	\N	\N	programado	2	3	0	0	\N	62	\N
+438	17	147	149	\N	\N	programado	2	4	0	0	\N	62	\N
+439	17	150	148	\N	\N	programado	2	4	0	0	\N	62	\N
+440	17	147	148	\N	\N	programado	2	5	0	0	\N	62	\N
+441	17	150	151	\N	\N	programado	2	5	0	0	\N	62	\N
+444	17	152	154	\N	\N	programado	2	2	0	0	\N	63	\N
+445	17	155	153	\N	\N	programado	2	2	0	0	\N	63	\N
+446	17	152	153	\N	\N	programado	2	3	0	0	\N	63	\N
+447	17	154	155	\N	\N	programado	2	3	0	0	\N	63	\N
+443	17	153	154	2026-05-16	17:21:00	finalizado	2	1	0	0	\N	63	\N
+432	17	148	151	2026-05-16	15:00:00	finalizado	2	1	3	0	\N	62	\N
+433	17	149	150	2026-05-16	15:47:00	finalizado	2	1	2	0	\N	62	\N
+442	17	152	155	2026-05-16	16:34:00	finalizado	2	1	3	0	\N	63	\N
+410	12	130	134	2026-05-16	18:00:00	programado	2	1	0	0	\N	58	\N
+\.
+
+
+--
+-- Data for Name: resultados; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.resultados (id_resultado, id_partido, goles_equipo_a, goles_equipo_b, observaciones, entity_id) FROM stdin;
+\.
+
+
+--
+-- Data for Name: roles; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.roles (id_rol, nombre_rol, entity_id) FROM stdin;
+1	espectador	\N
+2	delegado	\N
+3	admin	\N
+99	super_admin	\N
+\.
+
+
+--
+-- Data for Name: sanciones; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.sanciones (id_sancion, id_jugador, id_partido, partidos_suspendidos, partidos_restantes, fecha_inicio, observaciones, fecha_registro) FROM stdin;
+8	31	323	1	1	5		2026-05-08 18:16:37.816843
+11	31	319	1	1	3		2026-05-08 18:36:21.293656
+12	30	319	1	1	3	Suspension por acumulacion de amarillas (2/2)	2026-05-08 18:36:21.293656
+14	4	325	1	1	1		2026-05-08 23:04:49.99736
+15	18	372	1	1	5		2026-05-11 14:59:16.312163
+16	31	317	1	1	2		2026-05-12 20:24:41.901638
+17	19	350	1	1	1		2026-05-12 20:25:43.244214
+19	8	434	1	1	2		2026-05-14 21:29:22.163163
+20	8	350	1	1	1		2026-05-17 15:58:41.56076
+\.
+
+
+--
+-- Data for Name: torneos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.torneos (id_torneo, nombre_torneo, temporada, estado, fecha_inicio, entity_id, portada, permitir_agregar_jugadores) FROM stdin;
+1	a1	2025	t	2026-04-16	1	\N	t
+2	a2	a2	f	2026-04-08	2	/uploads/567617a918a88d4a0481c24906f44a27	t
+16	prueba	2025	t	2026-05-17	27	\N	t
+13	tarjetas	2026	f	2026-05-16	2	\N	t
+15	CAMPEONES	2026	f	2026-05-23	2	\N	t
+17	misiones i 	clausura	t	2026-12-05	2	\N	t
+12	prueba de jugadores	2026	t	2026-04-08	2	/uploads/f2664ab538c7f259940f29770d998a64	f
+6	sa	2025	t	2026-04-18	4	\N	t
+9	TORNEO A5	2026	t	2026-05-02	8	\N	t
+10	TROENEO A5	2026 CLAUSURA	t	2026-05-08	8	\N	t
+11	A4	2026	t	2026-05-10	9	\N	t
+14	tarjetas 2	2026	f	2026-05-15	2	\N	t
+3	a2 secundario	2025	f	2026-04-15	2	\N	t
+7	a2	2025	f	2026-04-29	2	\N	t
+8	a2	a2	f	2026-04-22	2	\N	t
+\.
+
+
+--
+-- Data for Name: torneos_reglas_tarjetas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.torneos_reglas_tarjetas (id_regla, id_torneo, entity_id, acumula_amarillas, amarillas_para_suspension, fechas_suspension_acumulacion, reiniciar_al_sancionar, aplicar_item_amarilla, aplicar_item_roja, created_at, updated_at) FROM stdin;
+7	16	27	t	2	1	t	t	t	2026-05-13 22:40:26.740133	2026-05-13 22:40:26.740133
+1	12	2	t	5	1	t	t	t	2026-05-07 20:58:12.341737	2026-05-17 16:00:32.692844
+\.
+
+
+--
+-- Data for Name: usuarios; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.usuarios (id_usuario, nombre, correo, contrasena_hash, rol_id, estado, creado_en, documento, entity_id, debe_cambiar_contrasena, reset_contrasena_en) FROM stdin;
+79552bf7-8e05-4583-bc88-23c4696e69d6	Julio Mendoza	\N	$2b$12$9PtxyOevbXn41hD21wlLaO/g.DWi4CeAvpK5R/YceCM5nKDmlpDSy	99	t	2026-03-27 03:43:26.964601	5160826	\N	f	\N
+\.
+
+
+--
+-- Name: auditoria_id_auditoria_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.auditoria_id_auditoria_seq', 2428, true);
+
+
+--
+-- Name: canchas_id_cancha_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.canchas_id_cancha_seq', 2, true);
+
+
+--
+-- Name: delegados_equipos_id_delegado_equipo_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.delegados_equipos_id_delegado_equipo_seq', 50, true);
+
+
+--
+-- Name: entities_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.entities_id_seq', 1, false);
+
+
+--
+-- Name: entity_audit_audit_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.entity_audit_audit_id_seq', 1, false);
+
+
+--
+-- Name: entity_entity_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.entity_entity_id_seq', 28, true);
+
+
+--
+-- Name: equipos_id_equipo_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.equipos_id_equipo_seq', 155, true);
+
+
+--
+-- Name: equipos_movimientos_grupo_id_movimiento_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.equipos_movimientos_grupo_id_movimiento_seq', 9, true);
+
+
+--
+-- Name: estadisticas_id_estadistica_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.estadisticas_id_estadistica_seq', 88, true);
+
+
+--
+-- Name: eventos_partido_id_evento_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.eventos_partido_id_evento_seq', 1, false);
+
+
+--
+-- Name: finanzas_id_finanza_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.finanzas_id_finanza_seq', 90, true);
+
+
+--
+-- Name: grupos_id_grupo_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.grupos_id_grupo_seq', 63, true);
+
+
+--
+-- Name: items_equipo_id_item_equipo_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.items_equipo_id_item_equipo_seq', 117, true);
+
+
+--
+-- Name: items_id_item_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.items_id_item_seq', 21, true);
+
+
+--
+-- Name: jugadores_equipos_id_jugador_equipo_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.jugadores_equipos_id_jugador_equipo_seq', 244, true);
+
+
+--
+-- Name: jugadores_id_jugador_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.jugadores_id_jugador_seq', 41, true);
+
+
+--
+-- Name: partidos_id_partido_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.partidos_id_partido_seq', 447, true);
+
+
+--
+-- Name: resultados_id_resultado_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.resultados_id_resultado_seq', 1, false);
+
+
+--
+-- Name: roles_id_rol_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.roles_id_rol_seq', 1, false);
+
+
+--
+-- Name: sanciones_id_sancion_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.sanciones_id_sancion_seq', 20, true);
+
+
+--
+-- Name: torneos_id_torneo_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.torneos_id_torneo_seq', 17, true);
+
+
+--
+-- Name: torneos_reglas_tarjetas_id_regla_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.torneos_reglas_tarjetas_id_regla_seq', 8, true);
+
+
+--
+-- Name: auditoria auditoria_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auditoria
+    ADD CONSTRAINT auditoria_pkey PRIMARY KEY (id_auditoria);
+
+
+--
+-- Name: canchas canchas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.canchas
+    ADD CONSTRAINT canchas_pkey PRIMARY KEY (id_cancha);
+
+
+--
+-- Name: delegados_equipos delegados_equipos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.delegados_equipos
+    ADD CONSTRAINT delegados_equipos_pkey PRIMARY KEY (id_delegado_equipo);
+
+
+--
+-- Name: entities entities_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entities
+    ADD CONSTRAINT entities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: entity_audit entity_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entity_audit
+    ADD CONSTRAINT entity_audit_pkey PRIMARY KEY (audit_id);
+
+
+--
+-- Name: entity entity_codigo_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_codigo_key UNIQUE (codigo);
+
+
+--
+-- Name: entity entity_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entity
+    ADD CONSTRAINT entity_pkey PRIMARY KEY (entity_id);
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_pkey PRIMARY KEY (id_movimiento);
+
+
+--
+-- Name: equipos equipos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos
+    ADD CONSTRAINT equipos_pkey PRIMARY KEY (id_equipo);
+
+
+--
+-- Name: estadisticas estadisticas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.estadisticas
+    ADD CONSTRAINT estadisticas_pkey PRIMARY KEY (id_estadistica);
+
+
+--
+-- Name: eventos_partido eventos_partido_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eventos_partido
+    ADD CONSTRAINT eventos_partido_pkey PRIMARY KEY (id_evento);
+
+
+--
+-- Name: finanzas finanzas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.finanzas
+    ADD CONSTRAINT finanzas_pkey PRIMARY KEY (id_finanza);
+
+
+--
+-- Name: grupos grupos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.grupos
+    ADD CONSTRAINT grupos_pkey PRIMARY KEY (id_grupo);
+
+
+--
+-- Name: items_equipo items_equipo_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items_equipo
+    ADD CONSTRAINT items_equipo_pkey PRIMARY KEY (id_item_equipo);
+
+
+--
+-- Name: items items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items
+    ADD CONSTRAINT items_pkey PRIMARY KEY (id_item);
+
+
+--
+-- Name: jugadores_equipos jugadores_equipos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores_equipos
+    ADD CONSTRAINT jugadores_equipos_pkey PRIMARY KEY (id_jugador_equipo);
+
+
+--
+-- Name: jugadores jugadores_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores
+    ADD CONSTRAINT jugadores_pkey PRIMARY KEY (id_jugador);
+
+
+--
+-- Name: partidos partidos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_pkey PRIMARY KEY (id_partido);
+
+
+--
+-- Name: resultados resultados_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resultados
+    ADD CONSTRAINT resultados_pkey PRIMARY KEY (id_resultado);
+
+
+--
+-- Name: roles roles_nombre_rol_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.roles
+    ADD CONSTRAINT roles_nombre_rol_key UNIQUE (nombre_rol);
+
+
+--
+-- Name: roles roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.roles
+    ADD CONSTRAINT roles_pkey PRIMARY KEY (id_rol);
+
+
+--
+-- Name: sanciones sanciones_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sanciones
+    ADD CONSTRAINT sanciones_pkey PRIMARY KEY (id_sancion);
+
+
+--
+-- Name: torneos torneos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos
+    ADD CONSTRAINT torneos_pkey PRIMARY KEY (id_torneo);
+
+
+--
+-- Name: torneos_reglas_tarjetas torneos_reglas_tarjetas_id_torneo_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos_reglas_tarjetas
+    ADD CONSTRAINT torneos_reglas_tarjetas_id_torneo_key UNIQUE (id_torneo);
+
+
+--
+-- Name: torneos_reglas_tarjetas torneos_reglas_tarjetas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos_reglas_tarjetas
+    ADD CONSTRAINT torneos_reglas_tarjetas_pkey PRIMARY KEY (id_regla);
+
+
+--
+-- Name: delegados_equipos unico_equipo_usuario; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.delegados_equipos
+    ADD CONSTRAINT unico_equipo_usuario UNIQUE (id_equipo, id_usuario);
+
+
+--
+-- Name: grupos uq_grupo; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.grupos
+    ADD CONSTRAINT uq_grupo UNIQUE (id_torneo, nombre_grupo);
+
+
+--
+-- Name: usuarios usuarios_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.usuarios
+    ADD CONSTRAINT usuarios_pkey PRIMARY KEY (id_usuario);
+
+
+--
+-- Name: idx_eq_mov_grupo_equipo; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_eq_mov_grupo_equipo ON public.equipos_movimientos_grupo USING btree (id_equipo);
+
+
+--
+-- Name: idx_eq_mov_grupo_torneo_destino; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_eq_mov_grupo_torneo_destino ON public.equipos_movimientos_grupo USING btree (id_torneo, id_grupo_destino);
+
+
+--
+-- Name: idx_eq_mov_grupo_torneo_origen; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_eq_mov_grupo_torneo_origen ON public.equipos_movimientos_grupo USING btree (id_torneo, id_grupo_origen);
+
+
+--
+-- Name: idx_items_entity_torneo; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_items_entity_torneo ON public.items USING btree (entity_id, id_torneo);
+
+
+--
+-- Name: unico_capitan_equipo; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX unico_capitan_equipo ON public.jugadores_equipos USING btree (id_equipo) WHERE (capitan = true);
+
+
+--
+-- Name: usuarios_correo_entity_id_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX usuarios_correo_entity_id_key ON public.usuarios USING btree (entity_id, lower(btrim((correo)::text))) WHERE ((correo IS NOT NULL) AND (btrim((correo)::text) <> ''::text));
+
+
+--
+-- Name: usuarios_documento_entity_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX usuarios_documento_entity_id ON public.usuarios USING btree (documento, entity_id);
+
+
+--
+-- Name: jugadores trg_audit_jugadores; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit_jugadores AFTER INSERT OR DELETE OR UPDATE ON public.jugadores FOR EACH ROW EXECUTE FUNCTION public.audit_jugadores();
+
+
+--
+-- Name: jugadores_equipos trg_audit_jugadores_equipos; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit_jugadores_equipos AFTER INSERT OR DELETE OR UPDATE ON public.jugadores_equipos FOR EACH ROW EXECUTE FUNCTION public.fn_audit_jugadores_equipos();
+
+
+--
+-- Name: canchas trg_canchas_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_canchas_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.canchas FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: delegados_equipos trg_delegados_equipos_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_delegados_equipos_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.delegados_equipos FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: entity trg_entity_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_entity_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.entity FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: equipos trg_equipos_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_equipos_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.equipos FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: equipos_movimientos_grupo trg_equipos_movimientos_grupo_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_equipos_movimientos_grupo_auditoria AFTER INSERT ON public.equipos_movimientos_grupo FOR EACH ROW EXECUTE FUNCTION public.fn_equipos_movimientos_grupo_auditoria();
+
+
+--
+-- Name: estadisticas trg_estadisticas_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_estadisticas_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.estadisticas FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: eventos_partido trg_eventos_partido_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_eventos_partido_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.eventos_partido FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: finanzas trg_finanzas_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_finanzas_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.finanzas FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: grupos trg_grupos_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_grupos_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.grupos FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: grupos trg_grupos_crear_items_tarjetas; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_grupos_crear_items_tarjetas AFTER INSERT ON public.grupos FOR EACH ROW EXECUTE FUNCTION public.fn_grupos_crear_items_tarjetas();
+
+
+--
+-- Name: items trg_items_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_items_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.items FOR EACH ROW EXECUTE FUNCTION public.fn_items_auditoria();
+
+
+--
+-- Name: items_equipo trg_items_equipo_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_items_equipo_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.items_equipo FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: items trg_items_set_context; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_items_set_context BEFORE INSERT OR UPDATE ON public.items FOR EACH ROW EXECUTE FUNCTION public.fn_items_set_context();
+
+
+--
+-- Name: jugadores_equipos trg_manage_jugadores_equipos; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_manage_jugadores_equipos BEFORE INSERT OR UPDATE ON public.jugadores_equipos FOR EACH ROW EXECUTE FUNCTION public.fn_manage_jugadores_equipos();
+
+
+--
+-- Name: partidos trg_partidos_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_partidos_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.partidos FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: resultados trg_resultados_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_resultados_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.resultados FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: roles trg_roles_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_roles_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.roles FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: sanciones trg_sanciones_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_sanciones_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.sanciones FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: jugadores trg_sync_jugadores_equipos; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_sync_jugadores_equipos AFTER INSERT OR UPDATE ON public.jugadores FOR EACH ROW EXECUTE FUNCTION public.fn_sync_jugadores_equipos();
+
+
+--
+-- Name: torneos trg_torneos_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_torneos_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.torneos FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria_torneos();
+
+
+--
+-- Name: torneos trg_torneos_crear_items_tarjetas; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_torneos_crear_items_tarjetas AFTER INSERT ON public.torneos FOR EACH ROW EXECUTE FUNCTION public.fn_torneos_crear_items_tarjetas();
+
+
+--
+-- Name: torneos_reglas_tarjetas trg_torneos_reglas_tarjetas_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_torneos_reglas_tarjetas_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.torneos_reglas_tarjetas FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: usuarios trg_usuarios_auditoria; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_usuarios_auditoria AFTER INSERT OR DELETE OR UPDATE ON public.usuarios FOR EACH ROW EXECUTE FUNCTION public.fn_auditoria();
+
+
+--
+-- Name: jugadores trg_vincular_jugador_equipo; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_vincular_jugador_equipo AFTER INSERT ON public.jugadores FOR EACH ROW EXECUTE FUNCTION public.fn_vincular_jugador_equipo();
+
+
+--
+-- Name: auditoria auditoria_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auditoria
+    ADD CONSTRAINT auditoria_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: auditoria auditoria_id_usuario_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auditoria
+    ADD CONSTRAINT auditoria_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuarios(id_usuario);
+
+
+--
+-- Name: canchas canchas_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.canchas
+    ADD CONSTRAINT canchas_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id) ON DELETE CASCADE;
+
+
+--
+-- Name: canchas canchas_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.canchas
+    ADD CONSTRAINT canchas_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo) ON DELETE CASCADE;
+
+
+--
+-- Name: entity_audit entity_audit_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.entity_audit
+    ADD CONSTRAINT entity_audit_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: equipos equipos_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos
+    ADD CONSTRAINT equipos_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: equipos equipos_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos
+    ADD CONSTRAINT equipos_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo);
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_id_equipo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_id_equipo_fkey FOREIGN KEY (id_equipo) REFERENCES public.equipos(id_equipo) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_id_grupo_destino_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_id_grupo_destino_fkey FOREIGN KEY (id_grupo_destino) REFERENCES public.grupos(id_grupo) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_id_grupo_origen_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_id_grupo_origen_fkey FOREIGN KEY (id_grupo_origen) REFERENCES public.grupos(id_grupo) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: equipos_movimientos_grupo equipos_movimientos_grupo_id_usuario_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos_movimientos_grupo
+    ADD CONSTRAINT equipos_movimientos_grupo_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuarios(id_usuario) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: estadisticas estadisticas_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.estadisticas
+    ADD CONSTRAINT estadisticas_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: estadisticas estadisticas_id_jugador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.estadisticas
+    ADD CONSTRAINT estadisticas_id_jugador_fkey FOREIGN KEY (id_jugador) REFERENCES public.jugadores(id_jugador);
+
+
+--
+-- Name: estadisticas estadisticas_id_partido_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.estadisticas
+    ADD CONSTRAINT estadisticas_id_partido_fkey FOREIGN KEY (id_partido) REFERENCES public.partidos(id_partido);
+
+
+--
+-- Name: eventos_partido eventos_partido_id_item_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eventos_partido
+    ADD CONSTRAINT eventos_partido_id_item_fkey FOREIGN KEY (id_item) REFERENCES public.items(id_item);
+
+
+--
+-- Name: eventos_partido eventos_partido_id_jugador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eventos_partido
+    ADD CONSTRAINT eventos_partido_id_jugador_fkey FOREIGN KEY (id_jugador) REFERENCES public.jugadores(id_jugador);
+
+
+--
+-- Name: eventos_partido eventos_partido_id_partido_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eventos_partido
+    ADD CONSTRAINT eventos_partido_id_partido_fkey FOREIGN KEY (id_partido) REFERENCES public.partidos(id_partido);
+
+
+--
+-- Name: finanzas finanzas_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.finanzas
+    ADD CONSTRAINT finanzas_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: finanzas finanzas_id_equipo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.finanzas
+    ADD CONSTRAINT finanzas_id_equipo_fkey FOREIGN KEY (id_equipo) REFERENCES public.equipos(id_equipo);
+
+
+--
+-- Name: delegados_equipos fk_equipo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.delegados_equipos
+    ADD CONSTRAINT fk_equipo FOREIGN KEY (id_equipo) REFERENCES public.equipos(id_equipo) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: finanzas fk_finanzas_torneo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.finanzas
+    ADD CONSTRAINT fk_finanzas_torneo FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo);
+
+
+--
+-- Name: equipos fk_grupo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipos
+    ADD CONSTRAINT fk_grupo FOREIGN KEY (id_grupo) REFERENCES public.grupos(id_grupo) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: grupos fk_torneo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.grupos
+    ADD CONSTRAINT fk_torneo FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: delegados_equipos fk_usuario; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.delegados_equipos
+    ADD CONSTRAINT fk_usuario FOREIGN KEY (id_usuario) REFERENCES public.usuarios(id_usuario) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: grupos grupos_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.grupos
+    ADD CONSTRAINT grupos_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: items items_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items
+    ADD CONSTRAINT items_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: items_equipo items_equipo_id_equipo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items_equipo
+    ADD CONSTRAINT items_equipo_id_equipo_fkey FOREIGN KEY (id_equipo) REFERENCES public.equipos(id_equipo);
+
+
+--
+-- Name: items_equipo items_equipo_id_partido_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items_equipo
+    ADD CONSTRAINT items_equipo_id_partido_fkey FOREIGN KEY (id_partido) REFERENCES public.partidos(id_partido);
+
+
+--
+-- Name: items items_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.items
+    ADD CONSTRAINT items_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: jugadores jugadores_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores
+    ADD CONSTRAINT jugadores_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: jugadores_equipos jugadores_equipos_id_equipo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores_equipos
+    ADD CONSTRAINT jugadores_equipos_id_equipo_fkey FOREIGN KEY (id_equipo) REFERENCES public.equipos(id_equipo);
+
+
+--
+-- Name: jugadores_equipos jugadores_equipos_id_jugador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores_equipos
+    ADD CONSTRAINT jugadores_equipos_id_jugador_fkey FOREIGN KEY (id_jugador) REFERENCES public.jugadores(id_jugador);
+
+
+--
+-- Name: jugadores_equipos jugadores_equipos_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.jugadores_equipos
+    ADD CONSTRAINT jugadores_equipos_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo);
+
+
+--
+-- Name: partidos partidos_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: partidos partidos_equipo_a_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_equipo_a_fkey FOREIGN KEY (equipo_a) REFERENCES public.equipos(id_equipo);
+
+
+--
+-- Name: partidos partidos_equipo_b_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_equipo_b_fkey FOREIGN KEY (equipo_b) REFERENCES public.equipos(id_equipo);
+
+
+--
+-- Name: partidos partidos_id_cancha_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_id_cancha_fkey FOREIGN KEY (id_cancha) REFERENCES public.canchas(id_cancha) ON DELETE SET NULL;
+
+
+--
+-- Name: partidos partidos_id_grupo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_id_grupo_fkey FOREIGN KEY (id_grupo) REFERENCES public.grupos(id_grupo) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
+-- Name: partidos partidos_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.partidos
+    ADD CONSTRAINT partidos_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo);
+
+
+--
+-- Name: resultados resultados_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resultados
+    ADD CONSTRAINT resultados_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: resultados resultados_id_partido_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resultados
+    ADD CONSTRAINT resultados_id_partido_fkey FOREIGN KEY (id_partido) REFERENCES public.partidos(id_partido);
+
+
+--
+-- Name: roles roles_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.roles
+    ADD CONSTRAINT roles_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: sanciones sanciones_id_jugador_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sanciones
+    ADD CONSTRAINT sanciones_id_jugador_fkey FOREIGN KEY (id_jugador) REFERENCES public.jugadores(id_jugador);
+
+
+--
+-- Name: sanciones sanciones_id_partido_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sanciones
+    ADD CONSTRAINT sanciones_id_partido_fkey FOREIGN KEY (id_partido) REFERENCES public.partidos(id_partido);
+
+
+--
+-- Name: torneos torneos_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos
+    ADD CONSTRAINT torneos_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: torneos_reglas_tarjetas torneos_reglas_tarjetas_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos_reglas_tarjetas
+    ADD CONSTRAINT torneos_reglas_tarjetas_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- Name: torneos_reglas_tarjetas torneos_reglas_tarjetas_id_torneo_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.torneos_reglas_tarjetas
+    ADD CONSTRAINT torneos_reglas_tarjetas_id_torneo_fkey FOREIGN KEY (id_torneo) REFERENCES public.torneos(id_torneo) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: usuarios usuarios_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.usuarios
+    ADD CONSTRAINT usuarios_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entity(entity_id);
+
+
+--
+-- Name: usuarios usuarios_rol_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.usuarios
+    ADD CONSTRAINT usuarios_rol_id_fkey FOREIGN KEY (rol_id) REFERENCES public.roles(id_rol) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
