@@ -75,12 +75,14 @@
               </form>
 
               <!-- Botón ir a torneo -->
-              <% if (t.estado) { %>
-                <a href="/torneos/gestionar/<%= t.id_torneo %>" class="btn btn-sm btn-primary">
-                  Ir a torneo
-                </a>
-              <% } else { %>
-                <button class="btn btn-sm btn-secondary" disabled>Ir a torneo</button>
+              <% if (usuario && (usuario.rol_id == 3 || usuario.rol_id == 99)) { %>
+                <% if (t.estado) { %>
+                  <a href="/torneos/gestionar/<%= t.id_torneo %>" class="btn btn-sm btn-primary">
+                    Ir a torneo
+                  </a>
+                <% } else { %>
+                  <button class="btn btn-sm btn-secondary" disabled>Ir a torneo</button>
+                <% } %>
               <% } %>
             </div>
           </li>

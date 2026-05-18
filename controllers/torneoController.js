@@ -1247,7 +1247,7 @@ exports.gestionar = async (req, res) => {
       };
     });
 
-    const puedeVerAuditoria = [3, 99].includes(Number(req.session.rol_id));
+    const puedeVerAuditoria = Number(req.session.rol_id) === 99;
     const contextoAuditoria = {
       entity_id: entityId,
       id_torneo: parseInt(torneoId, 10),
@@ -1365,7 +1365,7 @@ exports.gestionar = async (req, res) => {
 
 exports.auditoriaResumen = async (req, res) => {
   try {
-    if (![3, 99].includes(Number(req.session.rol_id))) {
+    if (Number(req.session.rol_id) !== 99) {
       return res.status(403).json({ success: false, message: 'No tiene permisos para ver auditoria' });
     }
 
