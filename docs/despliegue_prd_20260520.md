@@ -32,6 +32,11 @@ Aplicar manualmente en PostgreSQL PRD antes o junto con el despliegue de codigo:
    - `UPDATE` no audita cambios internos como capitan/camiseta.
    - `INSERT` y `DELETE` auditan altas/bajas con detalle legible.
 
+3. `docs/sql/auditoria_detalle_equipos_delegados_20260520.sql`
+   - Reemplaza `public.fn_auditoria_detalle_simple(...)`.
+   - Mejora detalle futuro de `equipos` y `delegados_equipos`.
+   - Evita inferir mal el equipo afectado cuando cambia un icono sin nombre/id claro.
+
 ## APK / Capacitor
 
 El archivo fuente `capacitor.config.js` toma la URL desde:
@@ -44,7 +49,7 @@ Para PRD:
 
 ```powershell
 $env:CAPACITOR_SERVER_URL="https://torneos-production.up.railway.app"
-$env:CAPACITOR_APP_NAME="Torneos PRD"
+$env:CAPACITOR_APP_NAME="Torneos Pro"
 $env:CAPACITOR_APP_ID="com.torneosv2.prd"
 npx.cmd cap sync android
 ```
@@ -54,6 +59,7 @@ Nota:
 - El archivo generado localmente en Android puede apuntar a IP local si se hizo `cap sync` para pruebas.
 - Para trabajar localmente no cambiar la URL: `10.0.2.2:3000` es emulador Android y `192.168.100.16:3000` es la PC local en red.
 - Antes de generar APK/AAB PRD, resincronizar con la URL HTTPS de PRD.
+- Antes de generar APK/AAB `Torneos Pro`, revisar y ajustar el icono adaptativo APK.
 - El icono adaptativo PRD usa una pelota frontal con fondo oscuro premium en `android/app/src/main/res/drawable/ic_launcher_foreground_prd.xml`.
 
 ## Flujo Git recomendado

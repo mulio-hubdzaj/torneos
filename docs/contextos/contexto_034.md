@@ -334,3 +334,161 @@ EJS_OK equipo torneo
 npm.cmd test
 GET /logout -> 302 Location https://torneos-production.up.railway.app/
 ```
+
+## Cambio posterior: auditoria afectado equipo/delegados
+
+Observado en PRD:
+
+- Cambios de icono de equipo podian mostrar `Equipo / afectado` vacio o incluso otro equipo con icono default.
+- `delegados_equipos` mostraba `registro` y detalle generico.
+- Algunos registros viejos de `jugadores_equipos` seguian mostrando `UPDATE` de camiseta/capitan; esos registros no se reescriben.
+
+Aplicado en codigo:
+
+- `controllers/torneoController.js` deja de adivinar el equipo afectado por la ruta del icono.
+- Si el detalle contiene `equipo de X a Y`, usa el equipo destino como afectado.
+- Si el detalle solo dice cambio de icono sin id/nombre, muestra afectado generico `Equipo` en vez de inferir mal.
+- `delegados_equipos` se muestra como pantalla `Delegado equipo`.
+
+SQL preparado para PRD:
+
+- `docs/sql/auditoria_detalle_equipos_delegados_20260520.sql`
+- Reemplaza `public.fn_auditoria_detalle_simple(...)`.
+- Para registros futuros:
+  - `equipos` queda con prefijo `equipos: NOMBRE_EQUIPO; ...`;
+  - `delegados_equipos` queda como asignacion/baja de delegado con usuario, documento, equipo y torneo.
+
+Nota:
+
+- No modifica datos cargados ni auditoria vieja.
+- Antes de validar de nuevo `jugadores_equipos`, conviene revisar en PRD si existe mas de un trigger sobre esa tabla.
+
+## Cambio posterior: bloqueo claro al eliminar equipo
+
+Observado en PRD:
+
+- Se creo un equipo sin partidos/cruces.
+- Se asigno un jugador.
+- Al eliminar el equipo, la app intento borrar fisicamente y fallo por FK:
+  - `jugadores_equipos_id_equipo_fkey`
+
+Aplicado:
+
+- `controllers/equipoController.js` valida antes de eliminar si el equipo tiene:
+  - logo personalizado;
+  - delegados asignados;
+  - jugadores asignados.
+- Si encuentra alguno, bloquea la eliminacion con mensaje claro.
+- El mensaje recomienda quitar esos datos o desactivar el equipo para conservar historial.
+- Si ocurre un error inesperado, vuelve al torneo/pestana correspondiente en vez de mandar a la pantalla generica de torneos.
+
+## Cambio posterior: registro/login con teclado APK
+
+Observado:
+
+- En `Crear cuenta`, al abrir el teclado en APK/WebView se subia toda la seccion.
+- El primer campo quedaba perdido arriba de la pantalla.
+- El formulario se veia como pagina de escritorio porque faltaba viewport y se usaba centrado vertical con `vh-100`.
+
+Aplicado:
+
+- `views/registro.ejs` agrega `viewport`, fondo de estadio y layout scrolleable.
+- `views/registro.ejs` reemplaza el centrado vertical forzado por inicio superior con padding seguro.
+- `views/registro.ejs` usa tarjeta responsive y campos con altura estable.
+- `views/login.ejs` recibe el mismo criterio preventivo para evitar el problema al abrir teclado.
+
+Verificado:
+
+```txt
+EJS_OK auth torneos
+node --check controllers\equipoController.js
+node --check controllers\torneoController.js
+```
+
+## Cambio posterior: home inicial mas pareja
+
+Pedido:
+
+- Confirmar que cerrar sesion manual y cierre por abandono vuelven a `https://torneos-production.up.railway.app/`.
+- Ajustar la pantalla inicial para que se vea mas pareja.
+
+Estado confirmado:
+
+- `/logout` redirige a `LOGOUT_REDIRECT_URL` o por default a `https://torneos-production.up.railway.app/`.
+- `public/js/session-abandon-guard.js` redirige a `/logout?motivo=abandono`, por lo que tambien termina en la raiz oficial.
+
+Aplicado:
+
+- `views/index.ejs` unifica ancho de las cards principales.
+- Se ajusta espaciado, botones, titulo y responsive mobile/APK.
+- La pantalla inicial mantiene el fondo de estadio y queda alineada visualmente.
+
+Verificado:
+
+```txt
+EJS_OK main auth torneos
+```
+
+## Corte de contexto: pausa en ajuste de deuda
+
+Estado:
+
+- Se pidio mejorar la vista de detalles de deuda agrupando por fecha.
+- El trabajo fue interrumpido antes de completar el ajuste visual.
+- No continuar desde este punto sin revisar primero el diff actual de `views/torneos/index.ejs`.
+- Quedan cambios locales acumulados sin subir.
+
+## Cambio posterior: menu superior APK
+
+Pedido:
+
+- En APK, ocultar los botones `Ir a Torneos`, `Ir a Entidades` y `Cerrar sesion`.
+- Mostrarlos desde el icono de tres rayitas ubicado arriba a la derecha.
+- Ocultar el menu automaticamente despues de 3 segundos.
+
+Aplicado en `views/torneos/index.ejs`:
+
+- Se agrego boton `appNavToggle` con icono `bi-list`.
+- En mobile/APK, `.app-nav-actions` queda oculto por defecto.
+- Al tocar el boton, se muestra un panel flotante con las acciones.
+- El panel se cierra:
+  - a los 3 segundos;
+  - al tocar fuera;
+  - al elegir una accion;
+  - al cambiar de pestana.
+- En escritorio se conserva el comportamiento anterior.
+
+Verificado:
+
+```txt
+EJS_OK views/torneos/index.ejs
+```
+
+## Cambio posterior: buscador Finanzas y lupa Usuarios APK
+
+Pedido:
+
+- Agregar buscador en pestana `Finanzas` para web y APK.
+- Visible para admin y super admin.
+- Buscar por nombre de equipo.
+- Usar como referencia el buscador de `Usuarios`, que funciona bien en APK.
+- Corregir que la lupa de `Usuarios` se pierde visualmente por quedar blanca.
+
+Aplicado en `views/torneos/index.ejs`:
+
+- `Finanzas` ahora tiene buscador por nombre de equipo para `rol_id = 3` y `rol_id = 99`.
+- El filtro funciona:
+  - mientras se escribe;
+  - con Enter;
+  - con boton de lupa.
+- Se agrego contador:
+  - `Equipos visibles: X / Y`.
+- Si no hay coincidencias, se muestra mensaje claro.
+- El filtro se reaplica despues de sincronizar resumen financiero desde servidor.
+- La lupa de `Usuarios` y `Finanzas` usa clase `btn-buscar-gris`, con fondo gris claro e icono oscuro para que sea visible en APK.
+
+Verificado:
+
+```txt
+EJS_OK views/torneos/index.ejs
+```

@@ -92,6 +92,7 @@ function obtenerPantallaAuditoria(registro, detalle) {
     equipos: 'Equipo',
     jugadores: 'Jugador',
     jugadores_equipos: 'Jugador equipo',
+    delegados_equipos: 'Delegado equipo',
     partidos: 'Fixture',
     torneos: 'Torneo',
     grupos: 'Grupo',
@@ -118,6 +119,12 @@ function obtenerAfectadoAuditoria(registro, detalle, detalleLegible) {
   if (matchTabla) return matchTabla[1].trim();
   const matchCambioNombre = texto.match(/nombre de ([^;]+?) a ([^;]+)/i);
   if (matchCambioNombre) return matchCambioNombre[2].trim();
+  const matchEquipoDestino = texto.match(/equipo(?:\s+[ab])?\s+de\s+(.+?)\s+a\s+([^;]+)/i);
+  if (matchEquipoDestino) {
+    const destino = matchEquipoDestino[2].trim();
+    if (destino && !['vacio', '-', 'null'].includes(destino.toLowerCase())) return destino;
+  }
+  if (/Se cambio icono\b/i.test(texto)) return 'Equipo';
 
   return '-';
 }
@@ -222,16 +229,6 @@ function reemplazarIdsEquiposEnDetalle(detalle, equiposPorId) {
   ));
 
   return texto;
-}
-
-function obtenerEquipoPorIconoEnDetalle(detalle, equipos) {
-  const texto = String(detalle || '');
-  const matchIconoNuevo = texto.match(/icono de\s+\S+\s+a\s+(\S+)/i);
-  const iconoNuevo = matchIconoNuevo?.[1];
-  if (!iconoNuevo) return '';
-
-  const equipo = equipos.find(item => String(item.icono || '') === iconoNuevo);
-  return equipo?.nombre || '';
 }
 
 function normalizarEstadoPartido(estado) {
@@ -1323,10 +1320,7 @@ exports.gestionar = async (req, res) => {
           ? String(detalleObjeto.detalle)
           : normalizarDetalleAuditoria(registro.detalle);
         detalleLegible = reemplazarIdsEquiposEnDetalle(detalleLegible, equiposPorIdAuditoria);
-        let afectado = obtenerAfectadoAuditoria(registro, detalleObjeto, detalleLegible);
-        if (afectado === '-' && String(registro.tabla_afectada || '') === 'equipos') {
-          afectado = obtenerEquipoPorIconoEnDetalle(detalleLegible, equiposConGrupo) || afectado;
-        }
+        const afectado = obtenerAfectadoAuditoria(registro, detalleObjeto, detalleLegible);
 
         return {
           ...registro,
@@ -1448,10 +1442,7 @@ exports.auditoriaResumen = async (req, res) => {
         ? String(detalleObjeto.detalle)
         : normalizarDetalleAuditoria(registro.detalle);
       detalleLegible = reemplazarIdsEquiposEnDetalle(detalleLegible, equiposPorIdAuditoria);
-      let afectado = obtenerAfectadoAuditoria(registro, detalleObjeto, detalleLegible);
-      if (afectado === '-' && String(registro.tabla_afectada || '') === 'equipos') {
-        afectado = obtenerEquipoPorIconoEnDetalle(detalleLegible, equiposPlain) || afectado;
-      }
+      const afectado = obtenerAfectadoAuditoria(registro, detalleObjeto, detalleLegible);
 
       return {
         id_auditoria: registro.id_auditoria,

@@ -305,6 +305,7 @@ async function crear(req, res) {
 
 // Eliminar o desactivar equipo
 async function eliminar(req, res) {
+  let redirectUrl = '/torneos';
   try {
     const redirectHash = req.body.redirect_hash || '#equipos';
     const equipo = await Equipo.findByPk(req.params.id_equipo);
@@ -312,6 +313,7 @@ async function eliminar(req, res) {
       req.flash("danger", "Equipo no encontrado");
       return res.redirect('/torneos');
     }
+    redirectUrl = `/torneos/gestionar/${equipo.id_torneo}${redirectHash}`;
 
     if (!(await puedeAdministrarEquipo(req, equipo))) {
       req.flash("danger", "No puede eliminar equipos de otra entidad");
@@ -336,6 +338,34 @@ async function eliminar(req, res) {
       return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
     }
 
+    const bloqueosEliminacion = [];
+
+    if (equipo.icono && equipo.icono !== '/images/default_team.png') {
+      bloqueosEliminacion.push('logo personalizado');
+    }
+
+    const delegadosVinculados = await DelegadoEquipo.count({
+      where: { id_equipo: equipo.id_equipo }
+    });
+    if (delegadosVinculados > 0) {
+      bloqueosEliminacion.push('delegados asignados');
+    }
+
+    const jugadoresVinculados = await JugadorEquipo.count({
+      where: { id_equipo: equipo.id_equipo }
+    });
+    if (jugadoresVinculados > 0) {
+      bloqueosEliminacion.push('jugadores asignados');
+    }
+
+    if (bloqueosEliminacion.length > 0) {
+      req.flash(
+        "warning",
+        `No se puede eliminar el equipo "${equipo.nombre}" porque tiene ${bloqueosEliminacion.join(', ')}. Quite esos datos o desactive el equipo para conservar el historial.`
+      );
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
+    }
+
     if (req.session.usuario_id) {
       await sequelize.query('SET app.usuario_id = :usuarioId', {
         replacements: { usuarioId: req.session.usuario_id }
@@ -353,8 +383,8 @@ async function eliminar(req, res) {
     return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
   } catch (error) {
     console.error(error);
-    req.flash("danger", "Error al eliminar equipo");
-    res.redirect('/torneos');
+    req.flash("danger", "No se pudo eliminar el equipo. Revise si tiene jugadores, delegados, logo, finanzas, items o historial asociado.");
+    res.redirect(redirectUrl);
   }
 }
 // Formulario de edición

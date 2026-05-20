@@ -61,6 +61,14 @@
           <%= entidadActual ? (entidadActual.codigo || ('Entidad #' + entityId)) : ('Entidad #' + entityId) %>
         </div>
       </div>
+      <button type="button"
+              class="btn btn-link text-light app-nav-toggle"
+              id="appNavToggle"
+              aria-label="Mostrar opciones"
+              aria-controls="appNavActions"
+              aria-expanded="false">
+        <i class="bi bi-list"></i>
+      </button>
       <ul class="nav nav-tabs me-auto" role="tablist">
 
 
@@ -116,7 +124,7 @@
       </ul>
 
       <!-- Botones de navegación a la derecha -->
-      <div class="d-flex ms-auto app-nav-actions">
+      <div class="d-flex ms-auto app-nav-actions" id="appNavActions">
         <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <a href="/entidad/gestionar/<%= entityId %>" class="btn btn-success btn-sm me-2">Ir a Torneos</a>
         <% } %>
@@ -720,11 +728,12 @@ function renderFinanzasResumen() {
 
   if (!finanzasResumen.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay equipos cargados para este torneo.</td></tr>';
+    aplicarBusquedaFinanzas();
     return;
   }
 
   tbody.innerHTML = finanzasResumen.map(equipo => `
-    <tr data-finanzas-equipo-id="${escaparHtml(equipo.id_equipo)}">
+    <tr data-finanzas-equipo-id="${escaparHtml(equipo.id_equipo)}" data-finanzas-equipo-nombre="${escaparHtml(equipo.nombre || '')}">
       <td data-label="Equipo">
         <div class="d-flex align-items-center gap-2">
           <img src="${escaparHtml(equipo.icono || '/images/default_team.png')}" alt="" style="width:28px;height:28px;object-fit:cover;border-radius:50%;">
@@ -741,6 +750,7 @@ function renderFinanzasResumen() {
       </td>
     </tr>
   `).join('');
+  aplicarBusquedaFinanzas();
 }
 
 async function sincronizarFinanzasDesdeServidor() {
@@ -2624,6 +2634,10 @@ async function confirmarToggleEquipo(input) {
   color: #fff;
 }
 
+.torneos-page .app-nav-toggle {
+  display: none;
+}
+
 .torneos-page .btn {
   margin: 0;
   padding: 0.38rem 0.72rem;
@@ -3333,6 +3347,19 @@ async function confirmarToggleEquipo(input) {
   padding: 0;
 }
 
+.torneos-page .btn-buscar-gris {
+  background: #e9ecef;
+  border-color: #ced4da;
+  color: #495057;
+}
+
+.torneos-page .btn-buscar-gris:hover,
+.torneos-page .btn-buscar-gris:focus {
+  background: #dee2e6;
+  border-color: #adb5bd;
+  color: #212529;
+}
+
 #finanzas .finanzas-table {
   margin-bottom: 0;
   min-width: 0;
@@ -3538,7 +3565,7 @@ async function confirmarToggleEquipo(input) {
 
 @media (max-width: 768px) {
   .torneos-page {
-    padding-top: 142px;
+    padding-top: 105px;
     font-size: 0.92rem;
   }
 
@@ -3549,17 +3576,41 @@ async function confirmarToggleEquipo(input) {
   .torneos-page .navbar .container-fluid {
     align-items: stretch;
     gap: 0.45rem;
+    position: relative;
   }
 
   .torneos-page .navbar-brand {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
     margin: 0;
+    padding-right: 2.65rem;
     font-size: 1.05rem;
     line-height: 1.1;
   }
 
   .torneos-page .navbar-brand .small {
     font-size: 0.86rem;
+  }
+
+  .torneos-page .app-nav-toggle {
+    position: absolute;
+    top: -0.1rem;
+    right: 0.65rem;
+    z-index: 1041;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    color: #fff !important;
+    text-decoration: none;
+  }
+
+  .torneos-page .app-nav-toggle i {
+    font-size: 1.75rem;
+    line-height: 1;
   }
 
   .torneos-page .navbar .nav-tabs {
@@ -3587,15 +3638,30 @@ async function confirmarToggleEquipo(input) {
   }
 
   .torneos-page .app-nav-actions {
-    width: 100%;
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0.65rem;
+    z-index: 1040;
+    width: min(220px, calc(100vw - 24px));
+    display: none !important;
+    flex-direction: column;
     gap: 0.4rem;
-    overflow-x: auto;
-    padding-bottom: 1px;
+    padding: 0.55rem;
+    overflow: visible;
+    border-radius: 8px;
+    background: rgba(21, 28, 38, 0.96);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
+  }
+
+  .torneos-page .app-nav-actions.is-open {
+    display: flex !important;
   }
 
   .torneos-page .app-nav-actions .btn {
-    flex: 1 0 auto;
+    flex: 0 0 auto;
+    width: 100%;
     min-height: 34px;
+    margin: 0 !important;
     padding: 0.36rem 0.5rem;
     font-size: 0.82rem;
     line-height: 1.1;
@@ -5163,6 +5229,28 @@ async function confirmarToggleEquipo(input) {
           </div>
         <% } %>
       </div>
+      <% if (rol_id == 3 || rol_id == 99) { %>
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-md-4">
+            <label class="form-label text-white mb-1" for="buscarFinanzasEquipo">Buscar equipo</label>
+            <div class="input-group">
+              <input type="text"
+                     class="form-control text-uppercase"
+                     id="buscarFinanzasEquipo"
+                     placeholder="nombre de equipo">
+              <button type="button"
+                      class="btn btn-outline-light btn-buscar-gris"
+                      id="btnBuscarFinanzasEquipo"
+                      title="Buscar equipo">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-white small mb-2">
+          Equipos visibles: <strong id="finanzasEquiposVisibles">0</strong> / <span id="finanzasEquiposTotal"><%= (finanzasResumen || []).length %></span>
+        </div>
+      <% } %>
       <div class="card bg-light bg-opacity-75 shadow finanzas-panel">
         <div class="card-body">
           <div class="table-responsive">
@@ -5179,7 +5267,8 @@ async function confirmarToggleEquipo(input) {
               <tbody id="finanzasResumenTbody">
                 <% if (finanzasResumen && finanzasResumen.length > 0) { %>
                   <% finanzasResumen.forEach(equipoFinanza => { %>
-                    <tr data-finanzas-equipo-id="<%= equipoFinanza.id_equipo %>">
+                    <tr data-finanzas-equipo-id="<%= equipoFinanza.id_equipo %>"
+                        data-finanzas-equipo-nombre="<%= equipoFinanza.nombre || '' %>">
                       <td data-label="Equipo">
                         <div class="d-flex align-items-center gap-2">
                           <img src="<%= equipoFinanza.icono || '/images/default_team.png' %>"
@@ -5419,7 +5508,7 @@ async function confirmarToggleEquipo(input) {
           <label class="form-label text-white mb-1" for="buscarUsuariosAdmin">Buscar</label>
           <div class="input-group">
             <input type="text" class="form-control text-uppercase" id="buscarUsuariosAdmin" placeholder="nombre - equipo - documento">
-            <button type="button" class="btn btn-outline-light" id="btnBuscarUsuariosAdmin" title="Buscar usuarios">
+            <button type="button" class="btn btn-outline-light btn-buscar-gris" id="btnBuscarUsuariosAdmin" title="Buscar usuarios">
               <i class="bi bi-search"></i>
             </button>
           </div>
@@ -6063,6 +6152,42 @@ if (filtroJugadoresGuardado !== null) {
   }
 }
 
+function aplicarBusquedaFinanzas() {
+  const inputBusqueda = document.getElementById('buscarFinanzasEquipo');
+  const busqueda = (inputBusqueda?.value || '').trim().toUpperCase();
+  const tbody = document.getElementById('finanzasResumenTbody');
+  let visibles = 0;
+  let total = 0;
+
+  tbody?.querySelector('[data-finanzas-sin-resultados]')?.remove();
+  document.querySelectorAll('#finanzasResumenTbody tr[data-finanzas-equipo-id]').forEach(row => {
+    total += 1;
+    const nombreEquipo = (row.dataset.finanzasEquipoNombre || '').toUpperCase();
+    const visible = !busqueda || nombreEquipo.includes(busqueda);
+    row.classList.toggle('d-none', !visible);
+    if (visible) visibles += 1;
+  });
+
+  if (tbody && total > 0 && visibles === 0) {
+    tbody.insertAdjacentHTML('beforeend', '<tr data-finanzas-sin-resultados><td colspan="5" class="text-center text-muted py-3">No hay equipos que coincidan con la busqueda.</td></tr>');
+  }
+
+  const contadorVisibles = document.getElementById('finanzasEquiposVisibles');
+  const contadorTotal = document.getElementById('finanzasEquiposTotal');
+  if (contadorVisibles) contadorVisibles.textContent = visibles;
+  if (contadorTotal) contadorTotal.textContent = total;
+}
+
+document.getElementById('btnBuscarFinanzasEquipo')?.addEventListener('click', aplicarBusquedaFinanzas);
+document.getElementById('buscarFinanzasEquipo')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    aplicarBusquedaFinanzas();
+  }
+});
+document.getElementById('buscarFinanzasEquipo')?.addEventListener('input', aplicarBusquedaFinanzas);
+aplicarBusquedaFinanzas();
+
 function aplicarFiltrosUsuariosAdmin() {
   const busqueda = (document.getElementById('buscarUsuariosAdmin')?.value || '').trim().toUpperCase();
   const torneoId = document.getElementById('filtroUsuariosTorneo')?.value || '';
@@ -6293,8 +6418,50 @@ if (sessionStorage.getItem('jugadoresModoAdmin') === '1') {
   activarVistaPublicaJugadores();
 }
 
+const appNavToggle = document.getElementById('appNavToggle');
+const appNavActions = document.getElementById('appNavActions');
+let appNavCloseTimer = null;
+
+function cerrarMenuAppNav() {
+  if (!appNavActions || !appNavToggle) return;
+  appNavActions.classList.remove('is-open');
+  appNavToggle.setAttribute('aria-expanded', 'false');
+  if (appNavCloseTimer) {
+    clearTimeout(appNavCloseTimer);
+    appNavCloseTimer = null;
+  }
+}
+
+function programarCierreMenuAppNav() {
+  if (appNavCloseTimer) clearTimeout(appNavCloseTimer);
+  appNavCloseTimer = setTimeout(cerrarMenuAppNav, 3000);
+}
+
+appNavToggle?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  const menuAbierto = appNavActions?.classList.toggle('is-open');
+  appNavToggle.setAttribute('aria-expanded', menuAbierto ? 'true' : 'false');
+  if (menuAbierto) {
+    programarCierreMenuAppNav();
+  } else {
+    cerrarMenuAppNav();
+  }
+});
+
+appNavActions?.addEventListener('click', event => {
+  if (event.target.closest('a')) cerrarMenuAppNav();
+});
+
+document.addEventListener('click', event => {
+  if (!appNavActions?.classList.contains('is-open')) return;
+  if (event.target.closest('#appNavActions') || event.target.closest('#appNavToggle')) return;
+  cerrarMenuAppNav();
+});
+
 document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', event => {
+    cerrarMenuAppNav();
     const href = event.target?.getAttribute('href');
     if (!href) return;
 
