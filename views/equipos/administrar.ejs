@@ -41,6 +41,407 @@ administrar ejs
     body[data-rol-id="2"] table.table-sm td:has(form[action="/equipos/desvincularJugador"]) {
       display: none !important;
     }
+
+    #modalAsignarDelegado .modal-body,
+    #modalAsignarJugador .modal-body {
+      overflow-x: hidden;
+    }
+
+    #modalAsignarDelegado .asignar-delegados-table,
+    #modalAsignarJugador .asignar-jugadores-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+
+    #modalAsignarDelegado .delegado-seleccion-col,
+    #modalAsignarJugador .jugador-seleccion-col {
+      width: 86px;
+    }
+
+    #modalAsignarDelegado .delegado-nombre-col {
+      width: 21%;
+    }
+
+    #modalAsignarDelegado .delegado-correo-col {
+      width: 24%;
+    }
+
+    #modalAsignarDelegado .delegado-documento-col {
+      width: 17%;
+    }
+
+    #modalAsignarDelegado .delegado-rol-col,
+    #modalAsignarDelegado .delegado-estado-col {
+      width: 13%;
+    }
+
+    #modalAsignarDelegado .delegado-vinculo-col {
+      width: 12%;
+    }
+
+    #modalAsignarJugador .jugador-nombre-col {
+      width: 31%;
+    }
+
+    #modalAsignarJugador .jugador-documento-col {
+      width: 28%;
+    }
+
+    #modalAsignarJugador .jugador-estado-col {
+      width: 25%;
+    }
+
+    #modalAsignarDelegado .delegado-nombre,
+    #modalAsignarJugador .jugador-nombre {
+      display: block;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    #modalAsignarDelegado .delegado-nombre-linea,
+    #modalAsignarJugador .jugador-nombre-linea {
+      display: inline;
+    }
+
+    #modalAsignarDelegado .delegado-correo,
+    #modalAsignarDelegado .delegado-documento,
+    #modalAsignarJugador .jugador-documento {
+      overflow-wrap: anywhere;
+    }
+
+    #modalAsignarDelegado .delegado-estado-badge,
+    #modalAsignarDelegado .delegado-vinculo-badge,
+    #modalAsignarJugador .jugador-estado-badge {
+      max-width: 100%;
+      white-space: normal;
+      line-height: 1.15;
+      text-align: left;
+    }
+
+    .jugador-equipo-apellido-mobile,
+    .jugador-equipo-meta-mobile {
+      display: none;
+    }
+
+    @media (max-width: 576px) {
+      .administrar-equipo-wrap {
+        width: 100%;
+        padding: 18px 10px 36px;
+      }
+
+      .administrar-equipo-card .card-body {
+        padding: 1rem;
+      }
+
+      .administrar-equipo-card h5 {
+        font-size: 1.35rem;
+        margin-bottom: 0.9rem;
+      }
+
+      .administrar-equipo-card form[action*="/icono"] {
+        justify-content: center;
+      }
+
+      .administrar-equipo-card form[action*="/icono"] .form-control {
+        max-width: 100% !important;
+      }
+
+      .administrar-equipo-card > .card-body > .btn,
+      .administrar-equipo-card > .card-body > form > .btn,
+      #btnGuardarCambios {
+        display: block;
+        width: min(100%, 250px);
+        margin: 0.75rem auto;
+        font-size: 1rem;
+        padding: 0.65rem 0.9rem;
+      }
+
+      .equipo-jugadores-responsive {
+        overflow-x: visible;
+      }
+
+      .equipo-jugadores-table {
+        min-width: 0;
+      }
+
+      .equipo-jugadores-table thead {
+        display: none;
+      }
+
+      .equipo-jugadores-table,
+      .equipo-jugadores-table tbody,
+      .equipo-jugadores-table tr,
+      .equipo-jugadores-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .equipo-jugadores-table tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 46px 28px 56px 32px;
+        grid-template-areas:
+          "documento camiseta capitan estado acciones"
+          "nombre nombre nombre nombre nombre";
+        gap: 0.32rem 0.28rem;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        padding: 0.52rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .equipo-jugadores-table td {
+        display: block;
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        border: 0;
+        padding: 0;
+        font-size: 0.68rem;
+        overflow-wrap: normal;
+      }
+
+      .equipo-jugadores-table td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.08rem;
+        font-size: 0.48rem;
+        font-weight: 700;
+        color: #6c757d;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-nombre {
+        grid-area: nombre;
+        font-weight: 600;
+        font-size: 0.84rem;
+        line-height: 1.15;
+        overflow: hidden;
+        padding-top: 0.12rem;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-nombre::before {
+        display: none;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-acciones::before {
+        display: none;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-apellido-mobile {
+        display: inline;
+        margin-left: 0.2rem;
+        font-size: 0.84rem;
+        font-weight: 400;
+        color: #495057;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-meta-mobile {
+        display: none;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-documento {
+        grid-area: documento;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-apellido,
+      .equipo-jugadores-table .jugador-equipo-vinculo,
+      .equipo-jugadores-table .jugador-equipo-fecha {
+        display: none;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-camiseta {
+        grid-area: camiseta;
+      }
+
+      .equipo-jugadores-table .form-control-sm {
+        width: 44px;
+        max-width: 44px;
+        padding: 0.22rem 0.25rem;
+        font-size: 0.76rem;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-capitan {
+        grid-area: capitan;
+        text-align: center;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-capitan input {
+        width: 18px;
+        height: 18px;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-estado {
+        grid-area: estado;
+        text-align: center;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-estado .badge {
+        width: 100%;
+        white-space: normal;
+        line-height: 1.05;
+        font-size: 0.52rem;
+        padding: 0.26rem 0.12rem;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-acciones {
+        grid-area: acciones;
+        align-self: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-acciones form {
+        display: block !important;
+      }
+
+      .equipo-jugadores-table .jugador-equipo-acciones .btn {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #modalAsignarDelegado .modal-dialog,
+      #modalAsignarJugador .modal-dialog {
+        width: calc(100vw - 18px);
+        max-width: calc(100vw - 18px);
+        margin: 9px auto;
+      }
+
+      #modalAsignarDelegado .modal-header,
+      #modalAsignarJugador .modal-header {
+        padding: 0.8rem 1rem;
+      }
+
+      #modalAsignarDelegado .modal-title,
+      #modalAsignarJugador .modal-title {
+        font-size: 1.2rem;
+      }
+
+      #modalAsignarDelegado .modal-body,
+      #modalAsignarJugador .modal-body {
+        padding: 0.9rem;
+      }
+
+      #modalAsignarDelegado .asignar-delegados-search,
+      #modalAsignarJugador .asignar-jugadores-search {
+        gap: 0.55rem;
+      }
+
+      #modalAsignarDelegado .asignar-delegados-search .form-control,
+      #modalAsignarJugador .asignar-jugadores-search .form-control {
+        min-width: 0;
+        margin-right: 0 !important;
+        font-size: 0.82rem;
+        padding: 0.55rem 0.6rem;
+      }
+
+      #modalAsignarDelegado .asignar-delegados-search .btn,
+      #modalAsignarJugador .asignar-jugadores-search .btn {
+        flex: 0 0 auto;
+        padding: 0.55rem 0.75rem;
+        font-size: 0.9rem;
+      }
+
+      #modalAsignarDelegado .asignar-delegados-table,
+      #modalAsignarJugador .asignar-jugadores-table {
+        font-size: 0.82rem;
+      }
+
+      #modalAsignarDelegado .asignar-delegados-table th,
+      #modalAsignarDelegado .asignar-delegados-table td,
+      #modalAsignarJugador .asignar-jugadores-table th,
+      #modalAsignarJugador .asignar-jugadores-table td {
+        padding: 0.42rem 0.28rem;
+        vertical-align: middle;
+      }
+
+      #modalAsignarDelegado .delegado-seleccion-col,
+      #modalAsignarJugador .jugador-seleccion-col {
+        width: 38px;
+      }
+
+      #modalAsignarDelegado .delegado-nombre-col {
+        width: 30%;
+      }
+
+      #modalAsignarDelegado .delegado-correo-col,
+      #modalAsignarDelegado .delegado-rol-col {
+        display: none;
+      }
+
+      #modalAsignarDelegado .delegado-documento-col {
+        width: 25%;
+      }
+
+      #modalAsignarDelegado .delegado-estado-col {
+        width: 20%;
+      }
+
+      #modalAsignarDelegado .delegado-vinculo-col {
+        width: 25%;
+      }
+
+      #modalAsignarJugador .jugador-nombre-col {
+        width: 30%;
+      }
+
+      #modalAsignarJugador .jugador-documento-col {
+        width: 29%;
+      }
+
+      #modalAsignarJugador .jugador-estado-col {
+        width: 30%;
+      }
+
+      #modalAsignarDelegado .delegado-correo-heading,
+      #modalAsignarDelegado .delegado-correo-cell,
+      #modalAsignarDelegado .delegado-rol-heading,
+      #modalAsignarDelegado .delegado-rol-cell {
+        display: none;
+      }
+
+      #modalAsignarDelegado .delegado-seleccion-heading,
+      #modalAsignarJugador .jugador-seleccion-heading {
+        font-size: 0;
+      }
+
+      #modalAsignarDelegado .delegado-seleccion-heading::after,
+      #modalAsignarJugador .jugador-seleccion-heading::after {
+        content: "Sel.";
+        font-size: 0.72rem;
+      }
+
+      #modalAsignarDelegado input[name="delegados[]"],
+      #modalAsignarJugador input[name="jugadores[]"] {
+        width: 18px;
+        height: 18px;
+      }
+
+      #modalAsignarDelegado .delegado-nombre-linea,
+      #modalAsignarJugador .jugador-nombre-linea {
+        display: block;
+      }
+
+      #modalAsignarDelegado .delegado-estado-badge,
+      #modalAsignarDelegado .delegado-vinculo-badge,
+      #modalAsignarJugador .jugador-estado-badge {
+        font-size: 0.62rem;
+        padding: 0.25em 0.38em;
+      }
+    }
   </style>
 </head>
 <body class="bg-stadium" data-rol-id="<%= rol_id %>">
@@ -79,15 +480,27 @@ administrar ejs
 
         <!-- Icono -->
         <h5>Icono del equipo</h5>
+        <% const puedeModificarIcono = !esDelegado || permitirModificarIconos === true; %>
         <% if (equipo.icono) { %>
           <img src="<%= equipo.icono %>" alt="Icono" class="img-thumbnail mb-2" style="max-width:100px;">
         <% } else { %>
           <p class="text-muted">Sin icono asignado</p>
         <% } %>
-       <form action="/equipos/<%= equipo.id_equipo %>/icono" method="POST" enctype="multipart/form-data">
-  <input type="file" name="icono" accept="image/*">
-  <button type="submit">Actualizar Icono</button>
-</form>
+        <% if (puedeModificarIcono) { %>
+          <form action="/equipos/<%= equipo.id_equipo %>/icono" method="POST" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-center mb-2">
+            <input type="file" name="icono" accept="image/*" class="form-control form-control-sm" style="max-width: 320px;" required>
+            <button type="submit" class="btn btn-sm btn-primary">Actualizar icono</button>
+          </form>
+          <% if (equipo.icono && equipo.icono !== '/images/default_team.png') { %>
+            <form action="/equipos/<%= equipo.id_equipo %>/icono/eliminar" method="POST" class="mb-2">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar icono personalizado</button>
+            </form>
+          <% } %>
+        <% } else { %>
+          <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="El torneo no permite modificar iconos desde delegados">
+            Actualizar icono
+          </button>
+        <% } %>
 
 
 
@@ -130,8 +543,8 @@ administrar ejs
 <h5>Jugadores</h5>
 <form action="/equipos/actualizarJugadores" method="POST" id="formJugadores"></form>
   <input type="hidden" name="id_equipo" value="<%= equipo.id_equipo %>" form="formJugadores">
-  <div class="table-responsive">
-  <table class="table table-sm">
+  <div class="table-responsive equipo-jugadores-responsive">
+  <table class="table table-sm equipo-jugadores-table">
     <thead>
       <tr>
         <th>Documento</th>
@@ -149,9 +562,13 @@ administrar ejs
       <% if (jugadores && jugadores.length > 0) { %>
         <% jugadores.forEach(j => { %>
           <tr>
-            <td><%= j.documento %></td>
-            <td>
+            <td data-label="Doc." class="jugador-equipo-documento"><%= j.documento %></td>
+            <td data-label="Nombre" class="jugador-equipo-nombre">
               <%= j.nombre %>
+              <% if (j.apellido) { %>
+                <span class="jugador-equipo-apellido-mobile"><%= j.apellido %></span>
+              <% } %>
+              <span class="jugador-equipo-meta-mobile"><%= j.tipo_vinculo || 'titular' %> · <%= j.JugadorEquipo.fecha_inicio || '-' %></span>
               <% if (Number(j.sancion_partidos_restantes || 0) > 0) { %>
                 <span class="badge text-bg-danger ms-1">Suspendido <%= j.sancion_partidos_restantes %> fecha</span>
               <% } %>
@@ -159,16 +576,16 @@ administrar ejs
                 <small class="text-muted d-block"><%= j.sancion_observaciones %></small>
               <% } %>
             </td>
-            <td><%= j.apellido %></td>
-            <td>
+            <td data-label="Apellido" class="jugador-equipo-apellido"><%= j.apellido %></td>
+            <td data-label="Nro." class="jugador-equipo-camiseta">
               <input type="number" name="numero_camiseta_<%= j.id_jugador %>" 
                      value="<%= j.JugadorEquipo.numero_camiseta || '' %>" 
                      class="form-control form-control-sm" 
                      form="formJugadores"
                      oninput="habilitarGuardar()">
             </td>
-            <td><%= j.tipo_vinculo || 'titular' %></td>
-     <td>
+            <td data-label="Vinculo" class="jugador-equipo-vinculo"><%= j.tipo_vinculo || 'titular' %></td>
+     <td data-label="Cap." class="jugador-equipo-capitan">
   <input type="checkbox" 
          name="capitan" 
          value="<%= j.id_jugador %>" 
@@ -182,8 +599,8 @@ administrar ejs
 
 
 
-            <td><%= j.JugadorEquipo.fecha_inicio || '-' %></td>
-          <td>
+            <td data-label="Fecha" class="jugador-equipo-fecha"><%= j.JugadorEquipo.fecha_inicio || '-' %></td>
+          <td data-label="Estado" class="jugador-equipo-estado">
           <% if (j.JugadorEquipo && j.JugadorEquipo.estado === false) { %>
             <span class="badge bg-warning text-dark">Deshabilitado</span>
           <% } else { %>
@@ -191,7 +608,7 @@ administrar ejs
           <% } %>
         </td>
 
-            <td>
+            <td data-label="Acciones" class="jugador-equipo-acciones">
               <form action="/equipos/desvincularJugador" method="POST" style="display:inline;">
                 <input type="hidden" name="id_jugador" value="<%= j.id_jugador %>">
                 <input type="hidden" name="id_equipo" value="<%= equipo.id_equipo %>">
@@ -225,7 +642,7 @@ administrar ejs
   <form action="/equipos/asignarDelegados" method="POST">
     <input type="hidden" name="id_equipo" id="id_equipo_delegados">
     <div class="modal fade" id="modalAsignarDelegado" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header bg-primary text-white">
             <h5 class="modal-title">Asignar Delegados</h5>
@@ -233,7 +650,7 @@ administrar ejs
           </div>
           <div class="modal-body">
             <!-- Buscador fijo en el modal -->
-            <div class="mb-3 d-flex">
+            <div class="mb-3 d-flex asignar-delegados-search">
               <input type="text" id="searchQuery" class="form-control me-2" placeholder="Buscar por Documento o nombre">
               <button type="button" class="btn btn-primary" onclick="buscarUsuarios()">Buscar</button>
             </div>
@@ -274,6 +691,13 @@ administrar ejs
     })
     .catch(err => console.error('Error en búsqueda:', err));
   }
+
+  document.getElementById('searchQuery')?.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      buscarUsuarios();
+    }
+  });
 </script>
 
 
@@ -283,7 +707,7 @@ administrar ejs
   <input type="hidden" name="id_equipo" id="id_equipo_jugadores">
   <input type="hidden" name="id_torneo" value="<%= id_torneo %>">
   <div class="modal fade" id="modalAsignarJugador" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
           <h5 class="modal-title">Asignar Jugadores</h5>
@@ -291,7 +715,7 @@ administrar ejs
         </div>
         <div class="modal-body">
           <!-- Buscador fijo en el modal -->
-          <div class="mb-3 d-flex">
+          <div class="mb-3 d-flex asignar-jugadores-search">
             <input type="text" id="searchQueryJugadores" class="form-control me-2" placeholder="Buscar por Documento o nombre">
             <button type="button" class="btn btn-primary" onclick="buscarJugadores()">Buscar</button>
           </div>
@@ -329,6 +753,13 @@ administrar ejs
     })
     .catch(err => console.error('Error en búsqueda:', err));
   }
+
+  document.getElementById('searchQueryJugadores')?.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      buscarJugadores();
+    }
+  });
 </script>
 
 
@@ -359,8 +790,9 @@ administrar ejs
     document.getElementById('btnGuardarCambios').disabled = false;
   }
 </script>
-
-
-
+<script>
+  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+</script>
+<script src="/js/session-abandon-guard.js"></script>
 </body>
 </html>

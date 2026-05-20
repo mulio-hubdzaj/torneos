@@ -1,9 +1,11 @@
 // torneoContrller.js
 const { Torneo, Grupo, Equipo, Partido, Finanzas, Usuario, Item, EquipoMovimientoGrupo, Entity, Cancha } = require('../models');
-const { registrarAuditoria, registrarAccesoAuditoria, debeRegistrarAccesoSesion } = require('../utils/helpers');
+const { registrarAuditoria } = require('../utils/helpers');
 const { sequelize } = require('../models');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { Op } = require('sequelize');
 
 // 🔧 Función auxiliar para calcular edad y meses transcurridos desde último cumpleaños
@@ -162,6 +164,24 @@ async function obtenerPermitirAgregarJugadores(torneoId) {
   }
 }
 
+async function obtenerPermitirModificarIconos(torneoId) {
+  try {
+    const [config] = await sequelize.query(`
+      SELECT permitir_modificar_iconos_equipo
+      FROM torneos
+      WHERE id_torneo = :torneoId
+      LIMIT 1
+    `, {
+      replacements: { torneoId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    return config?.permitir_modificar_iconos_equipo === true;
+  } catch (error) {
+    if (error?.parent?.code === '42703') return false;
+    throw error;
+  }
+}
+
 async function obtenerGruposOcultosFixture(torneoId) {
   try {
     const grupos = await sequelize.query(`
@@ -269,16 +289,23 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
       const fechaB = `${b.fecha_input || '9999-12-31'} ${b.hora || '23:59'}`;
       return fechaA.localeCompare(fechaB);
     })
-    .slice(0, 5);
+    .slice(0, 20);
 
   const partidosFinalizados = (partidosRaw || [])
     .filter(partido => normalizarEstadoPartido(partido.estado) === 'finalizado')
     .sort((a, b) => {
+      const numeroFechaA = Number(a.numero_fecha || 0);
+      const numeroFechaB = Number(b.numero_fecha || 0);
+      if (numeroFechaA !== numeroFechaB) return numeroFechaB - numeroFechaA;
+
       const fechaA = `${a.fecha_input || ''} ${a.hora || ''}`;
       const fechaB = `${b.fecha_input || ''} ${b.hora || ''}`;
-      return fechaB.localeCompare(fechaA);
+      const comparacionFecha = fechaB.localeCompare(fechaA);
+      if (comparacionFecha !== 0) return comparacionFecha;
+
+      return Number(b.id_partido || 0) - Number(a.id_partido || 0);
     })
-    .slice(0, 5);
+    .slice(0, 20);
 
   const proximosPartidos = (partidosRaw || [])
     .filter(partido => {
@@ -290,11 +317,11 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
       const fechaB = `${b.fecha_input || '9999-12-31'} ${b.hora || '23:59'}`;
       return fechaA.localeCompare(fechaB);
     })
-    .slice(0, 5);
+    .slice(0, 20);
 
   return {
     tablaTop: (estadisticasGeneral || []).slice(0, 5),
-    goleadoresTop: (rankingGoles || []).slice(0, 5),
+    goleadoresTop: (rankingGoles || []).slice(0, 20),
     partidosEnCurso,
     ultimosResultados: partidosFinalizados,
     proximosPartidos
@@ -585,12 +612,16 @@ exports.desactivar = async (req, res) => {
 exports.gestionar = async (req, res) => {
   try {
     const torneoId = req.params.id_torneo;
-    let entityId = req.session.entity_id;
+    const vistaPublica = Boolean(req.vistaPublica);
+    const rolSesion = vistaPublica ? 0 : Number(req.session.rol_id || 0);
+    let entityId = vistaPublica ? null : req.session.entity_id;
 
-    console.log('Sesión actual:', { entity_id: req.session.entity_id, documento: req.session.documento, rol_id: req.session.rol_id });
+    if (!vistaPublica) {
+      console.log('Sesión actual:', { entity_id: req.session.entity_id, documento: req.session.documento, rol_id: req.session.rol_id });
+    }
 
     // Si el usuario no es super_admin y no tiene entity_id válido, forzar re-login
-    if (req.session.rol_id !== 99) {
+    if (!vistaPublica && rolSesion !== 99) {
       if (!entityId || isNaN(parseInt(entityId, 10))) {
         console.log('entityId inválido para rol distinto de super_admin:', entityId);
         req.flash("danger", "Sesión inválida. Por favor, inicie sesión nuevamente.");
@@ -600,7 +631,9 @@ exports.gestionar = async (req, res) => {
       console.log('entityId convertido:', entityId);
     }
 
-    req.session.torneo_id = torneoId;
+    if (!vistaPublica) {
+      req.session.torneo_id = torneoId;
+    }
 
     const torneo = await Torneo.findByPk(torneoId, {
       include: [
@@ -611,27 +644,21 @@ exports.gestionar = async (req, res) => {
 
     if (!torneo) {
       req.flash("danger", "Torneo no encontrado");
-      return res.redirect('/torneos');
+      return res.redirect(vistaPublica ? '/login' : '/torneos');
     }
 
-    if (req.session.rol_id === 99) {
+    if (vistaPublica) {
+      entityId = torneo.entity_id;
+    } else if (rolSesion === 99) {
       req.session.entity_id = torneo.entity_id;
       entityId = torneo.entity_id;
-    }
-
-    if (debeRegistrarAccesoSesion(req, `torneo:${torneo.id_torneo}`)) {
-      await registrarAccesoAuditoria(req.session.usuario_id, torneo.entity_id, 'Torneo', {
-        id_entidad: torneo.entity_id,
-        id_torneo: torneo.id_torneo,
-        torneo: `${torneo.nombre_torneo} ${torneo.temporada || ''}`.trim(),
-        detalle: `Ingreso a torneo ${torneo.nombre_torneo}`
-      });
     }
 
     const grupoSeleccionadoId = req.query.grupo_id ? parseInt(req.query.grupo_id, 10) : null;
     const fechaCalendarioSeleccionada = req.query.fecha_calendario ? normalizarFechaInput(req.query.fecha_calendario) : '';
     const torneoData = torneo.get({ plain: true });
     torneoData.permitir_agregar_jugadores = await obtenerPermitirAgregarJugadores(torneoId);
+    torneoData.permitir_modificar_iconos_equipo = await obtenerPermitirModificarIconos(torneoId);
     const entidadActual = await Entity.findByPk(entityId);
     const gruposMapa = new Map((torneoData.Grupos || []).map(grupo => [String(grupo.id_grupo), grupo.nombre_grupo]));
     const gruposOcultosFixture = await obtenerGruposOcultosFixture(torneoId);
@@ -655,7 +682,7 @@ exports.gestionar = async (req, res) => {
       nombre_grupo: gruposMapa.get(String(equipo.id_grupo)) || 'Sin grupo'
     }));
 
-    const equiposDelegadoIds = req.session.usuario_id
+    const equiposDelegadoIds = !vistaPublica && req.session.usuario_id
       ? await sequelize.query(`
           SELECT e.id_equipo
           FROM delegados_equipos de
@@ -676,7 +703,7 @@ exports.gestionar = async (req, res) => {
     torneoData.Equipos = equiposConGrupo;
 
     // Consulta de jugadores
-    const jugadores = await sequelize.query(`
+    const jugadores = vistaPublica ? [] : await sequelize.query(`
       SELECT j.id_jugador,
              j.nombre,
              j.apellido,
@@ -733,7 +760,7 @@ exports.gestionar = async (req, res) => {
       where: { entity_id: entityId, estado: true }
     });
 
-    const items = await Item.findAll({
+    const items = vistaPublica ? [] : await Item.findAll({
       where: {
         entity_id: entityId,
         id_torneo: torneoData.id_torneo
@@ -742,11 +769,11 @@ exports.gestionar = async (req, res) => {
     });
 
     // 🔑 Consulta de usuarios para el modal de delegados
-    const usuarios = await Usuario.findAll({
+    const usuarios = vistaPublica ? [] : await Usuario.findAll({
       where: { entity_id: entityId, estado: true }
     });
 
-    const puedeGestionarUsuarios = [3, 99].includes(Number(req.session.rol_id));
+    const puedeGestionarUsuarios = [3, 99].includes(rolSesion);
     let usuariosAdmin = [];
     let torneosUsuarios = [];
 
@@ -793,7 +820,7 @@ exports.gestionar = async (req, res) => {
         GROUP BY u.id_usuario, u.nombre, u.correo, u.documento, u.rol_id, u.estado, r.nombre_rol
         ORDER BY u.nombre ASC, u.documento ASC
       `, {
-        replacements: { entityId, rolSesion: Number(req.session.rol_id) },
+        replacements: { entityId, rolSesion },
         type: sequelize.QueryTypes.SELECT
       });
 
@@ -1227,7 +1254,7 @@ exports.gestionar = async (req, res) => {
       return acc;
     }, {});
 
-    const equiposFinanzasVisibles = Number(req.session.rol_id) === 2
+    const equiposFinanzasVisibles = rolSesion === 2
       ? equiposConGrupo.filter(equipo => equipo.es_equipo_delegado)
       : equiposConGrupo;
     const finanzasResumen = equiposFinanzasVisibles.map(equipo => {
@@ -1247,7 +1274,7 @@ exports.gestionar = async (req, res) => {
       };
     });
 
-    const puedeVerAuditoria = Number(req.session.rol_id) === 99;
+    const puedeVerAuditoria = rolSesion === 99;
     const contextoAuditoria = {
       entity_id: entityId,
       id_torneo: parseInt(torneoId, 10),
@@ -1333,7 +1360,8 @@ exports.gestionar = async (req, res) => {
       equipos: torneoData.Equipos,
       entityId,
       entidadActual: entidadActual ? entidadActual.get({ plain: true }) : null,
-      rol_id: req.session.rol_id,
+      rol_id: rolSesion,
+      vistaPublica,
       jugadores,
       torneos,
       selectedTorneo: torneoData.id_torneo,
@@ -1359,8 +1387,13 @@ exports.gestionar = async (req, res) => {
   } catch (error) {
     console.error("Error al gestionar torneo:", error);
     req.flash("danger", "Error al gestionar torneo");
-    return res.redirect('/torneos');
+    return res.redirect(req.vistaPublica ? '/login' : '/torneos');
   }
+};
+
+exports.gestionarPublico = async (req, res) => {
+  req.vistaPublica = true;
+  return exports.gestionar(req, res);
 };
 
 exports.auditoriaResumen = async (req, res) => {
@@ -1580,7 +1613,10 @@ exports.actualizarPortada = async (req, res) => {
     }
     const torneo = permiso.torneo;
 
-    if (!req.file) {
+    const portadaAjustada = String(req.body.portada_ajustada || '');
+    const matchPortadaAjustada = portadaAjustada.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
+
+    if (!req.file && !matchPortadaAjustada) {
       req.flash("warning", "Seleccione una imagen para la portada");
       return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#estadisticas`);
     }
@@ -1595,7 +1631,15 @@ exports.actualizarPortada = async (req, res) => {
       replacements: { entityId: req.session.entity_id || torneo.entity_id }
     });
 
-    torneo.portada = `/uploads/${req.file.filename}`;
+    if (matchPortadaAjustada) {
+      const extension = matchPortadaAjustada[1] === 'jpeg' ? 'jpg' : matchPortadaAjustada[1];
+      const filename = `${crypto.randomBytes(16).toString('hex')}.${extension}`;
+      const uploadPath = path.join(__dirname, '..', 'public', 'uploads', filename);
+      fs.writeFileSync(uploadPath, Buffer.from(matchPortadaAjustada[2], 'base64'));
+      torneo.portada = `/uploads/${filename}`;
+    } else {
+      torneo.portada = `/uploads/${req.file.filename}`;
+    }
     await torneo.save();
 
     req.flash("success", "Portada del torneo actualizada");
@@ -1676,6 +1720,48 @@ exports.actualizarPermitirAgregarJugadores = async (req, res) => {
   } catch (error) {
     console.error("Error al actualizar permiso de agregar jugadores:", error);
     req.flash("danger", "No se pudo actualizar el permiso para agregar jugadores");
+    return res.redirect(`/torneos/gestionar/${torneoId}#equipos`);
+  }
+};
+
+exports.actualizarPermitirModificarIconos = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+  try {
+    const permiso = await validarTorneoAdmin(req, torneoId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      return res.redirect('/torneos');
+    }
+
+    const permitir = req.body.permitir_modificar_iconos_equipo === '1';
+
+    if (req.session.usuario_id) {
+      await sequelize.query('SET app.usuario_id = :usuarioId', {
+        replacements: { usuarioId: req.session.usuario_id }
+      });
+    }
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: permiso.torneo.entity_id }
+    });
+
+    await sequelize.query(`
+      UPDATE torneos
+      SET permitir_modificar_iconos_equipo = :permitir
+      WHERE id_torneo = :torneoId
+    `, {
+      replacements: { permitir, torneoId }
+    });
+
+    req.flash(
+      "success",
+      permitir
+        ? "Los delegados pueden modificar iconos de sus equipos"
+        : "Los delegados ya no pueden modificar iconos de sus equipos"
+    );
+    return res.redirect(`/torneos/gestionar/${torneoId}#equipos`);
+  } catch (error) {
+    console.error("Error al actualizar permiso de modificar iconos:", error);
+    req.flash("danger", "No se pudo actualizar el permiso para modificar iconos");
     return res.redirect(`/torneos/gestionar/${torneoId}#equipos`);
   }
 };
@@ -2108,6 +2194,7 @@ exports.cambiarPermisosUsuario = async (req, res) => {
 
     usuario.rol_id = nuevoRol;
     usuario.entity_id = nuevoRol === 99 ? null : permiso.torneo.entity_id;
+    usuario.estado = true;
     await usuario.save();
 
     if (nuevoRol !== 2) {

@@ -14,6 +14,7 @@
       <th>Correo</th>
       <th>Documento</th>
       <th>Rol actual</th>
+      <th>Estado</th>
       <th>Vinculado</th>
     </tr>
   </thead>
@@ -29,6 +30,13 @@
           <% if (u.rol_id == 2) { %> Delegado <% } %>
           <% if (u.rol_id == 3) { %> Admin <% } %>
           <% if (u.rol_id == 99) { %> SuperAdmin <% } %>
+        </td>
+        <td>
+          <% if (u.estado) { %>
+            <span class="badge bg-success">Activo</span>
+          <% } else { %>
+            <span class="badge bg-warning text-dark">Pendiente</span>
+          <% } %>
         </td>
         <td>
           <% if (u.vinculo === 'Delegado') { %>

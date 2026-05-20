@@ -24,3 +24,6 @@ public/db/
 public/DB PARA PRD/
 public/contexto*.txt
 public/contexto_*.md
+
+# Uploads generados por pruebas/usuarios. Los archivos ya trackeados se mantienen.
+public/uploads/*

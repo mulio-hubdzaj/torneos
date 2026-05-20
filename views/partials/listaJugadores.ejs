@@ -1,10 +1,16 @@
 <!-- partials/listaJugadores-->
 
-<div id="jugadoresTable">
-  <table class="table table-striped">
+<div class="jugadores-table-wrap">
+  <table class="table table-striped asignar-jugadores-table">
+  <colgroup>
+    <col class="jugador-seleccion-col">
+    <col class="jugador-nombre-col">
+    <col class="jugador-documento-col">
+    <col class="jugador-estado-col">
+  </colgroup>
   <thead>
     <tr>
-      <th>Seleccionar</th>
+      <th class="jugador-seleccion-heading">Seleccionar</th>
       <th>Nombre</th>
       <th>Documento</th>
       <th>Estado</th>
@@ -13,20 +19,32 @@
   <tbody>
     <% if (jugadores && jugadores.length > 0) { %>
       <% jugadores.forEach(j => { %>
+        <%
+          const partesNombre = String(j.nombre || '').trim().split(/\s+/).filter(Boolean);
+          const nombrePrincipal = partesNombre.shift() || '';
+          const nombreResto = partesNombre.join(' ');
+        %>
         <tr>
           <td>
             <input type="checkbox" name="jugadores[]" value="<%= j.id_jugador %>"
               <%= j.deshabilitar_checkbox ? 'disabled' : '' %> >
           </td>
-          <td><%= j.nombre %></td>
-          <td><%= j.documento %></td>
+          <td>
+            <span class="jugador-nombre">
+              <span class="jugador-nombre-linea"><%= nombrePrincipal %></span>
+              <% if (nombreResto) { %>
+                <span class="jugador-nombre-linea"><%= nombreResto %></span>
+              <% } %>
+            </span>
+          </td>
+          <td class="jugador-documento"><%= j.documento %></td>
           <td>
             <% if (j.estado_vinculo === false) { %>
-              <span class="badge bg-danger">Desactivado</span>
+              <span class="badge bg-danger jugador-estado-badge">Desactivado</span>
             <% } else if (j.vinculo && j.vinculo !== 'Libre') { %>
-              <span class="badge bg-success"><%= j.vinculo %></span>
+              <span class="badge bg-success jugador-estado-badge"><%= j.vinculo %></span>
             <% } else { %>
-              <span class="badge bg-secondary">Libre</span>
+              <span class="badge bg-secondary jugador-estado-badge">Libre</span>
             <% } %>
           </td>
         </tr>

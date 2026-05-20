@@ -117,5 +117,9 @@
     });
   }
 </script>
+<script>
+  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+</script>
+<script src="/js/session-abandon-guard.js"></script>
 </body>
 </html>

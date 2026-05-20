@@ -13,8 +13,19 @@ const jugadorRoutes = require('./routes/jugadorRoutes');
 const jugadorEquipoRoutes = require('./routes/jugadorEquipoRoutes');
 const partidoRoutes = require('./routes/partidoRoutes');
 const itemRoutes = require('./routes/itemRoutes');
+const { Entity } = require('./models');
 
 const app = express();
+const DEFAULT_SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const sessionMaxAgeMsEnv = Number(process.env.SESSION_MAX_AGE_MS);
+const sessionMaxAgeMs = Number.isFinite(sessionMaxAgeMsEnv) && sessionMaxAgeMsEnv > 0
+  ? sessionMaxAgeMsEnv
+  : DEFAULT_SESSION_MAX_AGE_MS;
+const DEFAULT_ABANDON_TIMEOUT_MS = 1000 * 60 * 3;
+const abandonTimeoutMsEnv = Number(process.env.ABANDON_TIMEOUT_MS);
+const abandonTimeoutMs = Number.isFinite(abandonTimeoutMsEnv) && abandonTimeoutMsEnv > 0
+  ? abandonTimeoutMsEnv
+  : DEFAULT_ABANDON_TIMEOUT_MS;
 
 app.use((req, res, next) => {
   const requestedPath = decodeURIComponent(req.path || '').toLowerCase();
@@ -42,10 +53,49 @@ app.use(express.json());
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev_session_secret_change_me',
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: sessionMaxAgeMs
+  }
 }));
 
 app.use(flash());
+
+app.use((req, res, next) => {
+  const ahora = Date.now();
+  const rutaPublica =
+    req.path === '/' ||
+    req.path === '/login' ||
+    req.path === '/registro' ||
+    req.path.startsWith('/publico') ||
+    req.path.startsWith('/css') ||
+    req.path.startsWith('/js') ||
+    req.path.startsWith('/images') ||
+    req.path.startsWith('/uploads') ||
+    req.path === '/session/heartbeat';
+
+  if (req.session?.usuario_id || req.session?.vista_publica_activa) {
+    const ultimoHeartbeat = Number(req.session.ultimo_heartbeat || ahora);
+    if (ahora - ultimoHeartbeat >= abandonTimeoutMs && req.path !== '/logout') {
+      return req.session.destroy(() => {
+        res.clearCookie('connect.sid');
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        return res.redirect('/login');
+      });
+    }
+
+    if (!rutaPublica) {
+      req.session.ultimo_heartbeat = ahora;
+    }
+  }
+
+  next();
+});
 
 // Evita que el navegador muestre pantallas privadas desde el historial luego de cerrar sesion.
 app.use((req, res, next) => {
@@ -57,6 +107,7 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   res.locals.messages = req.flash();
+  res.locals.abandonTimeoutMs = abandonTimeoutMs;
   next();
 });
 
@@ -70,8 +121,27 @@ function requiereSesion(req, res, next) {
   next();
 }
 
-app.get('/', (req, res) => {
-  res.render('index');
+app.get('/', async (req, res) => {
+  try {
+    const comunidades = await Entity.findAll({
+      where: { activo: true },
+      order: [['codigo', 'ASC']]
+    });
+
+    res.render('index', {
+      comunidades: comunidades.map(comunidad => comunidad.get({ plain: true }))
+    });
+  } catch (error) {
+    console.error('Error al cargar comunidades en inicio:', error);
+    res.render('index', { comunidades: [] });
+  }
+});
+
+app.get('/session/heartbeat', (req, res) => {
+  if (req.session) {
+    req.session.ultimo_heartbeat = Date.now();
+  }
+  res.status(204).end();
 });
 
 app.use('/', authRoutes);

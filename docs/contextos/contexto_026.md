@@ -44,7 +44,7 @@ Se unifico la conexion:
   - queda como puente:
     - `module.exports = require('./sequelize');`
 - `models/index.js`
-  - dejo de usar `localhost`, `postgres`, `Soporte2018` hardcodeado;
+  - dejo de usar `localhost`, `postgres` y password local hardcodeado;
   - ahora importa `../config/sequelize`.
 
 Se agrego documentacion:

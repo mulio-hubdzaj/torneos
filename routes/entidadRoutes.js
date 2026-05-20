@@ -3,7 +3,6 @@ const express = require('express');
 const router = express.Router();
 const { Entity, Usuario, Torneo } = require('../models');
 const entityController = require('../controllers/entityController');
-const { registrarAccesoAuditoria, debeRegistrarAccesoSesion } = require('../utils/helpers');
 
 function requiereSuperAdmin(req, res, next) {
   if (Number(req.session.rol_id) !== 99) {
@@ -48,14 +47,6 @@ router.get('/gestionar/:id', async (req, res) => {
     });
 
     req.session.entity_id = entidad.entity_id;
-
-    if (debeRegistrarAccesoSesion(req, `entidad:${entidad.entity_id}`)) {
-      await registrarAccesoAuditoria(req.session.usuario_id, entidad.entity_id, 'Entidad', {
-        id_entidad: entidad.entity_id,
-        entidad: entidad.codigo || entidad.descripcion || `Entidad #${entidad.entity_id}`,
-        detalle: `Ingreso a entidad ${entidad.codigo || entidad.entity_id}`
-      });
-    }
 
     res.render('entidad/index', {
       entidad,

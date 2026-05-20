@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { Usuario, Entity, Torneo } = require('../models');
 const bcrypt = require('bcrypt');
+const torneoController = require('../controllers/torneoController');
 
 function validarContrasenaSegura(contrasena) {
   const texto = String(contrasena || '');
@@ -21,6 +22,49 @@ function validarContrasenaSegura(contrasena) {
 router.get('/login', (req, res) => {
   res.render('login'); // los mensajes llegan por res.locals.messages
 });
+
+router.get('/publico/comunidad', async (req, res) => {
+  try {
+    const entityId = Number(req.query.entity_id);
+    if (!entityId) {
+      req.flash('danger', 'Selecciona una comunidad');
+      return res.redirect('/');
+    }
+
+    const comunidad = await Entity.findOne({
+      where: { entity_id: entityId, activo: true }
+    });
+
+    if (!comunidad) {
+      req.flash('danger', 'Comunidad no encontrada');
+      return res.redirect('/');
+    }
+
+    const torneo = await Torneo.findOne({
+      where: { entity_id: entityId, estado: true },
+      order: [['nombre_torneo', 'ASC']]
+    });
+
+    if (!torneo) {
+      req.flash('info', 'La comunidad seleccionada todavia no tiene torneos activos');
+      return res.redirect('/');
+    }
+
+    req.session.vista_publica_activa = true;
+    req.session.ultimo_heartbeat = Date.now();
+    return res.redirect(`/publico/torneo/${torneo.id_torneo}#torneos`);
+  } catch (error) {
+    console.error('Error al abrir comunidad publica:', error);
+    req.flash('danger', 'No se pudo abrir la comunidad');
+    return res.redirect('/');
+  }
+});
+
+router.get('/publico/torneo/:id_torneo', (req, res, next) => {
+  req.session.vista_publica_activa = true;
+  req.session.ultimo_heartbeat = Date.now();
+  next();
+}, torneoController.gestionarPublico);
 
 router.get('/cambiar-contrasena', (req, res) => {
   if (!req.session.usuario_id || !req.session.debe_cambiar_contrasena) {
@@ -219,6 +263,8 @@ router.post('/login', async (req, res) => {
     req.session.rol_id = user.rol_id;
     req.session.entity_id = user.entity_id;
     req.session.debe_cambiar_contrasena = Boolean(user.debe_cambiar_contrasena);
+    req.session.vista_publica_activa = false;
+    req.session.ultimo_heartbeat = Date.now();
 
     // Reglas de negocio
     if (!entityId && user.rol_id !== 99) {
@@ -365,11 +411,11 @@ router.post('/registro', async (req, res) => {
       contrasena_hash: contrasenaHash,
       entity_id: entityId,
       rol_id: 1,
-      estado: true,
+      estado: false,
       creado_en: new Date()
     });
 
-    req.flash("success", "Usuario registrado con éxito");
+    req.flash("success", "Registro enviado correctamente. Un administrador debe aprobarlo antes de iniciar sesion.");
     res.redirect('/login');
   } catch (error) {
     console.error("Error en registro:", error);

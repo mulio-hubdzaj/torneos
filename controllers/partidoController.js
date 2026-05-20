@@ -1625,6 +1625,7 @@ exports.eliminar = async (req, res) => {
 };
 
 exports.eliminarFecha = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     const torneoId = Number.parseInt(req.params.id_torneo, 10);
     const numeroFecha = Number.parseInt(req.params.numero_fecha, 10);
@@ -1632,53 +1633,133 @@ exports.eliminarFecha = async (req, res) => {
     const redirectUrl = req.body.redirect_url || `/torneos/gestionar/${torneoId}#partidos`;
 
     if (!torneoId || !numeroFecha) {
+      await transaction.rollback();
       req.flash("danger", "Fecha invalida");
       return res.redirect(redirectUrl);
     }
 
-    const where = {
-      id_torneo: torneoId,
-      numero_fecha: numeroFecha
-    };
-    if (idGrupo) where.id_grupo = idGrupo;
-
-    const [{ total_finalizados: totalFinalizados = 0 } = {}] = await sequelize.query(`
-      SELECT COUNT(*) AS total_finalizados
-      FROM partidos
-      WHERE id_torneo = :torneoId
-        AND numero_fecha = :numeroFecha
-        AND LOWER(TRIM(COALESCE(estado, ''))) = 'finalizado'
-    `, {
-      replacements: { torneoId, numeroFecha },
-      type: sequelize.QueryTypes.SELECT
-    });
-
-    if (Number(totalFinalizados || 0) > 0) {
-      req.flash("danger", "No se puede eliminar una fecha con encuentros finalizados");
+    const idGrupoNumero = idGrupo ? Number.parseInt(idGrupo, 10) : null;
+    if (idGrupo && !idGrupoNumero) {
+      await transaction.rollback();
+      req.flash("danger", "Grupo invalido");
       return res.redirect(redirectUrl);
     }
 
-    const permisoTorneo = await validarAdminTorneo(req, torneoId);
+    const filtroGrupoSql = idGrupoNumero ? 'AND id_grupo = :idGrupo' : '';
+    const replacements = { torneoId, numeroFecha, idGrupo: idGrupoNumero };
+
+    const [{ total_partidos: totalPartidos = 0 } = {}] = await sequelize.query(`
+      SELECT COUNT(*) AS total_partidos
+      FROM partidos
+      WHERE id_torneo = :torneoId
+        AND numero_fecha = :numeroFecha
+        ${filtroGrupoSql}
+    `, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+      transaction
+    });
+
+    if (Number(totalPartidos || 0) > 0) {
+      await transaction.rollback();
+      req.flash("danger", "Solo se puede eliminar una fecha vacia");
+      return res.redirect(redirectUrl);
+    }
+
+    const permisoTorneo = await validarAdminTorneo(req, torneoId, transaction);
     if (!permisoTorneo.ok) {
+      await transaction.rollback();
       req.flash("danger", permisoTorneo.message);
       return res.redirect('/torneos');
     }
     const torneo = permisoTorneo.torneo;
-    await setAuditContext(req, torneo?.entity_id || req.session.entity_id);
+    await setAuditContext(req, torneo?.entity_id || req.session.entity_id, transaction);
 
-    const eliminados = await Partido.destroy({ where });
+    const [compactados] = await sequelize.query(`
+      UPDATE partidos
+      SET numero_fecha = numero_fecha - 1
+      WHERE id_torneo = :torneoId
+        AND numero_fecha > :numeroFecha
+        ${filtroGrupoSql}
+    `, {
+      replacements,
+      transaction
+    });
+
+    if (!idGrupoNumero) {
+      const finanzasLibres = await sequelize.query(`
+        SELECT id_finanza, concepto
+        FROM finanzas
+        WHERE id_torneo = :torneoId
+          AND tipo = 'fecha_libre'
+          AND concepto ~ '^Fecha libre #[0-9]+'
+      `, {
+        replacements: { torneoId },
+        type: sequelize.QueryTypes.SELECT,
+        transaction
+      });
+
+      for (const movimiento of finanzasLibres) {
+        const match = String(movimiento.concepto || '').match(/^Fecha libre #(\d+)/);
+        const numeroLibre = Number.parseInt(match?.[1] || '0', 10);
+        if (numeroLibre > numeroFecha) {
+          await sequelize.query(`
+            UPDATE finanzas
+            SET concepto = :concepto
+            WHERE id_finanza = :idFinanza
+          `, {
+            replacements: {
+              idFinanza: movimiento.id_finanza,
+              concepto: String(movimiento.concepto).replace(/^Fecha libre #\d+/, `Fecha libre #${numeroLibre - 1}`)
+            },
+            transaction
+          });
+        }
+      }
+
+      const itemsLibres = await sequelize.query(`
+        SELECT id_item_equipo, observaciones
+        FROM items_equipo
+        WHERE id_torneo = :torneoId
+          AND observaciones LIKE :marcaLike
+      `, {
+        replacements: { torneoId, marcaLike: `[fecha_libre:${torneoId}:%` },
+        type: sequelize.QueryTypes.SELECT,
+        transaction
+      });
+
+      for (const item of itemsLibres) {
+        const match = String(item.observaciones || '').match(/^\[fecha_libre:(\d+):(\d+)\]/);
+        const numeroLibre = Number.parseInt(match?.[2] || '0', 10);
+        if (numeroLibre > numeroFecha) {
+          await sequelize.query(`
+            UPDATE items_equipo
+            SET observaciones = :observaciones
+            WHERE id_item_equipo = :idItemEquipo
+          `, {
+            replacements: {
+              idItemEquipo: item.id_item_equipo,
+              observaciones: String(item.observaciones).replace(/^\[fecha_libre:(\d+):(\d+)\]/, `[fecha_libre:${torneoId}:${numeroLibre - 1}]`)
+            },
+            transaction
+          });
+        }
+      }
+    }
 
     const usuarioId = req.session.usuario_id;
     await registrarAuditoria(usuarioId, null, "partidos", "DELETE_FECHA", {
       id_torneo: torneoId,
       numero_fecha: numeroFecha,
       id_grupo: idGrupo,
-      eliminados
+      compactados
     });
 
-    req.flash("success", `Fecha ${numeroFecha} eliminada correctamente`);
+    await transaction.commit();
+    req.flash("success", `Fecha ${numeroFecha} eliminada correctamente. Las fechas siguientes fueron reorganizadas.`);
     return res.redirect(redirectUrl);
   } catch (error) {
+    await transaction.rollback();
     console.error(error);
     return res.status(500).send('Error al eliminar fecha');
   }

@@ -90,6 +90,7 @@ router.get('/:id_torneo/auditoria/resumen', torneoController.auditoriaResumen);
 router.post('/:id_torneo/portada', requiereAdmin, upload.single('portada'), torneoController.actualizarPortada);
 router.post('/:id_torneo/portada/eliminar', requiereAdmin, torneoController.eliminarPortada);
 router.post('/:id_torneo/permitir-agregar-jugadores', requiereAdmin, torneoController.actualizarPermitirAgregarJugadores);
+router.post('/:id_torneo/permitir-modificar-iconos', requiereAdmin, torneoController.actualizarPermitirModificarIconos);
 router.post('/:id_torneo/regla-tarjetas', requiereAdmin, torneoController.actualizarReglaTarjetas);
 router.post('/:id_torneo/canchas', requiereAdmin, torneoController.crearCancha);
 router.post('/:id_torneo/canchas/:id_cancha', requiereAdmin, torneoController.actualizarCancha);
