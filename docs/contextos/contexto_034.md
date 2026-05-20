@@ -537,3 +537,41 @@ Nota:
 
 - No se encontro Railway CLI/config local para disparar deploy manual desde terminal.
 - El push a `origin/qa` deja listo el deploy automatico si Railway esta enlazado y con despliegues habilitados.
+
+## Corte de contexto: pausa en eliminacion de equipo
+
+Pedido:
+
+- En PRD/local se necesita eliminar un equipo que ya no tiene nada asociado.
+- El sistema seguia bloqueando.
+- Se aclaro que todo equipo tiene un logo generico/default y eso no debe contar como asociacion real.
+- Regla deseada:
+  - permitir eliminar si no tiene encuentros generados;
+  - bloquear si tiene jugadores;
+  - bloquear si tiene delegados;
+  - bloquear si tiene items o finanzas generados;
+  - no bloquear por logo generico/default.
+
+Estado local al pausar:
+
+- Archivo modificado sin commit:
+  - `controllers/equipoController.js`
+- Cambio actual aplicado:
+  - se quito el bloqueo por `logo personalizado`;
+  - se agrego bloqueo por conteo en:
+    - `items_equipo`;
+    - `finanzas`;
+  - se mantiene bloqueo por encuentros (`partidos`);
+  - se mantiene bloqueo por jugadores/delegados.
+- No se ejecutaron checks porque se interrumpio la tanda.
+- No se hizo commit ni push.
+
+Retomar con:
+
+```powershell
+git diff -- controllers\equipoController.js
+node --check controllers\equipoController.js
+npm.cmd test
+```
+
+Si se confirma la regla, hacer commit hotfix en `qa`, merge a `main` y desplegar.

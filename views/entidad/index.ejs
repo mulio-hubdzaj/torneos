@@ -9,6 +9,14 @@
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="entity-index-page app-responsive-page">
+  <nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <span class="navbar-brand fw-bold">Entidad</span>
+      <a href="<%= usuario && Number(usuario.rol_id) === 99 ? '/admin' : '/logout' %>" class="btn btn-outline-light btn-sm">
+        ← Atrás
+      </a>
+    </div>
+  </nav>
 
   <main class="container-fluid app-page-shell entity-page-shell">
   <div class="card shadow p-4 entity-card entity-tournaments-card">
@@ -118,7 +126,7 @@
   }
 </script>
 <script>
-  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 300000 %>;
 </script>
 <script src="/js/session-abandon-guard.js"></script>
 </body>

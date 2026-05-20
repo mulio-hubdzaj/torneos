@@ -7,6 +7,15 @@
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="admin-index-page app-responsive-page">
+  <nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <span class="navbar-brand fw-bold">Panel de Administracion</span>
+      <a href="/logout" class="btn btn-outline-light btn-sm">
+        ← Atrás
+      </a>
+    </div>
+  </nav>
+
   <main class="container-fluid app-page-shell">
     <section class="app-page-header">
       <div>
@@ -100,7 +109,7 @@
     buscarEntidadesAdmin.addEventListener('input', filtrarEntidadesAdmin);
   </script>
   <script>
-    window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+    window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 300000 %>;
   </script>
   <script src="/js/session-abandon-guard.js"></script>
 </body>

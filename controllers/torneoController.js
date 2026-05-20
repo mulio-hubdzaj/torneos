@@ -317,7 +317,7 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
     .slice(0, 20);
 
   return {
-    tablaTop: (estadisticasGeneral || []).slice(0, 5),
+    tablaTop: (estadisticasGeneral || []),
     goleadoresTop: (rankingGoles || []).slice(0, 20),
     partidosEnCurso,
     ultimosResultados: partidosFinalizados,
@@ -1017,31 +1017,47 @@ exports.gestionar = async (req, res) => {
       });
 
       let esIdaVuelta = false;
+      const fasesPorGrupoFecha = new Map();
       if (partidosPorFecha.length > 0) {
-        const numEquipos = new Set();
-        partidosVisibles.forEach(p => {
-          if (p.equipo_a) numEquipos.add(p.equipo_a);
-          if (p.equipo_b) numEquipos.add(p.equipo_b);
-        });
+        const fechasPorGrupo = partidosVisibles.reduce((acc, partido) => {
+          const grupoKey = String(partido.id_grupo || 'sin_grupo');
+          if (!acc[grupoKey]) acc[grupoKey] = new Set();
+          if (partido.numero_fecha) acc[grupoKey].add(Number(partido.numero_fecha));
+          return acc;
+        }, {});
 
-        const totalEquipos = numEquipos.size;
-        const maxFechasSimples = totalEquipos - 1;
-        esIdaVuelta = partidosPorFecha.length > maxFechasSimples;
+        Object.entries(fechasPorGrupo).forEach(([grupoKey, fechasSet]) => {
+          const equiposGrupo = new Set();
+          partidosVisibles.forEach(partido => {
+            if (String(partido.id_grupo || 'sin_grupo') !== grupoKey) return;
+            if (partido.equipo_a) equiposGrupo.add(partido.equipo_a);
+            if (partido.equipo_b) equiposGrupo.add(partido.equipo_b);
+          });
+
+          const fechasGrupo = Array.from(fechasSet).sort((a, b) => a - b);
+          const maxFechasSimples = Math.max(equiposGrupo.size - 1, 0);
+          if (fechasGrupo.length > maxFechasSimples) {
+            esIdaVuelta = true;
+            const mitadFechasGrupo = Math.ceil(fechasGrupo.length / 2);
+            fechasGrupo.forEach((numeroFecha, indexFecha) => {
+              fasesPorGrupoFecha.set(`${grupoKey}:${numeroFecha}`, indexFecha < mitadFechasGrupo ? 'Ida' : 'Vuelta');
+            });
+          }
+        });
       }
 
       partidosPorFecha.forEach(fecha => {
-        if (esIdaVuelta) {
-          const mitadFechas = Math.ceil(partidosPorFecha.length / 2);
-          fecha.etiqueta = fecha.numero_fecha <= mitadFechas
-            ? `Fecha ${fecha.numero_fecha} - Ida`
-            : `Fecha ${fecha.numero_fecha} - Vuelta`;
+        const faseFecha = grupoSeleccionadoId
+          ? fasesPorGrupoFecha.get(`${String(grupoSeleccionadoId)}:${Number(fecha.numero_fecha)}`)
+          : null;
+        fecha.etiqueta = faseFecha ? `Fecha ${fecha.numero_fecha} - ${faseFecha}` : `Fecha ${fecha.numero_fecha}`;
 
-          fecha.partidos.forEach(partido => {
-            partido.nombre_grupo_display = `${partido.nombre_grupo || 'Sin grupo'} - ${obtenerEtiquetaFase('ida_vuelta', partido.numero_fecha, mitadFechas)}`;
-          });
-        } else {
-          fecha.etiqueta = `Fecha ${fecha.numero_fecha}`;
-        }
+        fecha.partidos.forEach(partido => {
+          const fasePartido = fasesPorGrupoFecha.get(`${String(partido.id_grupo || 'sin_grupo')}:${Number(partido.numero_fecha)}`);
+          partido.nombre_grupo_display = fasePartido
+            ? `${partido.nombre_grupo || 'Sin grupo'} - ${fasePartido}`
+            : (partido.nombre_grupo || 'Sin grupo');
+        });
 
         const gruposEnFecha = new Map();
         fecha.partidos.forEach(partido => {
@@ -1606,7 +1622,7 @@ exports.actualizarPortada = async (req, res) => {
 
     if (!req.file && !matchPortadaAjustada) {
       req.flash("warning", "Seleccione una imagen para la portada");
-      return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#estadisticas`);
+      return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#torneos`);
     }
 
     if (req.session.usuario_id) {
@@ -1631,7 +1647,7 @@ exports.actualizarPortada = async (req, res) => {
     await torneo.save();
 
     req.flash("success", "Portada del torneo actualizada");
-    return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#estadisticas`);
+    return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#torneos`);
   } catch (error) {
     console.error("Error al actualizar portada:", error);
     req.flash("danger", "Error al actualizar portada del torneo");
@@ -1662,7 +1678,7 @@ exports.eliminarPortada = async (req, res) => {
     await torneo.save();
 
     req.flash("success", "Portada del torneo eliminada");
-    return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#estadisticas`);
+    return res.redirect(`/torneos/gestionar/${torneo.id_torneo}#torneos`);
   } catch (error) {
     console.error("Error al eliminar portada:", error);
     req.flash("danger", "Error al eliminar portada del torneo");
