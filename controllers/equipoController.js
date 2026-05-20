@@ -367,6 +367,13 @@ async function eliminar(req, res) {
       bloqueosEliminacion.push('items o finanzas generados');
     }
 
+    const movimientosGrupo = await EquipoMovimientoGrupo.count({
+      where: { id_equipo: equipo.id_equipo }
+    });
+    if (movimientosGrupo > 0) {
+      bloqueosEliminacion.push('historial de cambios de grupo');
+    }
+
     if (bloqueosEliminacion.length > 0) {
       req.flash(
         "warning",
@@ -392,7 +399,7 @@ async function eliminar(req, res) {
     return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
   } catch (error) {
     console.error(error);
-    req.flash("danger", "No se pudo eliminar el equipo. Revise si tiene jugadores, delegados, logo, finanzas, items o historial asociado.");
+    req.flash("danger", "No se pudo eliminar el equipo. Revise si tiene encuentros, jugadores, delegados, finanzas, items o historial asociado.");
     res.redirect(redirectUrl);
   }
 }
