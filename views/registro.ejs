@@ -106,11 +106,14 @@
 
     <div class="mb-3">
       <label for="entidad" class="form-label">Entidad:</label>
-      <input type="text" id="entidad" name="entidad"
-             required
-             style="text-transform: uppercase"
-             oninput="this.value=this.value.replace(/\s/g,'')"
-             class="form-control">
+      <select id="entidad" name="entidad" class="form-select" required>
+        <option value="" selected disabled>Seleccione una entidad</option>
+        <% (typeof entidades !== 'undefined' ? entidades : []).forEach(entidad => { %>
+          <option value="<%= entidad.codigo %>">
+            <%= entidad.descripcion || entidad.codigo %> (<%= entidad.codigo %>)
+          </option>
+        <% }) %>
+      </select>
       <small class="form-text text-muted">Código de la entidad , consulte con su Admin</small>
     </div>
 

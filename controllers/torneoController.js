@@ -655,7 +655,6 @@ exports.gestionar = async (req, res) => {
     }
 
     const grupoSeleccionadoId = req.query.grupo_id ? parseInt(req.query.grupo_id, 10) : null;
-    const fechaCalendarioSeleccionada = req.query.fecha_calendario ? normalizarFechaInput(req.query.fecha_calendario) : '';
     const torneoData = torneo.get({ plain: true });
     torneoData.permitir_agregar_jugadores = await obtenerPermitirAgregarJugadores(torneoId);
     torneoData.permitir_modificar_iconos_equipo = await obtenerPermitirModificarIconos(torneoId);
@@ -954,11 +953,9 @@ exports.gestionar = async (req, res) => {
       });
 
       const partidosFixtureBase = partidosRaw.filter(partido => !gruposOcultosFixture.has(String(partido.id_grupo)));
-      const partidosVisibles = fechaCalendarioSeleccionada
-        ? partidosFixtureBase.filter(partido => partido.fecha_input === fechaCalendarioSeleccionada)
-        : (grupoSeleccionadoId
-          ? partidosFixtureBase.filter(partido => String(partido.id_grupo) === String(grupoSeleccionadoId))
-          : partidosFixtureBase);
+      const partidosVisibles = grupoSeleccionadoId
+        ? partidosFixtureBase.filter(partido => String(partido.id_grupo) === String(grupoSeleccionadoId))
+        : partidosFixtureBase;
 
       const partidosPorFechaMap = {};
       partidosVisibles.forEach(partido => {
@@ -1371,7 +1368,7 @@ exports.gestionar = async (req, res) => {
       items,
       id_torneo: torneoData.id_torneo,
       grupoSeleccionadoId,
-      fechaCalendarioSeleccionada,
+      fechaCalendarioSeleccionada: '',
       estadisticasGeneral,
       estadisticasFiltradas,
       rankingGoles,

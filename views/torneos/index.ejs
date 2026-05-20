@@ -3038,7 +3038,7 @@ async function confirmarToggleEquipo(input) {
 }
 
 .torneos-page #partidos .card-partidos,
-.torneos-page #finanzas .finanzas-panel,
+.torneos-page #finanzas > .p-3,
 .torneos-page #estadisticas > .p-3,
 .torneos-page #items > .p-3,
 .torneos-page #usuarios > .p-3,
@@ -3253,10 +3253,17 @@ async function confirmarToggleEquipo(input) {
 }
 
 .torneos-page #fechasTab {
-  gap: 0.4rem;
+  align-items: stretch;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 540px;
 }
 
-.torneos-page #fechasTab .fixture-fecha-tab {
+.torneos-page #fechasTab .fixture-fecha-tab,
+.torneos-page .fixture-fecha-nav-btn {
   background: #f8fbff;
   border: 1px solid rgba(13, 110, 253, 0.32);
   box-shadow: 0 2px 6px rgba(13, 110, 253, 0.18);
@@ -3264,7 +3271,22 @@ async function confirmarToggleEquipo(input) {
   font-weight: 700;
 }
 
-.torneos-page #fechasTab .fixture-fecha-tab:hover {
+.torneos-page #fechasTab .fixture-fecha-tab {
+  min-height: 48px;
+  white-space: normal;
+}
+
+.torneos-page .fixture-fecha-nav-btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 48px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.torneos-page #fechasTab .fixture-fecha-tab:hover,
+.torneos-page .fixture-fecha-nav-btn:hover {
   background: #eaf3ff;
   border-color: #0d6efd;
   box-shadow: 0 4px 10px rgba(13, 110, 253, 0.24);
@@ -3277,28 +3299,45 @@ async function confirmarToggleEquipo(input) {
   color: #fff;
 }
 
+.torneos-page .fixture-fecha-nav-btn:disabled {
+  background: #f1f5f9;
+  border-color: rgba(100, 116, 139, 0.28);
+  box-shadow: none;
+  color: #94a3b8;
+  opacity: 1;
+}
+
 #finanzas .finanzas-panel {
-  width: min(1180px, calc(100vw - 32px));
-  max-width: none;
-  margin: 0 auto;
+  background: transparent !important;
+  border: 0;
+  box-shadow: none !important;
+  margin: 0;
+  padding: 0;
   text-align: left;
-  padding: 1rem;
+  width: 100%;
+}
+
+#finanzas .finanzas-panel .card-body {
+  padding: 0;
 }
 
 #finanzas .finanzas-table {
-  min-width: 760px;
+  margin-bottom: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 #finanzas .finanzas-equipo-col {
-  min-width: 210px;
+  width: 44%;
+  min-width: 0;
 }
 
 #finanzas .finanzas-grupo-col {
-  width: 120px;
+  width: 18%;
 }
 
 #finanzas .finanzas-estado-col {
-  width: 110px;
+  width: 18%;
 }
 
 #finanzas .finanzas-saldo-col {
@@ -3306,7 +3345,7 @@ async function confirmarToggleEquipo(input) {
 }
 
 #finanzas .finanzas-acciones-col {
-  width: 130px;
+  width: 20%;
 }
 
 .finanzas-public-only {
@@ -4759,28 +4798,6 @@ async function confirmarToggleEquipo(input) {
           <% }) %>
         </select>
       </div>
-      <div class="col-md-4">
-        <label class="form-label text-dark fw-bold mb-1" for="filtroPartidosFechaCalendario">Filtrar por fecha calendario</label>
-        <div class="input-group input-group-sm">
-          <input type="date"
-                 class="form-control"
-                 id="filtroPartidosFechaCalendario"
-                 value="<%= fechaCalendarioSeleccionada || '' %>">
-          <button type="button" class="btn btn-primary fw-bold" id="btnFiltrarPartidosFecha">
-            <i class="bi bi-calendar-check"></i> Ver día
-          </button>
-          <button type="button" class="btn btn-outline-secondary" id="btnLimpiarPartidosFecha" title="Limpiar fecha">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </div>
-      </div>
-      <% if (fechaCalendarioSeleccionada) { %>
-        <div class="col-md-4">
-          <span class="badge text-bg-warning">
-            Mostrando todos los grupos del <%= fechaCalendarioSeleccionada.split('-').reverse().join('/') %>
-          </span>
-        </div>
-      <% } %>
     </div>
 
     <% if (torneo.portada) { %>
@@ -4791,12 +4808,47 @@ async function confirmarToggleEquipo(input) {
 
       <% if (partidosPorFecha && partidosPorFecha.length > 0) { %>
         <%
+          const fechaSolicitadaFixture = typeof fechaSeleccionada !== 'undefined' && fechaSeleccionada ? String(fechaSeleccionada) : '';
           const fechaActivaFixture =
+            (fechaSolicitadaFixture && (partidosPorFecha.find(f => String(f.numero_fecha) === fechaSolicitadaFixture) || {}).numero_fecha) ||
             (partidosPorFecha.find(f =>
               (f.partidos || []).some(p => String(p.estado || '').trim().toLowerCase() !== 'finalizado')
             ) || partidosPorFecha[0] || {}).numero_fecha;
+          const fechaActivaObjetoFixture = partidosPorFecha.find(f => String(f.numero_fecha) === String(fechaActivaFixture)) || partidosPorFecha[0] || {};
+          const fechaActivaIndexFixture = Math.max(0, partidosPorFecha.findIndex(f => String(f.numero_fecha) === String(fechaActivaFixture)));
+          const fechaActivaTextoFixture = fechaActivaObjetoFixture.fecha_general
+            ? `Fecha ${fechaActivaObjetoFixture.numero_fecha} - ${String(fechaActivaObjetoFixture.fecha_general).slice(0, 10).split('-').reverse().join('/')}`
+            : `Fecha ${fechaActivaObjetoFixture.numero_fecha || '-'}`;
         %>
-        <ul class="nav nav-pills mb-3" id="fechasTab" role="tablist">
+        <div class="fixture-fecha-navegador mb-3" id="fechasTab" role="tablist" data-fecha-activa-index="<%= fechaActivaIndexFixture %>">
+          <button type="button"
+                  class="btn btn-outline-primary fixture-fecha-nav-btn"
+                  id="btnFechaAnterior"
+                  title="Fecha anterior"
+                  aria-label="Fecha anterior"
+                  <%= fechaActivaIndexFixture <= 0 ? 'disabled' : '' %>>
+            <i class="bi bi-chevron-left"></i>
+          </button>
+          <button class="btn fixture-fecha-tab active fixture-fecha-actual"
+                  id="fechaActualTab"
+                  data-bs-toggle="pill"
+                  data-bs-target="#fecha-<%= fechaActivaFixture %>"
+                  type="button"
+                  role="tab"
+                  aria-controls="fecha-<%= fechaActivaFixture %>"
+                  aria-selected="true">
+            <%= fechaActivaTextoFixture %>
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary fixture-fecha-nav-btn"
+                  id="btnFechaSiguiente"
+                  title="Fecha siguiente"
+                  aria-label="Fecha siguiente"
+                  <%= fechaActivaIndexFixture >= partidosPorFecha.length - 1 ? 'disabled' : '' %>>
+            <i class="bi bi-chevron-right"></i>
+          </button>
+        </div>
+        <ul class="nav nav-pills mb-3 d-none" id="fechasTabOculto" role="tablist">
           <% partidosPorFecha.forEach((fecha, index) => { %>
             <% const fechaEsActiva = String(fecha.numero_fecha) === String(fechaActivaFixture); %>
             <li class="nav-item" role="presentation">
@@ -6140,33 +6192,46 @@ async function refrescarAuditoria() {
   }
 }
 
-function aplicarFiltroPartidosFechaCalendario() {
-  const fecha = document.getElementById('filtroPartidosFechaCalendario')?.value || '';
-  const url = new URL(window.location.href);
+function inicializarNavegadorFechasFixture() {
+  const contenedor = document.getElementById('fechasTab');
+  const tabActual = document.getElementById('fechaActualTab');
+  const btnAnterior = document.getElementById('btnFechaAnterior');
+  const btnSiguiente = document.getElementById('btnFechaSiguiente');
+  const tabsOcultos = Array.from(document.querySelectorAll('#fechasTabOculto .fixture-fecha-tab'));
+  if (!contenedor || !tabActual || !btnAnterior || !btnSiguiente || !tabsOcultos.length) return;
 
-  url.searchParams.delete('grupo_id');
-  url.searchParams.delete('fecha');
-  if (fecha) {
-    url.searchParams.set('fecha_calendario', fecha);
-  } else {
-    url.searchParams.delete('fecha_calendario');
+  const limpiarTextoFecha = texto => (texto || '').replace(/\s+/g, ' ').trim();
+  let indiceActivo = Number.parseInt(contenedor.dataset.fechaActivaIndex || '0', 10);
+  if (!Number.isFinite(indiceActivo) || indiceActivo < 0) indiceActivo = 0;
+
+  function sincronizarNavegador(indice) {
+    indiceActivo = Math.max(0, Math.min(indice, tabsOcultos.length - 1));
+    const tabDestino = tabsOcultos[indiceActivo];
+    if (!tabDestino) return;
+
+    bootstrap.Tab.getOrCreateInstance(tabDestino).show();
+    tabActual.textContent = limpiarTextoFecha(tabDestino.textContent);
+    tabActual.dataset.bsTarget = tabDestino.dataset.bsTarget || '';
+    tabActual.setAttribute('aria-controls', tabDestino.getAttribute('aria-controls') || '');
+    btnAnterior.disabled = indiceActivo <= 0;
+    btnSiguiente.disabled = indiceActivo >= tabsOcultos.length - 1;
+    contenedor.dataset.fechaActivaIndex = String(indiceActivo);
+
+    const numeroFecha = (tabDestino.id || '').replace('fecha-', '').replace('-tab', '');
+    if (numeroFecha) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('fecha', numeroFecha);
+      url.searchParams.delete('fecha_calendario');
+      history.replaceState(null, '', `${url.pathname}${url.search}#partidos`);
+    }
   }
 
-  window.location = `${url.pathname}${url.search}#partidos`;
+  btnAnterior.addEventListener('click', () => sincronizarNavegador(indiceActivo - 1));
+  btnSiguiente.addEventListener('click', () => sincronizarNavegador(indiceActivo + 1));
+  tabActual.addEventListener('click', () => sincronizarNavegador(indiceActivo));
 }
 
-document.getElementById('btnFiltrarPartidosFecha')?.addEventListener('click', aplicarFiltroPartidosFechaCalendario);
-document.getElementById('filtroPartidosFechaCalendario')?.addEventListener('keydown', event => {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    aplicarFiltroPartidosFechaCalendario();
-  }
-});
-document.getElementById('btnLimpiarPartidosFecha')?.addEventListener('click', () => {
-  const input = document.getElementById('filtroPartidosFechaCalendario');
-  if (input) input.value = '';
-  aplicarFiltroPartidosFechaCalendario();
-});
+inicializarNavegadorFechasFixture();
 
 function activarVistaPublicaPartidos() {
   const panel = document.getElementById('partidos');

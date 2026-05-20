@@ -18,9 +18,24 @@ function validarContrasenaSegura(contrasena) {
   };
 }
 
+async function obtenerEntidadesActivas() {
+  const entidades = await Entity.findAll({
+    where: { activo: true },
+    order: [['codigo', 'ASC']]
+  });
+
+  return entidades.map(entidad => entidad.get({ plain: true }));
+}
+
 // Mostrar formulario de login
-router.get('/login', (req, res) => {
-  res.render('login'); // los mensajes llegan por res.locals.messages
+router.get('/login', async (req, res) => {
+  try {
+    const entidades = await obtenerEntidadesActivas();
+    res.render('login', { entidades }); // los mensajes llegan por res.locals.messages
+  } catch (error) {
+    console.error('Error al cargar entidades para login:', error);
+    res.render('login', { entidades: [] });
+  }
 });
 
 router.get('/publico/comunidad', async (req, res) => {
@@ -328,10 +343,16 @@ router.get('/logout', (req, res) => {
   });
 });
 
-// Mostrar formulario de registro
-router.get('/registro', (req, res) => {
-  res.render('registro'); // los mensajes ya están en res.locals.messages
+router.get('/registro', async (req, res) => {
+  try {
+    const entidades = await obtenerEntidadesActivas();
+    res.render('registro', { entidades }); // los mensajes ya estan en res.locals.messages
+  } catch (error) {
+    console.error('Error al cargar entidades para registro:', error);
+    res.render('registro', { entidades: [] });
+  }
 });
+
 
 // Procesar registro
 router.post('/registro', async (req, res) => {
