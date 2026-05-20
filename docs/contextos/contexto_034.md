@@ -492,3 +492,48 @@ Verificado:
 ```txt
 EJS_OK views/torneos/index.ejs
 ```
+
+## Cambio posterior: sincronizacion QA/PRD
+
+Pedido:
+
+- Sincronizar Git.
+- Subir cambios a PRD.
+- Hacer despliegue y ajustar segun necesidad.
+- Recordar que para `Torneos Pro` hay que ajustar icono APK.
+
+Aplicado:
+
+- Checks previos:
+  - `node --check index.js`
+  - `node --check controllers\equipoController.js`
+  - `node --check controllers\torneoController.js`
+  - `node --check routes\authRoutes.js`
+  - `EJS_OK main auth torneos`
+  - `npm.cmd test`
+- Commit creado en `qa`:
+  - `4b408b1 ajustar qa para despliegue prd`
+- Push realizado:
+  - `origin/qa`
+- PRD respondio:
+  - `GET https://torneos-production.up.railway.app/ -> 200`
+- Backup PRD previo a SQL:
+  - `docs/_privado/db_backups/railway_prd_20260520_1353.sql`
+  - `docs/_privado/db_backups/railway_prd_20260520_1353.zip`
+- SQL aplicados en PRD:
+  - `docs/sql/torneos_permitir_modificar_iconos_equipo_20260519.sql`
+  - `docs/sql/auditoria_jugadores_equipos_solo_altas_bajas_20260520.sql`
+  - `docs/sql/auditoria_detalle_equipos_delegados_20260520.sql`
+- Resultado SQL:
+  - `ALTER TABLE` con notice de columna existente;
+  - `CREATE FUNCTION`;
+  - `CREATE FUNCTION`.
+- Se actualizo documentacion APK/PRD para usar nombre visible:
+  - `Torneos Pro`
+- Queda recordatorio:
+  - antes de generar APK/AAB `Torneos Pro`, revisar y ajustar el icono adaptativo APK.
+
+Nota:
+
+- No se encontro Railway CLI/config local para disparar deploy manual desde terminal.
+- El push a `origin/qa` deja listo el deploy automatico si Railway esta enlazado y con despliegues habilitados.

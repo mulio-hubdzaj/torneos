@@ -19,12 +19,13 @@ Para generar la APK de produccion:
 
 ```powershell
 $env:CAPACITOR_SERVER_URL="https://torneos-production.up.railway.app"
-$env:CAPACITOR_APP_NAME="Torneos PRD"
+$env:CAPACITOR_APP_NAME="Torneos Pro"
 $env:CAPACITOR_APP_ID="com.torneosv2.prd"
 npx cap sync android
 ```
 
-La version PRD queda identificada visualmente como `Torneos PRD` y usa icono con pelota.
+La version PRD queda identificada visualmente como `Torneos Pro`.
+Antes de generar APK/AAB, revisar y ajustar el icono adaptativo APK con la identidad final de `Torneos Pro`.
 
 ## Regla
 
