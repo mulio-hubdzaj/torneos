@@ -21,6 +21,14 @@ function requiereGestionJugadores(req, res, next) {
   next();
 }
 
+function requiereGestionIconos(req, res, next) {
+  if (![2, 3, 99].includes(Number(req.session.rol_id))) {
+    req.flash('danger', 'No tiene permisos para gestionar iconos');
+    return res.redirect(req.get('referer') || '/torneos');
+  }
+  next();
+}
+
 // Ruta raíz: listado de equipos
 router.get('/', async (req, res) => {
   try {
@@ -86,6 +94,7 @@ router.post('/desvincularJugador', requiereAdmin, equipoController.desvincularJu
 router.post('/actualizarJugadores', requiereGestionJugadores, equipoController.actualizarJugadores);
 
 // Actualizar icono de un equipo
-router.post('/:id_equipo/icono', requiereAdmin, upload.single('icono'), equipoController.actualizarIcono);
+router.post('/:id_equipo/icono', requiereGestionIconos, upload.single('icono'), equipoController.actualizarIcono);
+router.post('/:id_equipo/icono/eliminar', requiereGestionIconos, equipoController.eliminarIcono);
 
 module.exports = router;

@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Iniciar sesión</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
@@ -25,21 +26,50 @@
       align-items: center;
     }
 
+    html,
+    body {
+      min-height: 100%;
+      overflow-x: hidden;
+    }
+
+    .login-page {
+      align-items: flex-start;
+      min-height: 100dvh;
+      padding: max(1rem, env(safe-area-inset-top)) 0.75rem max(1.5rem, env(safe-area-inset-bottom));
+    }
+
+    .login-card {
+      width: min(100%, 420px);
+      max-width: 100%;
+    }
+
+    .login-card .input-group {
+      flex-wrap: nowrap;
+    }
+
+    .login-card .input-group .form-control {
+      min-width: 0;
+    }
+
     @media (max-width: 768px) {
       .apk-download-link {
         top: 16px;
         right: 16px;
       }
+
+      .login-card {
+        padding: 1rem !important;
+      }
     }
   </style>
 </head>
-<body class="d-flex justify-content-center align-items-center vh-100">
-  <a href="/downloads/torneos-qa.apk" class="btn btn-success apk-download-link" download>
+<body class="bg-stadium d-flex justify-content-center login-page">
+  <a href="/downloads/torneos.apk" class="btn btn-success apk-download-link" download>
     <i class="bi bi-download me-1"></i>
     Descargar APK
   </a>
 
-  <div class="card shadow p-4" style="min-width: 350px;">
+  <div class="card shadow p-4 login-card">
     <h1 class="mb-4 text-center">Iniciar sesión</h1>
 
     <% if (messages) { %>
@@ -77,13 +107,20 @@
 
       <div class="mb-3">
         <label for="entidad" class="form-label">Entidad:</label>
-        <input type="text" id="entidad" name="entidad" class="form-control">
+        <select id="entidad" name="entidad" class="form-select">
+          <option value="" selected>Seleccione una entidad</option>
+          <% (typeof entidades !== 'undefined' ? entidades : []).forEach(entidad => { %>
+            <option value="<%= entidad.codigo %>">
+              <%= entidad.descripcion || entidad.codigo %> (<%= entidad.codigo %>)
+            </option>
+          <% }) %>
+        </select>
         <small class="form-text text-muted">
           Ingresa el código de la entidad si deseas iniciar sesión en un contexto específico.
         </small>
       </div>
 
-      <button type="submit" class="btn btn-primary w-100">Entrar</button>
+      <button type="submit" class="btn btn-primary w-100" id="btnEntrar" disabled>Entrar</button>
     </form>
 
     <div class="mt-3 d-flex justify-content-center gap-3">
@@ -104,9 +141,22 @@
       icon.className = mostrar ? 'bi bi-eye-slash' : 'bi bi-eye';
     }
 
-    document.getElementById('formLogin')?.addEventListener('submit', event => {
-      const documento = document.getElementById('documento');
-      const contrasena = document.getElementById('contrasena');
+    const formLogin = document.getElementById('formLogin');
+    const documento = document.getElementById('documento');
+    const contrasena = document.getElementById('contrasena');
+    const btnEntrar = document.getElementById('btnEntrar');
+
+    function actualizarBotonEntrar() {
+      if (!btnEntrar) return;
+      btnEntrar.disabled = !(documento.value.trim() && contrasena.value.trim());
+    }
+
+    documento?.addEventListener('input', actualizarBotonEntrar);
+    contrasena?.addEventListener('input', actualizarBotonEntrar);
+    actualizarBotonEntrar();
+    setTimeout(actualizarBotonEntrar, 300);
+
+    formLogin?.addEventListener('submit', event => {
       const aviso = document.getElementById('loginValidacion');
       const mensajes = [];
 

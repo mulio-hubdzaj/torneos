@@ -13,9 +13,11 @@
     document.addEventListener("DOMContentLoaded", function() {
       const hash = window.location.hash;
       const rolId = Number(<%= Number(rol_id || 0) %>);
-      const hashesBloqueados = rolId === 1
+      const hashesBloqueados = rolId === 0
+        ? ['#grupos', '#jugadores', '#equipos', '#items', '#usuarios', '#auditoria', '#finanzas']
+        : (rolId === 1
         ? ['#grupos', '#equipos', '#items', '#usuarios', '#auditoria', '#finanzas']
-        : (rolId === 2 ? ['#grupos', '#items', '#usuarios', '#auditoria'] : (rolId === 3 ? ['#auditoria'] : []));
+        : (rolId === 2 ? ['#grupos', '#items', '#usuarios', '#auditoria'] : (rolId === 3 ? ['#auditoria'] : [])));
 
       if (hashesBloqueados.includes(hash)) {
         window.location.hash = '#torneos';
@@ -43,6 +45,7 @@
 </head>
 
 <body class="bg-stadium torneos-page">
+  <% const esVistaPublica = Boolean(typeof vistaPublica !== 'undefined' && vistaPublica); %>
   <div id="pullRefreshIndicator" class="pull-refresh-indicator" aria-live="polite">
     <i class="bi bi-arrow-clockwise"></i>
     <span>Desliza para actualizar</span>
@@ -52,12 +55,20 @@
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
       <div class="navbar-brand fw-bold me-4 py-0">
-        <div>Panel de Torneos</div>
+        <div><%= esVistaPublica ? 'Torneos' : 'Panel de Torneos' %></div>
         <div class="small fw-normal text-warning lh-sm">
           <i class="bi bi-building"></i>
           <%= entidadActual ? (entidadActual.codigo || ('Entidad #' + entityId)) : ('Entidad #' + entityId) %>
         </div>
       </div>
+      <button type="button"
+              class="btn btn-link text-light app-nav-toggle"
+              id="appNavToggle"
+              aria-label="Mostrar opciones"
+              aria-controls="appNavActions"
+              aria-expanded="false">
+        <i class="bi bi-list"></i>
+      </button>
       <ul class="nav nav-tabs me-auto" role="tablist">
 
 
@@ -66,17 +77,24 @@
              id="torneos-tab" data-bs-toggle="tab" href="#torneos" role="tab">TORNEOS</a>
         </li>
 
+        <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
+          <li class="nav-item">
+            <a class="nav-link" id="items-tab" data-bs-toggle="tab" href="#items" role="tab">Items</a>
+          </li>
+        <% } %>
 
-        <% if (rol_id == 3 || rol_id == 99) { %>
+        <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <li class="nav-item">
             <a class="nav-link" 
                id="grupos-tab" data-bs-toggle="tab" href="#grupos" role="tab">Grupos</a>
           </li>
         <% } %>
 
-        <li class="nav-item">
-          <a class="nav-link" id="jugadores-tab" data-bs-toggle="tab" href="#jugadores" role="tab">Jugadores</a>
-        </li>
+        <% if (!esVistaPublica) { %>
+          <li class="nav-item">
+            <a class="nav-link" id="jugadores-tab" data-bs-toggle="tab" href="#jugadores" role="tab">Jugadores</a>
+          </li>
+        <% } %>
         <% if (rol_id == 2 || rol_id == 3 || rol_id == 99) { %>
           <li class="nav-item">
             <a class="nav-link" id="equipos-tab" data-bs-toggle="tab" href="#equipos" role="tab">Equipos</a>
@@ -85,25 +103,20 @@
         <li class="nav-item">
           <a class="nav-link" id="partidos-tab" data-bs-toggle="tab" href="#partidos" role="tab">Fixture</a>
         </li>
-        <% if (rol_id != 1) { %>
+        <li class="nav-item">
+          <a class="nav-link" id="estadisticas-tab" data-bs-toggle="tab" href="#estadisticas" role="tab">Estadísticas</a>
+        </li>
+        <% if (!esVistaPublica && rol_id != 1) { %>
           <li class="nav-item">
             <a class="nav-link" id="finanzas-tab" data-bs-toggle="tab" href="#finanzas" role="tab">Finanzas</a>
           </li>
         <% } %>
-        <li class="nav-item">
-          <a class="nav-link" id="estadisticas-tab" data-bs-toggle="tab" href="#estadisticas" role="tab">Estadísticas</a>
-        </li>
-        <% if (rol_id == 3 || rol_id == 99) { %>
-          <li class="nav-item">
-            <a class="nav-link" id="items-tab" data-bs-toggle="tab" href="#items" role="tab">Items</a>
-          </li>
-        <% } %>
-        <% if (rol_id == 3 || rol_id == 99) { %>
+        <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <li class="nav-item">
             <a class="nav-link" id="usuarios-tab" data-bs-toggle="tab" href="#usuarios" role="tab">Usuarios</a>
           </li>
         <% } %>
-        <% if (rol_id == 99) { %>
+        <% if (!esVistaPublica && rol_id == 99) { %>
           <li class="nav-item">
             <a class="nav-link" id="auditoria-tab" data-bs-toggle="tab" href="#auditoria" role="tab">Auditoría</a>
           </li>
@@ -111,14 +124,18 @@
       </ul>
 
       <!-- Botones de navegación a la derecha -->
-      <div class="d-flex ms-auto app-nav-actions">
-        <% if (rol_id == 3 || rol_id == 99) { %>
+      <div class="d-flex ms-auto app-nav-actions" id="appNavActions">
+        <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <a href="/entidad/gestionar/<%= entityId %>" class="btn btn-success btn-sm me-2">Ir a Torneos</a>
         <% } %>
-        <% if (rol_id == 99) { %>
+        <% if (!esVistaPublica && rol_id == 99) { %>
           <a href="/admin" class="btn btn-success btn-sm me-2">Ir a Entidades</a>
         <% } %>
-        <a href="/logout" class="btn btn-success btn-sm">Cerrar sesión</a>
+        <% if (esVistaPublica) { %>
+          <a href="/login" class="btn btn-success btn-sm">Iniciar sesion</a>
+        <% } else { %>
+          <a href="/logout" class="btn btn-success btn-sm">Cerrar sesión</a>
+        <% } %>
       </div>
     </div>
   </nav>
@@ -170,10 +187,10 @@
         <li class="list-group-item fw-bold text-muted">Todos los torneos</li>
         <% torneos.forEach(function(t) { %>
           <li class="list-group-item d-flex justify-content-between align-items-center <%= (selectedTorneo == t.id_torneo ? 'active' : '') %>">
-            <a href="/torneos/gestionar/<%= t.id_torneo %>" class="text-decoration-none <%= (selectedTorneo == t.id_torneo ? 'text-white' : 'text-dark') %>">
+            <a href="<%= esVistaPublica ? '/publico/torneo/' + t.id_torneo : '/torneos/gestionar/' + t.id_torneo %>" class="text-decoration-none <%= (selectedTorneo == t.id_torneo ? 'text-white' : 'text-dark') %>">
               <strong><%= t.nombre_torneo %></strong> - <%= t.temporada %>
             </a>
-            <% if (rol_id == 3 || rol_id == 99) { %>
+            <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
               <button type="button"
                       class="btn btn-sm <%= (selectedTorneo == t.id_torneo ? 'btn-light' : 'btn-outline-primary') %>"
                       data-id="<%= t.id_torneo %>"
@@ -191,32 +208,31 @@
         <% if (torneo.descripcion) { %>
           <p class="text-muted"><%= torneo.descripcion %></p>
         <% } %>
-        <div class="d-flex flex-wrap gap-2 mt-3 mb-2 dashboard-quick-actions">
-          <button type="button" class="btn btn-success btn-sm dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasTablaPosiciones">
-            <i class="bi bi-table"></i> Tabla
-          </button>
-          <button type="button" class="btn btn-outline-light btn-sm dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasRankingGoles">
-            <i class="bi bi-trophy"></i> Goleadores
-          </button>
-          <button type="button" class="btn btn-outline-light btn-sm dashboard-tab-link" data-target-tab="#partidos">
-            <i class="bi bi-calendar-event"></i> Fixture
-          </button>
-          <button type="button" class="btn btn-outline-light btn-sm dashboard-tab-link" data-target-tab="#jugadores">
-            <i class="bi bi-people"></i> Jugadores
-          </button>
-        </div>
-
+        <%
+          const dashboardTablaTop = ((dashboardInicio || {}).tablaTop || []);
+          const dashboardGoleadoresTop = ((dashboardInicio || {}).goleadoresTop || []);
+          const dashboardPartidosEnCurso = ((dashboardInicio || {}).partidosEnCurso || []);
+          const dashboardUltimosResultados = ((dashboardInicio || {}).ultimosResultados || []);
+          const dashboardProximosPartidos = ((dashboardInicio || {}).proximosPartidos || []);
+          const dashboardTieneDatos =
+            dashboardTablaTop.length ||
+            dashboardGoleadoresTop.length ||
+            dashboardPartidosEnCurso.length ||
+            dashboardUltimosResultados.length ||
+            dashboardProximosPartidos.length;
+        %>
         <div class="row g-3 mt-1">
+          <% if (dashboardTablaTop.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                 <strong>Tabla de posiciones</strong>
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasTablaPosiciones">Ver</button>
               </div>
-              <div class="table-responsive bg-white">
+              <div class="table-responsive bg-white dashboard-scroll-area">
                 <table class="table table-sm align-middle mb-0">
                   <tbody>
-                    <% ((dashboardInicio || {}).tablaTop || []).forEach((item, index) => { %>
+                    <% dashboardTablaTop.forEach((item, index) => { %>
                       <tr>
                         <td style="width:40px;"><strong><%= index + 1 %></strong></td>
                         <td>
@@ -226,49 +242,46 @@
                         <td class="text-end"><strong><%= item.puntos %> pts</strong></td>
                       </tr>
                     <% }) %>
-                    <% if (!((dashboardInicio || {}).tablaTop || []).length) { %>
-                      <tr><td class="text-center text-muted py-3">Sin posiciones todavia.</td></tr>
-                    <% } %>
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
+          <% } %>
 
+          <% if (dashboardGoleadoresTop.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                 <strong>Goleadores</strong>
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasRankingGoles">Ver</button>
               </div>
-              <div class="table-responsive bg-white">
+              <div class="table-responsive bg-white dashboard-scroll-area">
                 <table class="table table-sm align-middle mb-0">
                   <tbody>
-                    <% ((dashboardInicio || {}).goleadoresTop || []).forEach(jugador => { %>
+                    <% dashboardGoleadoresTop.forEach(jugador => { %>
                       <tr>
                         <td><strong><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') %></strong></td>
                         <td><small><%= jugador.equipo || 'Libre' %></small></td>
                         <td class="text-end"><strong><%= jugador.goles %></strong></td>
                       </tr>
                     <% }) %>
-                    <% if (!((dashboardInicio || {}).goleadoresTop || []).length) { %>
-                      <tr><td class="text-center text-muted py-3">Sin goles cargados todavia.</td></tr>
-                    <% } %>
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
+          <% } %>
 
-          <% if (((dashboardInicio || {}).partidosEnCurso || []).length) { %>
+          <% if (dashboardPartidosEnCurso.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0 dashboard-en-curso-card">
               <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
                 <strong>En curso</strong>
                 <button type="button" class="btn btn-sm btn-outline-dark dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
               </div>
-              <div class="list-group list-group-flush">
-                <% ((dashboardInicio || {}).partidosEnCurso || []).forEach(partido => { %>
+              <div class="list-group list-group-flush dashboard-scroll-area">
+                <% dashboardPartidosEnCurso.forEach(partido => { %>
                   <div class="list-group-item">
                     <div class="d-flex justify-content-between gap-2 align-items-start">
                       <div>
@@ -282,58 +295,59 @@
                     </small>
                   </div>
                 <% }) %>
-                <% if (!((dashboardInicio || {}).partidosEnCurso || []).length) { %>
-                  <div class="list-group-item text-center text-muted py-3">Sin encuentros en curso.</div>
-                <% } %>
               </div>
             </div>
           </div>
           <% } %>
 
+          <% if (dashboardUltimosResultados.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                <strong>Últimos resultados</strong>
+                <strong id="dashboardUltimosPartidos">Últimos resultados</strong>
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
               </div>
-              <div class="list-group list-group-flush">
-                <% ((dashboardInicio || {}).ultimosResultados || []).forEach(partido => { %>
-                  <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <span><%= partido.nombre_equipo_a %> <strong><%= partido.goles_a %> - <%= partido.goles_b %></strong> <%= partido.nombre_equipo_b %></span>
-                    <small class="text-muted">Fecha <%= partido.numero_fecha || '-' %></small>
+              <div class="list-group list-group-flush dashboard-scroll-area">
+                <% dashboardUltimosResultados.forEach(partido => { %>
+                  <div class="list-group-item d-flex justify-content-between align-items-start gap-2">
+                    <span class="dashboard-match-title"><%= partido.nombre_equipo_a %> <strong><%= partido.goles_a %> - <%= partido.goles_b %></strong> <%= partido.nombre_equipo_b %></span>
+                    <small class="text-muted dashboard-match-date">Fecha <%= partido.numero_fecha || '-' %></small>
                   </div>
                 <% }) %>
-                <% if (!((dashboardInicio || {}).ultimosResultados || []).length) { %>
-                  <div class="list-group-item text-center text-muted py-3">Sin resultados finalizados.</div>
-                <% } %>
               </div>
             </div>
           </div>
+          <% } %>
 
+          <% if (dashboardProximosPartidos.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                <strong>Próximos encuentros</strong>
+                <strong id="dashboardProximosEncuentros">Próximos encuentros</strong>
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
               </div>
-              <div class="list-group list-group-flush">
-                <% ((dashboardInicio || {}).proximosPartidos || []).forEach(partido => { %>
+              <div class="list-group list-group-flush dashboard-scroll-area">
+                <% dashboardProximosPartidos.forEach(partido => { %>
                   <div class="list-group-item">
-                    <div class="d-flex justify-content-between">
-                      <strong><%= partido.nombre_equipo_a %> vs <%= partido.nombre_equipo_b %></strong>
-                      <small class="text-muted">Fecha <%= partido.numero_fecha || '-' %></small>
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                      <strong class="dashboard-match-title"><%= partido.nombre_equipo_a %> vs <%= partido.nombre_equipo_b %></strong>
+                      <small class="text-muted dashboard-match-date">Fecha <%= partido.numero_fecha || '-' %></small>
                     </div>
                     <small>
                       <%= partido.fecha_formateada || '-' %> · <%= partido.hora || '-' %><%= partido.nombre_cancha ? ' · ' + partido.nombre_cancha : '' %>
                     </small>
                   </div>
                 <% }) %>
-                <% if (!((dashboardInicio || {}).proximosPartidos || []).length) { %>
-                  <div class="list-group-item text-center text-muted py-3">Sin encuentros pendientes.</div>
-                <% } %>
               </div>
             </div>
           </div>
+          <% } %>
+
+          <% if (!dashboardTieneDatos) { %>
+            <div class="col-12">
+              <div class="alert alert-light border mb-0">Todavia no hay datos para mostrar en el resumen del torneo.</div>
+            </div>
+          <% } %>
         </div>
       <% } else { %>
         <p class="text-muted">Seleccione un torneo para ver detalles.</p>
@@ -427,6 +441,7 @@
               <form action="/equipos/crear" method="POST" class="mt-2 form-agregar-equipo">
                 <div class="input-group">
                   <input type="text" name="nombre_equipo" class="form-control text-uppercase" 
+                         data-grupo-equipo-input="<%= grupo.id_grupo %>"
                          placeholder="Nuevo equipo" required 
                          oninput="this.value = this.value.toUpperCase()">
                   <input type="hidden" name="id_grupo" value="<%= grupo.id_grupo %>">
@@ -647,6 +662,7 @@
 let grupoActual = null;
 let numEquiposActual = 0;
 let torneoActual = null;
+let dashboardInicioDesactualizado = false;
 const equiposPorGrupo = <%- JSON.stringify((equipos || []).reduce((acc, equipo) => {
   const key = String(equipo.id_grupo || '');
   if (!acc[key]) acc[key] = [];
@@ -659,6 +675,17 @@ const equiposPorGrupo = <%- JSON.stringify((equipos || []).reduce((acc, equipo) 
   return acc;
 }, {})) %>;
 let finanzasResumen = <%- JSON.stringify(finanzasResumen || []).replace(/</g, '\\u003c') %>;
+
+function marcarDashboardInicioDesactualizado() {
+  dashboardInicioDesactualizado = true;
+}
+
+function refrescarDashboardInicioSiNecesario() {
+  if (!dashboardInicioDesactualizado) return;
+  dashboardInicioDesactualizado = false;
+  history.replaceState(null, '', `${window.location.pathname}${window.location.search}#torneos`);
+  window.location.reload();
+}
 
 function formatearFechaInput(fecha) {
   if (!fecha) return '';
@@ -701,11 +728,12 @@ function renderFinanzasResumen() {
 
   if (!finanzasResumen.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hay equipos cargados para este torneo.</td></tr>';
+    aplicarBusquedaFinanzas();
     return;
   }
 
   tbody.innerHTML = finanzasResumen.map(equipo => `
-    <tr data-finanzas-equipo-id="${escaparHtml(equipo.id_equipo)}">
+    <tr data-finanzas-equipo-id="${escaparHtml(equipo.id_equipo)}" data-finanzas-equipo-nombre="${escaparHtml(equipo.nombre || '')}">
       <td data-label="Equipo">
         <div class="d-flex align-items-center gap-2">
           <img src="${escaparHtml(equipo.icono || '/images/default_team.png')}" alt="" style="width:28px;height:28px;object-fit:cover;border-radius:50%;">
@@ -722,6 +750,7 @@ function renderFinanzasResumen() {
       </td>
     </tr>
   `).join('');
+  aplicarBusquedaFinanzas();
 }
 
 async function sincronizarFinanzasDesdeServidor() {
@@ -919,9 +948,120 @@ function abrirModalPersonalizarTorneo(button) {
 
   const input = document.getElementById('portadaTorneo');
   if (input) input.value = '';
+  reiniciarAjustePortada();
 
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
+
+const estadoPortadaAjuste = {
+  url: '',
+  x: 0,
+  y: 0,
+  zoom: 1,
+  dragging: false,
+  startX: 0,
+  startY: 0,
+  baseX: 0,
+  baseY: 0
+};
+
+function aplicarTransformPortada() {
+  const img = document.getElementById('portadaAjusteImagen');
+  if (!img) return;
+  img.style.transform = `translate(${estadoPortadaAjuste.x}px, ${estadoPortadaAjuste.y}px) scale(${estadoPortadaAjuste.zoom})`;
+}
+
+function reiniciarAjustePortada() {
+  const bloque = document.getElementById('portadaAjuste');
+  const img = document.getElementById('portadaAjusteImagen');
+  const hidden = document.getElementById('portadaAjustada');
+  const zoom = document.getElementById('portadaZoom');
+
+  if (estadoPortadaAjuste.url) URL.revokeObjectURL(estadoPortadaAjuste.url);
+  estadoPortadaAjuste.url = '';
+  estadoPortadaAjuste.x = 0;
+  estadoPortadaAjuste.y = 0;
+  estadoPortadaAjuste.zoom = 1;
+
+  if (bloque) bloque.classList.remove('activo');
+  if (img) img.removeAttribute('src');
+  if (hidden) hidden.value = '';
+  if (zoom) zoom.value = '1';
+  aplicarTransformPortada();
+}
+
+function prepararCanvasPortada() {
+  const img = document.getElementById('portadaAjusteImagen');
+  const hidden = document.getElementById('portadaAjustada');
+  if (!img || !hidden || !img.naturalWidth || !img.naturalHeight) return true;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1600;
+  canvas.height = 500;
+  const ctx = canvas.getContext('2d');
+  const marco = document.getElementById('portadaAjusteMarco');
+  const rect = marco.getBoundingClientRect();
+  const baseScale = Math.max(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+  const displayToCanvasX = canvas.width / rect.width;
+  const displayToCanvasY = canvas.height / rect.height;
+  const drawWidth = img.naturalWidth * baseScale * estadoPortadaAjuste.zoom;
+  const drawHeight = img.naturalHeight * baseScale * estadoPortadaAjuste.zoom;
+  const drawX = (canvas.width - drawWidth) / 2 + (estadoPortadaAjuste.x * displayToCanvasX);
+  const drawY = (canvas.height - drawHeight) / 2 + (estadoPortadaAjuste.y * displayToCanvasY);
+
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+  hidden.value = canvas.toDataURL('image/jpeg', 0.9);
+  return true;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('portadaTorneo');
+  const bloque = document.getElementById('portadaAjuste');
+  const img = document.getElementById('portadaAjusteImagen');
+  const marco = document.getElementById('portadaAjusteMarco');
+  const zoom = document.getElementById('portadaZoom');
+  const form = document.getElementById('formPortadaTorneo');
+
+  input?.addEventListener('change', () => {
+    const file = input.files?.[0];
+    reiniciarAjustePortada();
+    if (!file || !file.type.startsWith('image/')) return;
+    estadoPortadaAjuste.url = URL.createObjectURL(file);
+    img.src = estadoPortadaAjuste.url;
+    bloque.classList.add('activo');
+  });
+
+  zoom?.addEventListener('input', () => {
+    estadoPortadaAjuste.zoom = Number(zoom.value || 1);
+    aplicarTransformPortada();
+  });
+
+  marco?.addEventListener('pointerdown', event => {
+    estadoPortadaAjuste.dragging = true;
+    estadoPortadaAjuste.startX = event.clientX;
+    estadoPortadaAjuste.startY = event.clientY;
+    estadoPortadaAjuste.baseX = estadoPortadaAjuste.x;
+    estadoPortadaAjuste.baseY = estadoPortadaAjuste.y;
+    marco.setPointerCapture(event.pointerId);
+  });
+
+  marco?.addEventListener('pointermove', event => {
+    if (!estadoPortadaAjuste.dragging) return;
+    estadoPortadaAjuste.x = estadoPortadaAjuste.baseX + (event.clientX - estadoPortadaAjuste.startX);
+    estadoPortadaAjuste.y = estadoPortadaAjuste.baseY + (event.clientY - estadoPortadaAjuste.startY);
+    aplicarTransformPortada();
+  });
+
+  marco?.addEventListener('pointerup', () => {
+    estadoPortadaAjuste.dragging = false;
+  });
+
+  form?.addEventListener('submit', () => {
+    prepararCanvasPortada();
+  });
+});
 
 function actualizarOpcionesCruceManual() {
   const selectGrupo = document.getElementById('manualGrupoId');
@@ -1203,6 +1343,25 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Guardar horarios comunes para una fecha
+  document.querySelectorAll('form[id^="formFechaComun-"]').forEach(form => {
+    const button = form.querySelector('.guardar-horarios-btn');
+    const campos = ['fecha_comun', 'hora_inicial', 'intervalo_minutos']
+      .map(nombre => form.querySelector(`[name="${nombre}"]`))
+      .filter(Boolean);
+    const actualizarEstadoBoton = () => {
+      const fechaComun = form.querySelector('[name="fecha_comun"]')?.value || '';
+      const horaInicial = form.querySelector('[name="hora_inicial"]')?.value || '';
+      const intervalo = Number(form.querySelector('[name="intervalo_minutos"]')?.value || 0);
+      if (button) button.disabled = !(fechaComun && horaInicial && intervalo >= 5);
+    };
+
+    campos.forEach(campo => {
+      campo.addEventListener('input', actualizarEstadoBoton);
+      campo.addEventListener('change', actualizarEstadoBoton);
+    });
+    actualizarEstadoBoton();
+  });
+
   document.querySelectorAll('.guardar-horarios-btn').forEach(button => {
     button.addEventListener('click', () => {
       const numeroFecha = button.dataset.numeroFecha;
@@ -1424,14 +1583,17 @@ async function guardarHorariosComunes(numeroFecha) {
 
   if (data.success) {
     mostrarAvisoApp(data.message || 'Horarios actualizados correctamente.', 'Horarios');
+    marcarDashboardInicioDesactualizado();
     const fechaDisplay = fechaComun.split('-').reverse().join('/');
     const fechaPane = document.getElementById(`fecha-${numeroFecha}`);
     if (fechaPane) {
       let horaActual = horaInicial;
-      fechaPane.querySelectorAll('tbody tr').forEach(row => {
-        const celdas = row.querySelectorAll('td');
-        if (celdas[4]) celdas[4].textContent = fechaDisplay;
-        if (celdas[5]) celdas[5].textContent = horaActual;
+      fechaPane.querySelectorAll('tbody tr[data-partido-row]').forEach(row => {
+        const detalle = fechaPane.querySelector(`.partido-detalle[data-partido-id="${row.dataset.partidoRow}"]`);
+        const fechaEl = detalle?.querySelector('.partido-detalle-fecha');
+        const horaEl = detalle?.querySelector('.partido-detalle-hora');
+        if (fechaEl) fechaEl.textContent = fechaDisplay;
+        if (horaEl) horaEl.textContent = horaActual;
 
         const btnEditar = row.querySelector('.editar-horario-btn');
         if (btnEditar) {
@@ -1510,6 +1672,7 @@ async function cambiarEstado(selectElement) {
       const marcador = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a-id]`);
       if (marcador) marcador.dataset.estado = nuevoEstado;
       recalcularEstadisticasCliente();
+      marcarDashboardInicioDesactualizado();
     }
   } catch (error) {
     console.error('Error:', error);
@@ -1564,9 +1727,11 @@ async function guardarMarcador() {
       const selectEstado = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
       if (selectEstado) {
         selectEstado.value = estadoMarcador;
+        selectEstado.dataset.estadoActual = estadoMarcador;
       }
       actualizarAccionesPartido(partidoId, estadoMarcador);
       recalcularEstadisticasCliente();
+      marcarDashboardInicioDesactualizado();
       cerrarModalBootstrapSeguro('modalEditarMarcador');
     } else {
       mostrarAvisoApp(data.message || 'No se pudo actualizar el marcador.', 'Marcador');
@@ -1587,11 +1752,15 @@ async function guardarEstadoPartido(pidoId, nuevoEstado) {
     const data = await res.json();
     if (data.success) {
       const selectEl = document.querySelector(`.estado-select[data-id="${pidoId}"]`);
-      if (selectEl) selectEl.value = nuevoEstado;
+      if (selectEl) {
+        selectEl.value = nuevoEstado;
+        selectEl.dataset.estadoActual = nuevoEstado;
+      }
       const marcador = document.querySelector(`td[data-id="${pidoId}"][data-equipo-a-id]`);
       if (marcador) marcador.dataset.estado = nuevoEstado;
       actualizarAccionesPartido(pidoId, nuevoEstado);
       recalcularEstadisticasCliente();
+      marcarDashboardInicioDesactualizado();
       return true;
     } else {
       mostrarAvisoApp(data.message || 'No se pudo actualizar el estado del partido.', 'Partidos');
@@ -1604,18 +1773,40 @@ async function guardarEstadoPartido(pidoId, nuevoEstado) {
 }
 
 function initMatchHandlers() {
-  document.querySelectorAll('.btn-guardar-match').forEach(btn => {
-    btn.onclick = async () => {
-      const tr = btn.closest('tr');
-      const estado = tr.querySelector('.estado-select').value;
-      if (await guardarEstadoPartido(btn.dataset.id, estado)) {
-        btn.style.color = 'green';
-        setTimeout(() => {
-          btn.style.color = '';
-        }, 900);
+  document.querySelectorAll('.estado-select').forEach(select => {
+    select.dataset.estadoActual = select.dataset.estadoActual || select.value;
+    select.onchange = async () => {
+      const estadoAnterior = select.dataset.estadoActual || 'programado';
+      const estadoNuevo = select.value;
+      if (estadoNuevo === estadoAnterior) return;
+
+      const textoEstado = select.selectedOptions?.[0]?.textContent?.trim() || estadoNuevo;
+      const confirmado = await confirmarApp(
+        `Desea guardar el estado "${textoEstado}" para este encuentro?`,
+        'Confirmar estado',
+        {
+          aceptar: 'Si, guardar',
+          cancelar: 'Cancelar'
+        }
+      );
+
+      if (!confirmado) {
+        select.value = estadoAnterior;
+        return;
+      }
+
+      select.disabled = true;
+      const guardado = await guardarEstadoPartido(select.dataset.id, estadoNuevo);
+      select.disabled = false;
+
+      if (guardado) {
+        select.dataset.estadoActual = estadoNuevo;
+      } else {
+        select.value = estadoAnterior;
       }
     };
   });
+
   document.querySelectorAll('td[data-equipo-a][data-id]').forEach(td => {
     td.style.cursor = 'pointer';
     td.onclick = () => {
@@ -2376,6 +2567,7 @@ async function guardarCargaEquipoPartido() {
     aplicarSancionesEnListaJugadores(data.jugadoresSancionados || []);
     actualizarFinanzasDesdeCarga(data.resumen || {});
     await sincronizarFinanzasDesdeServidor();
+    marcarDashboardInicioDesactualizado();
     mostrarAvisoApp('Carga del encuentro guardada correctamente', 'Carga guardada');
   } catch (error) {
     console.error(error);
@@ -2442,6 +2634,10 @@ async function confirmarToggleEquipo(input) {
   color: #fff;
 }
 
+.torneos-page .app-nav-toggle {
+  display: none;
+}
+
 .torneos-page .btn {
   margin: 0;
   padding: 0.38rem 0.72rem;
@@ -2465,15 +2661,10 @@ async function confirmarToggleEquipo(input) {
 .torneos-page .tab-content {
   width: min(1140px, calc(100vw - 24px));
   max-width: none;
+  margin-left: auto;
+  margin-right: auto;
   padding-left: 0;
   padding-right: 0;
-}
-
-.dashboard-quick-actions .btn {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .card.border-left-primary {
@@ -2497,7 +2688,7 @@ async function confirmarToggleEquipo(input) {
 
 .partidos-equipo {
   display: grid;
-  grid-template-columns: 24px minmax(0, max-content) auto auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -2511,9 +2702,12 @@ async function confirmarToggleEquipo(input) {
 
 .partidos-equipo-nombre {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  line-height: 1.15;
 }
 
 .partidos-equipo-carga {
@@ -2523,6 +2717,85 @@ async function confirmarToggleEquipo(input) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.partido-detalle-row td {
+  padding-top: 0;
+  border-top: 0;
+  background: rgba(248, 249, 250, 0.92);
+}
+
+.partido-detalle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 520px);
+  margin: 0 auto;
+  color: #495057;
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.partido-detalle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.partido-detalle i {
+  color: #0d6efd;
+}
+
+.torneos-page #partidos .card-partidos {
+  width: 100%;
+  max-width: 1040px;
+  margin-left: auto;
+  margin-right: auto;
+  overflow: hidden;
+}
+
+.torneos-page #partidos .table-responsive {
+  max-width: 100%;
+}
+
+.fixture-fecha-panel {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.fixture-fecha-panel .alert,
+.fixture-fecha-panel .table-responsive {
+  max-width: 100%;
+}
+
+.torneos-page #partidos:not(.partidos-vista-publica) .fixture-partidos-table {
+  min-width: 860px;
+}
+
+.fixture-equipo-col {
+  width: 22%;
+}
+
+.fixture-marcador-col {
+  width: 9%;
+  text-align: center;
+}
+
+.fixture-estado-col {
+  width: 15%;
+}
+
+.fixture-acciones-col {
+  width: 32%;
+  text-align: center;
+}
+
+.torneos-page #partidos:not(.partidos-vista-publica) .table-responsive {
+  overflow-x: auto !important;
 }
 
 .carga-partido-table th,
@@ -2613,7 +2886,8 @@ async function confirmarToggleEquipo(input) {
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: normal;
   line-height: 1.15;
 }
 
@@ -2632,6 +2906,40 @@ async function confirmarToggleEquipo(input) {
 
 .dashboard-en-curso-card .list-group-item > small:not(.text-muted) {
   display: none;
+}
+
+.dashboard-scroll-area {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dashboard-scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dashboard-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(25, 135, 84, 0.45);
+  border-radius: 999px;
+}
+
+.dashboard-scroll-area::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.dashboard-match-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  line-height: 1.25;
+}
+
+.dashboard-match-date {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .pull-refresh-indicator {
@@ -2704,6 +3012,38 @@ async function confirmarToggleEquipo(input) {
   border-radius: 6px;
 }
 
+.portada-ajuste {
+  display: none;
+}
+
+.portada-ajuste.activo {
+  display: block;
+}
+
+.portada-ajuste-marco {
+  width: 100%;
+  aspect-ratio: 16 / 5;
+  overflow: hidden;
+  background: #111827;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.portada-ajuste-marco:active {
+  cursor: grabbing;
+}
+
+.portada-ajuste-marco img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center center;
+  user-select: none;
+  pointer-events: none;
+}
+
 .tab-pane-spaced {
   padding-top: 22px;
 }
@@ -2724,7 +3064,7 @@ async function confirmarToggleEquipo(input) {
 }
 
 .torneos-page #partidos .card-partidos,
-.torneos-page #finanzas .finanzas-panel,
+.torneos-page #finanzas > .p-3,
 .torneos-page #estadisticas > .p-3,
 .torneos-page #items > .p-3,
 .torneos-page #usuarios > .p-3,
@@ -2939,10 +3279,17 @@ async function confirmarToggleEquipo(input) {
 }
 
 .torneos-page #fechasTab {
-  gap: 0.4rem;
+  align-items: stretch;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 540px;
 }
 
-.torneos-page #fechasTab .fixture-fecha-tab {
+.torneos-page #fechasTab .fixture-fecha-tab,
+.torneos-page .fixture-fecha-nav-btn {
   background: #f8fbff;
   border: 1px solid rgba(13, 110, 253, 0.32);
   box-shadow: 0 2px 6px rgba(13, 110, 253, 0.18);
@@ -2950,7 +3297,22 @@ async function confirmarToggleEquipo(input) {
   font-weight: 700;
 }
 
-.torneos-page #fechasTab .fixture-fecha-tab:hover {
+.torneos-page #fechasTab .fixture-fecha-tab {
+  min-height: 48px;
+  white-space: normal;
+}
+
+.torneos-page .fixture-fecha-nav-btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 48px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.torneos-page #fechasTab .fixture-fecha-tab:hover,
+.torneos-page .fixture-fecha-nav-btn:hover {
   background: #eaf3ff;
   border-color: #0d6efd;
   box-shadow: 0 4px 10px rgba(13, 110, 253, 0.24);
@@ -2963,28 +3325,58 @@ async function confirmarToggleEquipo(input) {
   color: #fff;
 }
 
+.torneos-page .fixture-fecha-nav-btn:disabled {
+  background: #f1f5f9;
+  border-color: rgba(100, 116, 139, 0.28);
+  box-shadow: none;
+  color: #94a3b8;
+  opacity: 1;
+}
+
 #finanzas .finanzas-panel {
-  width: min(1180px, calc(100vw - 32px));
-  max-width: none;
-  margin: 0 auto;
+  background: transparent !important;
+  border: 0;
+  box-shadow: none !important;
+  margin: 0;
+  padding: 0;
   text-align: left;
-  padding: 1rem;
+  width: 100%;
+}
+
+#finanzas .finanzas-panel .card-body {
+  padding: 0;
+}
+
+.torneos-page .btn-buscar-gris {
+  background: #e9ecef;
+  border-color: #ced4da;
+  color: #495057;
+}
+
+.torneos-page .btn-buscar-gris:hover,
+.torneos-page .btn-buscar-gris:focus {
+  background: #dee2e6;
+  border-color: #adb5bd;
+  color: #212529;
 }
 
 #finanzas .finanzas-table {
-  min-width: 760px;
+  margin-bottom: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 #finanzas .finanzas-equipo-col {
-  min-width: 210px;
+  width: 44%;
+  min-width: 0;
 }
 
 #finanzas .finanzas-grupo-col {
-  width: 120px;
+  width: 18%;
 }
 
 #finanzas .finanzas-estado-col {
-  width: 110px;
+  width: 18%;
 }
 
 #finanzas .finanzas-saldo-col {
@@ -2992,7 +3384,7 @@ async function confirmarToggleEquipo(input) {
 }
 
 #finanzas .finanzas-acciones-col {
-  width: 130px;
+  width: 20%;
 }
 
 .finanzas-public-only {
@@ -3080,13 +3472,100 @@ async function confirmarToggleEquipo(input) {
   display: none !important;
 }
 
-#usuarios.usuarios-vista-publica .usuarios-admin-only {
-  display: none !important;
-}
+  #usuarios.usuarios-vista-publica .usuarios-admin-only {
+    display: none !important;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table-responsive {
+    overflow-x: visible;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 0.65rem;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table thead {
+    display: none;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table tbody,
+  #usuarios.usuarios-vista-publica .usuarios-table tr,
+  #usuarios.usuarios-vista-publica .usuarios-table td {
+    display: block;
+    width: 100%;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table tr {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td {
+    border: 0;
+    padding: 0.35rem 0.7rem;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: #6c757d;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 0.18rem;
+    text-transform: uppercase;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="#"] {
+    float: left;
+    width: 2.4rem;
+    padding-top: 0.65rem;
+    color: #6c757d;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="#"]::before {
+    display: none;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Usuario"] {
+    margin-left: 2.4rem;
+    width: calc(100% - 2.4rem);
+    padding-top: 0.65rem;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Documento"],
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Rol"],
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Estado"],
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Torneo"],
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Equipo"] {
+    clear: both;
+    display: grid;
+    grid-template-columns: minmax(86px, 34%) minmax(0, 1fr);
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Documento"]::before,
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Rol"]::before,
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Estado"]::before,
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Torneo"]::before,
+  #usuarios.usuarios-vista-publica .usuarios-table td[data-label="Equipo"]::before {
+    margin: 0;
+  }
+
+  #usuarios.usuarios-vista-publica .usuarios-table .badge {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 
 @media (max-width: 768px) {
   .torneos-page {
-    padding-top: 142px;
+    padding-top: 105px;
     font-size: 0.92rem;
   }
 
@@ -3097,17 +3576,41 @@ async function confirmarToggleEquipo(input) {
   .torneos-page .navbar .container-fluid {
     align-items: stretch;
     gap: 0.45rem;
+    position: relative;
   }
 
   .torneos-page .navbar-brand {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
     margin: 0;
+    padding-right: 2.65rem;
     font-size: 1.05rem;
     line-height: 1.1;
   }
 
   .torneos-page .navbar-brand .small {
     font-size: 0.86rem;
+  }
+
+  .torneos-page .app-nav-toggle {
+    position: absolute;
+    top: -0.1rem;
+    right: 0.65rem;
+    z-index: 1041;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    color: #fff !important;
+    text-decoration: none;
+  }
+
+  .torneos-page .app-nav-toggle i {
+    font-size: 1.75rem;
+    line-height: 1;
   }
 
   .torneos-page .navbar .nav-tabs {
@@ -3135,15 +3638,30 @@ async function confirmarToggleEquipo(input) {
   }
 
   .torneos-page .app-nav-actions {
-    width: 100%;
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0.65rem;
+    z-index: 1040;
+    width: min(220px, calc(100vw - 24px));
+    display: none !important;
+    flex-direction: column;
     gap: 0.4rem;
-    overflow-x: auto;
-    padding-bottom: 1px;
+    padding: 0.55rem;
+    overflow: visible;
+    border-radius: 8px;
+    background: rgba(21, 28, 38, 0.96);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
+  }
+
+  .torneos-page .app-nav-actions.is-open {
+    display: flex !important;
   }
 
   .torneos-page .app-nav-actions .btn {
-    flex: 1 0 auto;
+    flex: 0 0 auto;
+    width: 100%;
     min-height: 34px;
+    margin: 0 !important;
     padding: 0.36rem 0.5rem;
     font-size: 0.82rem;
     line-height: 1.1;
@@ -3173,20 +3691,6 @@ async function confirmarToggleEquipo(input) {
     font-size: 0.9rem;
   }
 
-  .dashboard-quick-actions {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.45rem !important;
-  }
-
-  .dashboard-quick-actions .btn {
-    width: 100%;
-    min-height: 36px;
-    justify-content: center;
-    padding: 0.38rem 0.32rem;
-    font-size: 0.82rem;
-  }
-
   .torneos-page #torneos .card {
     border-radius: 8px;
   }
@@ -3212,6 +3716,274 @@ async function confirmarToggleEquipo(input) {
   .torneos-page #torneos .table img {
     width: 20px !important;
     height: 20px !important;
+  }
+
+  .torneos-page #partidos .table {
+    display: block;
+    table-layout: auto;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .torneos-page #partidos .table thead {
+    display: none;
+  }
+
+  .torneos-page #partidos .table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .torneos-page #partidos .table tr[data-partido-row] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr) 92px;
+    align-items: center;
+    width: 100%;
+    background: #fff;
+    border-top: 1px solid #dbe2ea;
+  }
+
+  #partidos.partidos-vista-publica .table tr[data-partido-row] {
+    grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+    grid-template-areas:
+      "equipoA marcador equipoB"
+      "estado estado estado";
+    gap: 0.35rem 0.3rem;
+    padding: 0.58rem 0.42rem 0.45rem;
+  }
+
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(1) {
+    grid-area: equipoA;
+  }
+
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(2) {
+    grid-area: marcador;
+  }
+
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(3) {
+    grid-area: equipoB;
+  }
+
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(4) {
+    grid-area: estado;
+    justify-self: end;
+    padding-top: 0;
+  }
+
+  .torneos-page #partidos .table tr[data-partido-row] > td {
+    display: block;
+    border: 0;
+    min-width: 0;
+  }
+
+  .torneos-page #partidos .partido-detalle-row {
+    display: block;
+    width: 100%;
+    background: rgba(248, 249, 250, 0.94);
+    border-bottom: 1px solid #dbe2ea;
+  }
+
+  .torneos-page #partidos .partido-detalle-row > td {
+    display: block;
+    width: 100%;
+  }
+
+  #partidos.partidos-vista-publica .table-responsive {
+    overflow-x: hidden !important;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table-responsive {
+    overflow-x: hidden !important;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .fixture-partidos-table {
+    min-width: 0;
+  }
+
+  .torneos-page #partidos .table th,
+  .torneos-page #partidos .table td {
+    padding-left: 0.32rem;
+    padding-right: 0.32rem;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] {
+    grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
+    grid-template-areas:
+      "equipoA marcador equipoB"
+      "estado estado acciones";
+    gap: 0.45rem 0.35rem;
+    align-items: stretch;
+    padding: 0.72rem 0.52rem 0.62rem;
+    border: 1px solid #dbe2ea;
+    border-bottom: 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td {
+    padding: 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(1) {
+    grid-area: equipoA;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(2) {
+    grid-area: marcador;
+    align-self: center;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(3) {
+    grid-area: equipoB;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(4) {
+    grid-area: estado;
+    align-self: center;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(5) {
+    grid-area: acciones;
+    align-self: center;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .editar-marcador-btn {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    border-radius: 6px;
+    background: #f8f9fa;
+    border: 1px solid #dbe2ea !important;
+    color: #111827;
+    font-size: 0.86rem;
+    line-height: 1;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .editar-marcador-btn::before {
+    content: "VS";
+    display: block;
+    margin-bottom: 0.22rem;
+    color: #6c757d;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .estado-select {
+    width: 100%;
+    min-height: 36px;
+    font-size: 0.82rem;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo {
+    grid-template-columns: 20px minmax(0, 1fr) 32px;
+    grid-auto-flow: row;
+    align-items: center;
+    min-height: 50px;
+    padding: 0.25rem 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo .badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-carga {
+    width: 32px;
+    height: 32px;
+    justify-self: end;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) td.partidos-admin-only .btn-group {
+    display: grid;
+    grid-template-columns: repeat(3, 36px);
+    justify-content: end;
+    gap: 0;
+    width: 100%;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) td.partidos-admin-only .btn,
+  .torneos-page #partidos:not(.partidos-vista-publica) td.partidos-admin-only form {
+    width: 36px;
+    height: 36px;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) td.partidos-admin-only form {
+    display: block !important;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) td.partidos-admin-only .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+    font-size: 0.88rem !important;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partido-detalle-row {
+    margin-bottom: 0.6rem;
+    border: 1px solid #dbe2ea;
+    border-top: 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partido-detalle {
+    justify-content: flex-start;
+    overflow: hidden;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partido-detalle span {
+    flex: 1 1 auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .torneos-page #partidos .table thead.table-dark th {
+    font-size: 0.76rem;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  .torneos-page #partidos .partidos-equipo {
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 0.22rem;
+  }
+
+  .torneos-page #partidos .partidos-equipo-icono {
+    width: 18px;
+    height: 18px;
+  }
+
+  .torneos-page #partidos .partidos-equipo-nombre {
+    display: block;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+    overflow: visible;
+    text-overflow: clip;
+    letter-spacing: 0;
+  }
+
+  .torneos-page #partidos .editar-marcador-btn {
+    font-size: 0.82rem;
+    line-height: 1.05;
+    padding-left: 0.12rem;
+    padding-right: 0.12rem;
+  }
+
+  #partidos.partidos-vista-publica .badge {
+    font-size: 0.66rem;
+    white-space: normal;
+    line-height: 1.05;
+  }
+
+  .torneos-page #partidos .partido-detalle {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.35rem 0.7rem;
+    font-size: 0.8rem;
   }
 
   .torneos-page #jugadores > .card {
@@ -3417,7 +4189,27 @@ async function confirmarToggleEquipo(input) {
 
   .torneos-page #estadisticas th:first-child,
   .torneos-page #estadisticas td:first-child {
-    width: 42%;
+    width: 46%;
+  }
+
+  .torneos-page #estadisticas th:nth-child(2),
+  .torneos-page #estadisticas td:nth-child(2) {
+    width: 20%;
+  }
+
+  .torneos-page #estadisticas th:nth-child(3),
+  .torneos-page #estadisticas td:nth-child(3) {
+    width: 12%;
+  }
+
+  .torneos-page #estadisticas th:nth-child(9),
+  .torneos-page #estadisticas td:nth-child(9) {
+    width: 10%;
+  }
+
+  .torneos-page #estadisticas th:nth-child(10),
+  .torneos-page #estadisticas td:nth-child(10) {
+    width: 12%;
   }
 
   .torneos-page #estadisticas .estadisticas-col-detalle {
@@ -3440,14 +4232,19 @@ async function confirmarToggleEquipo(input) {
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: normal;
     font-size: 0.9rem;
     line-height: 1.12;
   }
 
   .torneos-page #estadisticas td small {
+    display: block;
     font-size: 0.78rem;
     line-height: 1.1;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: normal;
   }
 }
 
@@ -3456,14 +4253,6 @@ async function confirmarToggleEquipo(input) {
     padding-top: 150px;
   }
 
-  .dashboard-quick-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dashboard-quick-actions .btn {
-    justify-content: flex-start;
-    padding-left: 0.6rem;
-  }
 }
 </style>
 
@@ -3483,6 +4272,14 @@ async function confirmarToggleEquipo(input) {
           <div class="mb-3">
             <label for="portadaTorneo" class="form-label">Portada</label>
             <input type="file" class="form-control" id="portadaTorneo" name="portada" accept="image/*" required>
+            <input type="hidden" id="portadaAjustada" name="portada_ajustada">
+          </div>
+          <div id="portadaAjuste" class="portada-ajuste mb-3">
+            <div id="portadaAjusteMarco" class="portada-ajuste-marco mb-2">
+              <img id="portadaAjusteImagen" src="" alt="Vista previa de portada">
+            </div>
+            <label for="portadaZoom" class="form-label mb-1">Ajuste</label>
+            <input type="range" class="form-range" id="portadaZoom" min="1" max="3" step="0.05" value="1">
           </div>
           <div class="d-flex justify-content-end">
             <button type="submit" class="btn btn-primary">
@@ -4048,7 +4845,10 @@ async function confirmarToggleEquipo(input) {
       <h3 class="mb-0">Fixture</h3>
       <% if (rol_id == 3 || rol_id == 99) { %>
         <div class="btn-group btn-group-sm" role="group">
-          <% const proximaFechaPartidos = ((partidosPorFecha || []).reduce((max, fecha) => Math.max(max, Number(fecha.numero_fecha || 0)), 0) || 0) + 1; %>
+          <% const primeraFechaVaciaPartidos = (partidosPorFecha || []).find(fecha => !((fecha.partidos || []).length)); %>
+          <% const proximaFechaPartidos = primeraFechaVaciaPartidos
+            ? Number(primeraFechaVaciaPartidos.numero_fecha || 1)
+            : (((partidosPorFecha || []).reduce((max, fecha) => Math.max(max, Number(fecha.numero_fecha || 0)), 0) || 0) + 1); %>
           <button type="button"
                   class="btn btn-success fw-bold partidos-admin-only"
                   onclick="abrirModalCruceManual(<%= proximaFechaPartidos %>, '<%= grupoSeleccionadoId || '' %>')"
@@ -4067,7 +4867,7 @@ async function confirmarToggleEquipo(input) {
     <div class="row g-2 align-items-end mb-3">
       <div class="col-md-4">
         <label class="form-label text-dark fw-bold mb-1">Filtrar por grupo</label>
-        <select class="form-select form-select-sm" onchange="window.location = '<%= '/torneos/gestionar/' + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#partidos'">
+        <select class="form-select form-select-sm" onchange="window.location = '<%= (esVistaPublica ? '/publico/torneo/' : '/torneos/gestionar/') + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#partidos'">
           <option value="">Vista general</option>
           <% ((typeof gruposFixture !== 'undefined' && gruposFixture) || grupos || []).forEach(grupo => { %>
             <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
@@ -4076,28 +4876,6 @@ async function confirmarToggleEquipo(input) {
           <% }) %>
         </select>
       </div>
-      <div class="col-md-4">
-        <label class="form-label text-dark fw-bold mb-1" for="filtroPartidosFechaCalendario">Filtrar por fecha calendario</label>
-        <div class="input-group input-group-sm">
-          <input type="date"
-                 class="form-control"
-                 id="filtroPartidosFechaCalendario"
-                 value="<%= fechaCalendarioSeleccionada || '' %>">
-          <button type="button" class="btn btn-primary fw-bold" id="btnFiltrarPartidosFecha">
-            <i class="bi bi-calendar-check"></i> Ver día
-          </button>
-          <button type="button" class="btn btn-outline-secondary" id="btnLimpiarPartidosFecha" title="Limpiar fecha">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </div>
-      </div>
-      <% if (fechaCalendarioSeleccionada) { %>
-        <div class="col-md-4">
-          <span class="badge text-bg-warning">
-            Mostrando todos los grupos del <%= fechaCalendarioSeleccionada.split('-').reverse().join('/') %>
-          </span>
-        </div>
-      <% } %>
     </div>
 
     <% if (torneo.portada) { %>
@@ -4108,12 +4886,47 @@ async function confirmarToggleEquipo(input) {
 
       <% if (partidosPorFecha && partidosPorFecha.length > 0) { %>
         <%
+          const fechaSolicitadaFixture = typeof fechaSeleccionada !== 'undefined' && fechaSeleccionada ? String(fechaSeleccionada) : '';
           const fechaActivaFixture =
+            (fechaSolicitadaFixture && (partidosPorFecha.find(f => String(f.numero_fecha) === fechaSolicitadaFixture) || {}).numero_fecha) ||
             (partidosPorFecha.find(f =>
               (f.partidos || []).some(p => String(p.estado || '').trim().toLowerCase() !== 'finalizado')
             ) || partidosPorFecha[0] || {}).numero_fecha;
+          const fechaActivaObjetoFixture = partidosPorFecha.find(f => String(f.numero_fecha) === String(fechaActivaFixture)) || partidosPorFecha[0] || {};
+          const fechaActivaIndexFixture = Math.max(0, partidosPorFecha.findIndex(f => String(f.numero_fecha) === String(fechaActivaFixture)));
+          const fechaActivaTextoFixture = fechaActivaObjetoFixture.fecha_general
+            ? `Fecha ${fechaActivaObjetoFixture.numero_fecha} - ${String(fechaActivaObjetoFixture.fecha_general).slice(0, 10).split('-').reverse().join('/')}`
+            : `Fecha ${fechaActivaObjetoFixture.numero_fecha || '-'}`;
         %>
-        <ul class="nav nav-pills mb-3" id="fechasTab" role="tablist">
+        <div class="fixture-fecha-navegador mb-3" id="fechasTab" role="tablist" data-fecha-activa-index="<%= fechaActivaIndexFixture %>">
+          <button type="button"
+                  class="btn btn-outline-primary fixture-fecha-nav-btn"
+                  id="btnFechaAnterior"
+                  title="Fecha anterior"
+                  aria-label="Fecha anterior"
+                  <%= fechaActivaIndexFixture <= 0 ? 'disabled' : '' %>>
+            <i class="bi bi-chevron-left"></i>
+          </button>
+          <button class="btn fixture-fecha-tab active fixture-fecha-actual"
+                  id="fechaActualTab"
+                  data-bs-toggle="pill"
+                  data-bs-target="#fecha-<%= fechaActivaFixture %>"
+                  type="button"
+                  role="tab"
+                  aria-controls="fecha-<%= fechaActivaFixture %>"
+                  aria-selected="true">
+            <%= fechaActivaTextoFixture %>
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary fixture-fecha-nav-btn"
+                  id="btnFechaSiguiente"
+                  title="Fecha siguiente"
+                  aria-label="Fecha siguiente"
+                  <%= fechaActivaIndexFixture >= partidosPorFecha.length - 1 ? 'disabled' : '' %>>
+            <i class="bi bi-chevron-right"></i>
+          </button>
+        </div>
+        <ul class="nav nav-pills mb-3 d-none" id="fechasTabOculto" role="tablist">
           <% partidosPorFecha.forEach((fecha, index) => { %>
             <% const fechaEsActiva = String(fecha.numero_fecha) === String(fechaActivaFixture); %>
             <li class="nav-item" role="presentation">
@@ -4142,6 +4955,7 @@ async function confirmarToggleEquipo(input) {
                  id="fecha-<%= fecha.numero_fecha %>"
                  role="tabpanel"
                  aria-labelledby="fecha-<%= fecha.numero_fecha %>-tab">
+              <div class="fixture-fecha-panel">
 
               <!-- Formulario para asignar fecha y horarios comunes -->
               <form id="formFechaComun-<%= fecha.numero_fecha %>" class="mb-4 partidos-admin-only">
@@ -4170,7 +4984,7 @@ async function confirmarToggleEquipo(input) {
                             data-grupo-id="<%= fecha.partidos && fecha.partidos.length > 0 ? fecha.partidos[0].id_grupo || '' : '' %>">
                       <i class="bi bi-diagram-3"></i> Cruce manual
                     </button>
-                    <button type="button" class="btn btn-success w-100 guardar-horarios-btn" data-numero-fecha="<%= fecha.numero_fecha %>">
+                    <button type="button" class="btn btn-success w-100 guardar-horarios-btn" data-numero-fecha="<%= fecha.numero_fecha %>" disabled>
                       <i class="bi bi-check-circle"></i> Guardar cambios
                     </button>
                   </div>
@@ -4183,31 +4997,28 @@ async function confirmarToggleEquipo(input) {
               </form>
 
               <% if (fecha.partidos && fecha.partidos.length > 0) { %>
-                <% const fechaTieneFinalizados = fecha.partidos.some(partido => String(partido.estado || '').trim().toLowerCase() === 'finalizado'); %>
-                <% if (fechaTieneFinalizados) { %>
                   <button type="button"
                           class="btn btn-outline-danger btn-sm mb-3 partidos-admin-only"
                           disabled
-                          title="No se puede eliminar una fecha con partidos finalizados">
+                          title="Solo se puede eliminar una fecha vacia">
                     <i class="bi bi-calendar-x"></i> Eliminar fecha
                   </button>
-                <% } else { %>
+              <% } else { %>
                   <form action="/partidos/torneos/<%= torneo.id_torneo %>/fecha/<%= fecha.numero_fecha %>/eliminar"
                         method="POST"
                         class="mb-3 partidos-admin-only form-confirmar-app"
-                        data-confirm-title="Eliminar fecha"
+                        data-confirm-title="Eliminar fecha vacia"
                         data-confirm-message="¿Eliminar todos los encuentros de la fecha <%= fecha.numero_fecha %>?"
                         data-confirm-accept="Sí, eliminar fecha"
                         data-confirm-cancel="Cancelar">
                     <% if (grupoSeleccionadoId) { %>
                       <input type="hidden" name="id_grupo" value="<%= grupoSeleccionadoId %>">
                     <% } %>
-                    <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha : '?fecha=' + fecha.numero_fecha %>#partidos">
+                    <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId : '' %>#partidos">
                     <button type="submit" class="btn btn-outline-danger btn-sm">
                       <i class="bi bi-calendar-x"></i> Eliminar fecha
                     </button>
                   </form>
-                <% } %>
               <% } %>
 
               <% if (fecha.equipos_libres && fecha.equipos_libres.length > 0) { %>
@@ -4230,30 +5041,26 @@ async function confirmarToggleEquipo(input) {
 
               <!-- Tabla de partidos más ancha -->
               <div class="table-responsive" style="overflow-x: auto;">
-                <table class="table table-hover align-middle table-sm" style="font-size: 0.85rem;">
+                <table class="table table-hover align-middle table-sm fixture-partidos-table" style="font-size: 0.85rem;">
                   <thead class="table-dark">
                     <tr>
-                      <th style="width: 20%;">Equipo A</th>
-                      <th style="width: 10%; text-align: center;">Marcador</th>
-                      <th style="width: 20%;">Equipo B</th>
-                      <th style="width: 8%;">Grupo</th>
-                      <th style="width: 8%;">Fecha</th>
-                      <th style="width: 7%;">Hora</th>
-                      <th style="width: 10%;">Cancha</th>
-                      <th style="width: 10%;">Estado</th>
-                      <th class="partidos-admin-only" style="width: 15%; text-align: center;">Acciones</th>
+                      <th class="fixture-equipo-col">Equipo A</th>
+                      <th class="fixture-marcador-col">Marcador</th>
+                      <th class="fixture-equipo-col">Equipo B</th>
+                      <th class="fixture-estado-col">Estado</th>
+                      <th class="partidos-admin-only fixture-acciones-col">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     <% if (!fecha.partidos || fecha.partidos.length === 0) { %>
                       <tr>
-                        <td colspan="9" class="text-center text-muted py-3">
+                        <td colspan="5" class="text-center text-muted py-3">
                           Fecha sin encuentros programados. Use Cruce manual para agregar partidos en esta fecha.
                         </td>
                       </tr>
                     <% } %>
                     <% fecha.partidos.forEach(partido => { %>
-                      <tr class="<%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>">
+                      <tr class="<%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>" data-partido-row="<%= partido.id_partido %>">
                         <td>
                           <div class="partidos-equipo">
                             <img src="<%= partido.icono_equipo_a || '/images/default_team.png' %>" alt="" class="partidos-equipo-icono">
@@ -4297,21 +5104,10 @@ async function confirmarToggleEquipo(input) {
                           </div>
                         </td>
                         <td>
-                          <small>
-                            <%= partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo' %>
-                            <% if (partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') { %>
-                              - <%= partido.observaciones %>
-                            <% } %>
-                          </small>
-                        </td>
-                        <td><small><%= partido.fecha_formateada || '-' %></small></td>
-                        <td><small><strong><%= partido.hora || '-' %></strong></small></td>
-                        <td><small><%= partido.nombre_cancha || '-' %></small></td>
-                        <td>
                           <% const estadoPartidoValor = String(partido.estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_'); %>
                           <% const estadoPartidoTexto = estadoPartidoValor === 'en_curso' ? 'En curso' : (estadoPartidoValor.charAt(0).toUpperCase() + estadoPartidoValor.slice(1)); %>
                           <% const estadoPartidoBadge = estadoPartidoValor === 'en_curso' ? 'estado-badge-en-curso' : (estadoPartidoValor === 'finalizado' ? 'text-bg-success' : (estadoPartidoValor === 'suspendido' ? 'text-bg-secondary' : 'text-bg-light')); %>
-                          <select class="form-select form-select-sm estado-select partidos-admin-only <%= estadoPartidoValor === 'en_curso' ? 'estado-en-curso' : '' %>" data-id="<%= partido.id_partido %>">
+                          <select class="form-select form-select-sm estado-select partidos-admin-only <%= estadoPartidoValor === 'en_curso' ? 'estado-en-curso' : '' %>" data-id="<%= partido.id_partido %>" data-estado-actual="<%= estadoPartidoValor %>">
                             <option value="programado" <%= estadoPartidoValor === 'programado' ? 'selected' : '' %>>Programado</option>
                             <option value="en_curso" <%= estadoPartidoValor === 'en_curso' ? 'selected' : '' %>>En curso</option>
                             <option value="suspendido" <%= estadoPartidoValor === 'suspendido' ? 'selected' : '' %>>Suspendido</option>
@@ -4321,14 +5117,6 @@ async function confirmarToggleEquipo(input) {
                         </td>
                         <td class="partidos-admin-only" style="text-align: center;">
                           <div class="btn-group btn-group-sm" role="group">
-                            <!-- Botón guardar estado/marcador -->
-                            <button type="button" class="btn btn-outline-success btn-guardar-match"
-                                    data-id="<%= partido.id_partido %>"
-                                    title="Guardar cambios"
-                                    style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                            <i class="bi bi-save"></i>
-                            </button>
-
                             <% if (partido.estado === 'finalizado') { %>
                               <button type="button" class="btn btn-outline-secondary" disabled
                                       title="No se puede intercambiar un partido finalizado"
@@ -4370,13 +5158,6 @@ async function confirmarToggleEquipo(input) {
                               </button>
                             <% } %>
                             
-                            <!-- Botón administración -->
-                            <button type="button" class="btn btn-outline-secondary"
-                                    title="Administración"
-                                    style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
-                              <i class="bi bi-gear-fill"></i>
-                            </button>
-
                             <% if (partido.estado === 'finalizado') { %>
                               <button type="button" class="btn btn-outline-danger" disabled
                                       title="No se puede eliminar un partido finalizado"
@@ -4398,9 +5179,29 @@ async function confirmarToggleEquipo(input) {
                           </div>
                         </td>
                       </tr>
+                      <tr class="partido-detalle-row <%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>">
+                        <td colspan="5">
+                          <div class="partido-detalle" data-partido-id="<%= partido.id_partido %>">
+                            <span>
+                              <strong>
+                                <%= partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo' %>
+                                <% if (partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') { %>
+                                  - <%= partido.observaciones %>
+                                <% } %>
+                              </strong>
+                            </span>
+                            <span><i class="bi bi-calendar-event"></i> Fecha: <strong class="partido-detalle-fecha"><%= partido.fecha_formateada || '-' %></strong></span>
+                            <span><i class="bi bi-clock"></i> Hora: <strong class="partido-detalle-hora"><%= partido.hora || '-' %></strong></span>
+                            <% if (partido.nombre_cancha) { %>
+                              <span><i class="bi bi-geo-alt"></i> Cancha: <strong class="partido-detalle-cancha"><%= partido.nombre_cancha %></strong></span>
+                            <% } %>
+                          </div>
+                        </td>
+                      </tr>
                     <% }) %>
                   </tbody>
                 </table>
+              </div>
               </div>
             </div>
           <% }) %>
@@ -4428,6 +5229,28 @@ async function confirmarToggleEquipo(input) {
           </div>
         <% } %>
       </div>
+      <% if (rol_id == 3 || rol_id == 99) { %>
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-md-4">
+            <label class="form-label text-white mb-1" for="buscarFinanzasEquipo">Buscar equipo</label>
+            <div class="input-group">
+              <input type="text"
+                     class="form-control text-uppercase"
+                     id="buscarFinanzasEquipo"
+                     placeholder="nombre de equipo">
+              <button type="button"
+                      class="btn btn-outline-light btn-buscar-gris"
+                      id="btnBuscarFinanzasEquipo"
+                      title="Buscar equipo">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-white small mb-2">
+          Equipos visibles: <strong id="finanzasEquiposVisibles">0</strong> / <span id="finanzasEquiposTotal"><%= (finanzasResumen || []).length %></span>
+        </div>
+      <% } %>
       <div class="card bg-light bg-opacity-75 shadow finanzas-panel">
         <div class="card-body">
           <div class="table-responsive">
@@ -4444,7 +5267,8 @@ async function confirmarToggleEquipo(input) {
               <tbody id="finanzasResumenTbody">
                 <% if (finanzasResumen && finanzasResumen.length > 0) { %>
                   <% finanzasResumen.forEach(equipoFinanza => { %>
-                    <tr data-finanzas-equipo-id="<%= equipoFinanza.id_equipo %>">
+                    <tr data-finanzas-equipo-id="<%= equipoFinanza.id_equipo %>"
+                        data-finanzas-equipo-nombre="<%= equipoFinanza.nombre || '' %>">
                       <td data-label="Equipo">
                         <div class="d-flex align-items-center gap-2">
                           <img src="<%= equipoFinanza.icono || '/images/default_team.png' %>"
@@ -4494,7 +5318,7 @@ async function confirmarToggleEquipo(input) {
       <div class="row g-2 align-items-end mb-3">
         <div class="col-md-4">
           <label class="form-label text-white mb-1">Filtrar por grupo</label>
-          <select class="form-select form-select-sm" onchange="window.location = '<%= '/torneos/gestionar/' + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#estadisticas'">
+          <select class="form-select form-select-sm" onchange="window.location = '<%= (esVistaPublica ? '/publico/torneo/' : '/torneos/gestionar/') + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#estadisticas'">
             <option value="">Vista general</option>
             <% (grupos || []).forEach(grupo => { %>
               <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
@@ -4684,7 +5508,7 @@ async function confirmarToggleEquipo(input) {
           <label class="form-label text-white mb-1" for="buscarUsuariosAdmin">Buscar</label>
           <div class="input-group">
             <input type="text" class="form-control text-uppercase" id="buscarUsuariosAdmin" placeholder="nombre - equipo - documento">
-            <button type="button" class="btn btn-outline-light" id="btnBuscarUsuariosAdmin" title="Buscar usuarios">
+            <button type="button" class="btn btn-outline-light btn-buscar-gris" id="btnBuscarUsuariosAdmin" title="Buscar usuarios">
               <i class="bi bi-search"></i>
             </button>
           </div>
@@ -4706,7 +5530,7 @@ async function confirmarToggleEquipo(input) {
           <select class="form-select" id="filtroUsuariosEstado">
             <option value="" selected>Todos</option>
             <option value="1">Activos</option>
-            <option value="0">Inactivos</option>
+            <option value="0">Inactivos / pendientes</option>
           </select>
         </div>
         <div class="col-md-3">
@@ -4724,15 +5548,15 @@ async function confirmarToggleEquipo(input) {
         Usuarios visibles: <strong id="usuariosAdminVisibles">0</strong> / <span id="usuariosAdminTotal"><%= (usuariosAdmin || []).length %></span>
       </div>
 
-      <div class="table-responsive">
-        <table class="table table-sm table-striped table-hover align-middle bg-white" id="tablaUsuariosAdmin">
+      <div class="table-responsive usuarios-table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle bg-white usuarios-table" id="tablaUsuariosAdmin">
           <thead class="table-dark">
             <tr>
               <th style="width: 56px;">#</th>
               <th>Usuario</th>
               <th>Documento</th>
               <th>Rol</th>
-              <th class="usuarios-admin-only">Estado</th>
+              <th>Estado</th>
               <th>Torneo</th>
               <th>Equipo</th>
               <th class="usuarios-admin-only" style="width: 360px;">Acciones</th>
@@ -4751,25 +5575,25 @@ async function confirmarToggleEquipo(input) {
                   data-equipos="<%= textoEquiposUsuario %>"
                   data-torneos-texto="<%= textoTorneosUsuario %>"
                   data-torneos="<%= torneosUsuario %>">
-                <td class="usuarios-admin-indice"></td>
-                <td>
+                <td class="usuarios-admin-indice" data-label="#"></td>
+                <td data-label="Usuario">
                   <strong><%= u.nombre %></strong>
                   <% if (u.correo) { %>
                     <br><small class="text-muted"><%= u.correo %></small>
                   <% } %>
                 </td>
-                <td><%= u.documento %></td>
-                <td>
+                <td data-label="Documento"><%= u.documento %></td>
+                <td data-label="Rol">
                   <span class="badge <%= Number(u.rol_id) === 99 ? 'text-bg-danger' : (Number(u.rol_id) === 3 ? 'text-bg-primary' : 'text-bg-secondary') %>">
                     <%= u.rol_nombre %>
                   </span>
                 </td>
-                <td class="usuarios-admin-only">
+                <td data-label="Estado">
                   <span class="badge <%= u.estado ? 'text-bg-success' : 'text-bg-secondary' %>">
                     <%= u.estado ? 'Activo' : 'Inactivo' %>
                   </span>
                 </td>
-                <td>
+                <td data-label="Torneo">
                   <% if (vinculosUsuario.length > 0) { %>
                     <% vinculosUsuario.forEach(v => { %>
                       <span class="badge text-bg-light border me-1 mb-1"><%= v.torneo || 'Sin torneo' %></span>
@@ -4778,7 +5602,7 @@ async function confirmarToggleEquipo(input) {
                     <span class="text-muted">Sin vinculo</span>
                   <% } %>
                 </td>
-                <td>
+                <td data-label="Equipo">
                   <% if (vinculosUsuario.length > 0) { %>
                     <% vinculosUsuario.forEach(v => { %>
                       <div>
@@ -4795,7 +5619,7 @@ async function confirmarToggleEquipo(input) {
                     <form action="/torneos/<%= torneo.id_torneo %>/usuarios/<%= u.id_usuario %>/toggle" method="POST">
                       <button type="submit" class="btn btn-sm <%= u.estado ? 'btn-outline-warning' : 'btn-outline-success' %>">
                         <i class="bi <%= u.estado ? 'bi-person-slash' : 'bi-person-check' %>"></i>
-                        <%= u.estado ? 'Desactivar' : 'Activar' %>
+                        <%= u.estado ? 'Desactivar' : 'Aprobar / activar' %>
                       </button>
                     </form>
                     <% if (rol_id == 99 || Number(u.rol_id) !== 99) { %>
@@ -4924,6 +5748,7 @@ async function confirmarToggleEquipo(input) {
     <div class="d-flex justify-content-between align-items-center mb-3 jugadores-header">
       <h3 class="mb-0">Equipos</h3>
       <% if (rol_id == 3 || rol_id == 99) { %>
+        <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
         <form action="/torneos/<%= torneo.id_torneo %>/permitir-agregar-jugadores"
               method="POST"
               class="form-switch-agregar-jugadores">
@@ -4942,6 +5767,25 @@ async function confirmarToggleEquipo(input) {
             </label>
           </div>
         </form>
+        <form action="/torneos/<%= torneo.id_torneo %>/permitir-modificar-iconos"
+              method="POST"
+              class="form-switch-modificar-iconos">
+          <input type="hidden"
+                 name="permitir_modificar_iconos_equipo"
+                 value="<%= torneo.permitir_modificar_iconos_equipo === true ? '0' : '1' %>">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input"
+                   type="checkbox"
+                   role="switch"
+                   id="switchModificarIconosDelegados"
+                   onchange="confirmarPermisoModificarIconos(this)"
+                   <%= torneo.permitir_modificar_iconos_equipo === true ? 'checked' : '' %>>
+            <label class="form-check-label" for="switchModificarIconosDelegados">
+              Delegados modifican iconos
+            </label>
+          </div>
+        </form>
+        </div>
       <% } %>
     </div>
 
@@ -5009,6 +5853,25 @@ async function confirmarToggleEquipo(input) {
       const mensaje = activar
         ? 'Si activa esta opcion, permitira que los delegados puedan ingresar nuevos jugadores a sus equipos.'
         : 'Si desactiva esta opcion, los delegados ya no podran agregar jugadores a sus equipos.';
+
+      const confirmado = await confirmarApp(mensaje, 'Confirmar permiso', {
+        aceptar: 'Aceptar',
+        cancelar: 'Cancelar'
+      });
+
+      if (!confirmado) {
+        input.checked = !activar;
+        return;
+      }
+
+      input.closest('form').submit();
+    }
+
+    async function confirmarPermisoModificarIconos(input) {
+      const activar = input.checked;
+      const mensaje = activar
+        ? 'Si activa esta opcion, permitira que los delegados cambien el icono de sus propios equipos.'
+        : 'Si desactiva esta opcion, los delegados ya no podran cambiar iconos de sus equipos.';
 
       const confirmado = await confirmarApp(mensaje, 'Confirmar permiso', {
         aceptar: 'Aceptar',
@@ -5226,6 +6089,7 @@ document.querySelectorAll('.form-agregar-equipo').forEach(form => {
       }
 
       form.dataset.confirmadoMudanza = '1';
+      sessionStorage.setItem('gruposFocusEquipoGrupoId', String(formData.get('id_grupo') || ''));
       form.submit();
     } catch (error) {
       console.error('Error al validar mudanza:', error);
@@ -5233,6 +6097,26 @@ document.querySelectorAll('.form-agregar-equipo').forEach(form => {
     }
   });
 });
+
+function enfocarSiguienteEquipoGrupo() {
+  if (window.location.hash !== '#grupos') return;
+
+  const grupoId = sessionStorage.getItem('gruposFocusEquipoGrupoId');
+  const inputs = Array.from(document.querySelectorAll('[data-grupo-equipo-input]'));
+  const input = grupoId
+    ? inputs.find(item => String(item.dataset.grupoEquipoInput || '') === String(grupoId))
+    : inputs[0];
+
+  if (!input) return;
+  sessionStorage.removeItem('gruposFocusEquipoGrupoId');
+  setTimeout(() => {
+    input.focus({ preventScroll: true });
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 250);
+}
+
+document.addEventListener('DOMContentLoaded', enfocarSiguienteEquipoGrupo);
+window.addEventListener('hashchange', enfocarSiguienteEquipoGrupo);
 
 function aplicarBusquedaJugadores() {
   const inputBusqueda = document.getElementById('buscarJugadores');
@@ -5254,7 +6138,10 @@ function aplicarBusquedaJugadores() {
 
 document.getElementById('btnBuscarJugadores')?.addEventListener('click', aplicarBusquedaJugadores);
 document.getElementById('buscarJugadores')?.addEventListener('keydown', event => {
-  if (event.key === 'Enter') aplicarBusquedaJugadores();
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    aplicarBusquedaJugadores();
+  }
 });
 const filtroJugadoresGuardado = sessionStorage.getItem('jugadoresFiltroBusqueda');
 if (filtroJugadoresGuardado !== null) {
@@ -5264,6 +6151,42 @@ if (filtroJugadoresGuardado !== null) {
     aplicarBusquedaJugadores();
   }
 }
+
+function aplicarBusquedaFinanzas() {
+  const inputBusqueda = document.getElementById('buscarFinanzasEquipo');
+  const busqueda = (inputBusqueda?.value || '').trim().toUpperCase();
+  const tbody = document.getElementById('finanzasResumenTbody');
+  let visibles = 0;
+  let total = 0;
+
+  tbody?.querySelector('[data-finanzas-sin-resultados]')?.remove();
+  document.querySelectorAll('#finanzasResumenTbody tr[data-finanzas-equipo-id]').forEach(row => {
+    total += 1;
+    const nombreEquipo = (row.dataset.finanzasEquipoNombre || '').toUpperCase();
+    const visible = !busqueda || nombreEquipo.includes(busqueda);
+    row.classList.toggle('d-none', !visible);
+    if (visible) visibles += 1;
+  });
+
+  if (tbody && total > 0 && visibles === 0) {
+    tbody.insertAdjacentHTML('beforeend', '<tr data-finanzas-sin-resultados><td colspan="5" class="text-center text-muted py-3">No hay equipos que coincidan con la busqueda.</td></tr>');
+  }
+
+  const contadorVisibles = document.getElementById('finanzasEquiposVisibles');
+  const contadorTotal = document.getElementById('finanzasEquiposTotal');
+  if (contadorVisibles) contadorVisibles.textContent = visibles;
+  if (contadorTotal) contadorTotal.textContent = total;
+}
+
+document.getElementById('btnBuscarFinanzasEquipo')?.addEventListener('click', aplicarBusquedaFinanzas);
+document.getElementById('buscarFinanzasEquipo')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    aplicarBusquedaFinanzas();
+  }
+});
+document.getElementById('buscarFinanzasEquipo')?.addEventListener('input', aplicarBusquedaFinanzas);
+aplicarBusquedaFinanzas();
 
 function aplicarFiltrosUsuariosAdmin() {
   const busqueda = (document.getElementById('buscarUsuariosAdmin')?.value || '').trim().toUpperCase();
@@ -5304,7 +6227,10 @@ function aplicarFiltrosUsuariosAdmin() {
 
 document.getElementById('btnBuscarUsuariosAdmin')?.addEventListener('click', aplicarFiltrosUsuariosAdmin);
 document.getElementById('buscarUsuariosAdmin')?.addEventListener('keydown', event => {
-  if (event.key === 'Enter') aplicarFiltrosUsuariosAdmin();
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    aplicarFiltrosUsuariosAdmin();
+  }
 });
 document.getElementById('filtroUsuariosTorneo')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
 document.getElementById('filtroUsuariosRol')?.addEventListener('change', aplicarFiltrosUsuariosAdmin);
@@ -5403,30 +6329,46 @@ async function refrescarAuditoria() {
   }
 }
 
-function aplicarFiltroPartidosFechaCalendario() {
-  const fecha = document.getElementById('filtroPartidosFechaCalendario')?.value || '';
-  const url = new URL(window.location.href);
+function inicializarNavegadorFechasFixture() {
+  const contenedor = document.getElementById('fechasTab');
+  const tabActual = document.getElementById('fechaActualTab');
+  const btnAnterior = document.getElementById('btnFechaAnterior');
+  const btnSiguiente = document.getElementById('btnFechaSiguiente');
+  const tabsOcultos = Array.from(document.querySelectorAll('#fechasTabOculto .fixture-fecha-tab'));
+  if (!contenedor || !tabActual || !btnAnterior || !btnSiguiente || !tabsOcultos.length) return;
 
-  url.searchParams.delete('grupo_id');
-  url.searchParams.delete('fecha');
-  if (fecha) {
-    url.searchParams.set('fecha_calendario', fecha);
-  } else {
-    url.searchParams.delete('fecha_calendario');
+  const limpiarTextoFecha = texto => (texto || '').replace(/\s+/g, ' ').trim();
+  let indiceActivo = Number.parseInt(contenedor.dataset.fechaActivaIndex || '0', 10);
+  if (!Number.isFinite(indiceActivo) || indiceActivo < 0) indiceActivo = 0;
+
+  function sincronizarNavegador(indice) {
+    indiceActivo = Math.max(0, Math.min(indice, tabsOcultos.length - 1));
+    const tabDestino = tabsOcultos[indiceActivo];
+    if (!tabDestino) return;
+
+    bootstrap.Tab.getOrCreateInstance(tabDestino).show();
+    tabActual.textContent = limpiarTextoFecha(tabDestino.textContent);
+    tabActual.dataset.bsTarget = tabDestino.dataset.bsTarget || '';
+    tabActual.setAttribute('aria-controls', tabDestino.getAttribute('aria-controls') || '');
+    btnAnterior.disabled = indiceActivo <= 0;
+    btnSiguiente.disabled = indiceActivo >= tabsOcultos.length - 1;
+    contenedor.dataset.fechaActivaIndex = String(indiceActivo);
+
+    const numeroFecha = (tabDestino.id || '').replace('fecha-', '').replace('-tab', '');
+    if (numeroFecha) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('fecha', numeroFecha);
+      url.searchParams.delete('fecha_calendario');
+      history.replaceState(null, '', `${url.pathname}${url.search}#partidos`);
+    }
   }
 
-  window.location = `${url.pathname}${url.search}#partidos`;
+  btnAnterior.addEventListener('click', () => sincronizarNavegador(indiceActivo - 1));
+  btnSiguiente.addEventListener('click', () => sincronizarNavegador(indiceActivo + 1));
+  tabActual.addEventListener('click', () => sincronizarNavegador(indiceActivo));
 }
 
-document.getElementById('btnFiltrarPartidosFecha')?.addEventListener('click', aplicarFiltroPartidosFechaCalendario);
-document.getElementById('filtroPartidosFechaCalendario')?.addEventListener('keydown', event => {
-  if (event.key === 'Enter') aplicarFiltroPartidosFechaCalendario();
-});
-document.getElementById('btnLimpiarPartidosFecha')?.addEventListener('click', () => {
-  const input = document.getElementById('filtroPartidosFechaCalendario');
-  if (input) input.value = '';
-  aplicarFiltroPartidosFechaCalendario();
-});
+inicializarNavegadorFechasFixture();
 
 function activarVistaPublicaPartidos() {
   const panel = document.getElementById('partidos');
@@ -5476,9 +6418,54 @@ if (sessionStorage.getItem('jugadoresModoAdmin') === '1') {
   activarVistaPublicaJugadores();
 }
 
+const appNavToggle = document.getElementById('appNavToggle');
+const appNavActions = document.getElementById('appNavActions');
+let appNavCloseTimer = null;
+
+function cerrarMenuAppNav() {
+  if (!appNavActions || !appNavToggle) return;
+  appNavActions.classList.remove('is-open');
+  appNavToggle.setAttribute('aria-expanded', 'false');
+  if (appNavCloseTimer) {
+    clearTimeout(appNavCloseTimer);
+    appNavCloseTimer = null;
+  }
+}
+
+function programarCierreMenuAppNav() {
+  if (appNavCloseTimer) clearTimeout(appNavCloseTimer);
+  appNavCloseTimer = setTimeout(cerrarMenuAppNav, 3000);
+}
+
+appNavToggle?.addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  const menuAbierto = appNavActions?.classList.toggle('is-open');
+  appNavToggle.setAttribute('aria-expanded', menuAbierto ? 'true' : 'false');
+  if (menuAbierto) {
+    programarCierreMenuAppNav();
+  } else {
+    cerrarMenuAppNav();
+  }
+});
+
+appNavActions?.addEventListener('click', event => {
+  if (event.target.closest('a')) cerrarMenuAppNav();
+});
+
+document.addEventListener('click', event => {
+  if (!appNavActions?.classList.contains('is-open')) return;
+  if (event.target.closest('#appNavActions') || event.target.closest('#appNavToggle')) return;
+  cerrarMenuAppNav();
+});
+
 document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', event => {
+    cerrarMenuAppNav();
     const href = event.target?.getAttribute('href');
+    if (!href) return;
+
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${href}`);
 
     if (href !== '#partidos') {
       sessionStorage.removeItem('partidosModoAdmin');
@@ -5500,6 +6487,22 @@ document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
       activarVistaPublicaUsuarios();
     } else if (sessionStorage.getItem('usuariosModoAdmin') !== '1') {
       activarVistaPublicaUsuarios();
+    }
+
+    if (href === '#torneos') {
+      refrescarDashboardInicioSiNecesario();
+    }
+
+    if (href === '#finanzas') {
+      sincronizarFinanzasDesdeServidor();
+    }
+
+    if (href === '#estadisticas') {
+      recalcularEstadisticasCliente();
+    }
+
+    if (href === '#usuarios') {
+      aplicarFiltrosUsuariosAdmin();
     }
 
     if (href === '#auditoria') {
@@ -5629,5 +6632,9 @@ function inicializarPullToRefresh() {
 inicializarPullToRefresh();
 </script>
 
+<script>
+  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+</script>
+<script src="/js/session-abandon-guard.js"></script>
 
 </div>

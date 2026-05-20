@@ -14,10 +14,16 @@ logs/
 
 # Documentacion privada local: credenciales, dumps y backups reales.
 docs/_privado/
+DB PARA PRD/
+*.sql.bak
 
 # Evitar publicar por accidente dumps o notas privadas dentro de public.
 public/*.sql
+public/*.bak
 public/db/
 public/DB PARA PRD/
 public/contexto*.txt
 public/contexto_*.md
+
+# Uploads generados por pruebas/usuarios. Los archivos ya trackeados se mantienen.
+public/uploads/*

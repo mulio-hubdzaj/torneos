@@ -2,9 +2,28 @@
 <html>
 <head>
   <title>Ver equipo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
   <style>
+    html,
+    body {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
+    .equipo-ver-main {
+      width: min(100%, 760px);
+    }
+
+    .equipo-ver-card {
+      overflow: hidden;
+    }
+
+    .equipo-ver-header {
+      min-width: 0;
+    }
+
     .equipo-logo {
       width: 96px;
       height: 96px;
@@ -25,6 +44,57 @@
       background: #212529;
       color: #fff;
     }
+
+    .equipo-jugadores-scroll {
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .equipo-jugadores-scroll table {
+      min-width: 520px;
+    }
+
+    @media (max-width: 576px) {
+      .navbar .container-fluid {
+        gap: 0.5rem;
+      }
+
+      .navbar-brand {
+        max-width: calc(100vw - 112px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .equipo-ver-main {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+      }
+
+      .equipo-ver-card .card-header {
+        padding: 0.85rem;
+      }
+
+      .equipo-ver-header {
+        align-items: flex-start !important;
+      }
+
+      .equipo-logo {
+        width: 72px;
+        height: 72px;
+        flex: 0 0 auto;
+      }
+
+      .equipo-ver-header h4 {
+        font-size: 1.08rem;
+        overflow-wrap: anywhere;
+      }
+
+      .list-group-item {
+        gap: 0.5rem;
+      }
+    }
   </style>
 </head>
 <body class="bg-stadium">
@@ -37,10 +107,10 @@
     </div>
   </nav>
 
-  <main class="container mt-4">
-    <div class="card shadow">
+  <main class="container mt-4 equipo-ver-main">
+    <div class="card shadow equipo-ver-card">
       <div class="card-header bg-secondary text-white">
-        <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-3 equipo-ver-header">
           <img src="<%= equipo.icono || '/images/default_team.png' %>" alt="" class="equipo-logo">
           <div>
             <h4 class="mb-1"><%= equipo.nombre %></h4>
@@ -67,7 +137,7 @@
         </ul>
 
         <h5>Jugadores</h5>
-        <div class="table-responsive mb-4">
+        <div class="table-responsive mb-4 equipo-jugadores-scroll">
           <table class="table table-sm align-middle">
             <thead class="table-light">
               <tr>
@@ -120,5 +190,9 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+  </script>
+  <script src="/js/session-abandon-guard.js"></script>
 </body>
 </html>

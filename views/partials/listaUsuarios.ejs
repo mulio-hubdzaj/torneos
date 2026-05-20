@@ -3,42 +3,71 @@
 
 
 <div id="usuariosTable">
-  <table class="table table-striped">
+  <table class="table table-striped asignar-delegados-table">
+    <colgroup>
+      <col class="delegado-seleccion-col">
+      <col class="delegado-nombre-col">
+      <col class="delegado-correo-col">
+      <col class="delegado-documento-col">
+      <col class="delegado-rol-col">
+      <col class="delegado-estado-col">
+      <col class="delegado-vinculo-col">
+    </colgroup>
     <thead>
       <tr>
-        <th>Seleccionar</th>
+        <th class="delegado-seleccion-heading">Seleccionar</th>
         <th>Nombre</th>
-        <th>Correo</th>
+        <th class="delegado-correo-heading">Correo</th>
         <th>Documento</th>
-        <th>Rol actual</th>
+        <th class="delegado-rol-heading">Rol actual</th>
+        <th>Estado</th>
         <th>Vinculado</th>
       </tr>
     </thead>
     <tbody>
       <% usuarios.forEach(u => { %>
+        <%
+          const partesNombre = String(u.nombre || '').trim().split(/\s+/).filter(Boolean);
+          const nombrePrincipal = partesNombre.shift() || '';
+          const nombreResto = partesNombre.join(' ');
+        %>
         <tr>
           <td>
             <input type="checkbox" name="delegados[]" value="<%= u.id_usuario %>"
               <%= u.puede_asignar_delegado ? '' : 'disabled' %>>
           </td>
-          <td><%= u.nombre %></td>
-          <td><%= u.correo %></td>
-          <td><%= u.documento %></td>
           <td>
+            <span class="delegado-nombre">
+              <span class="delegado-nombre-linea"><%= nombrePrincipal %></span>
+              <% if (nombreResto) { %>
+                <span class="delegado-nombre-linea"><%= nombreResto %></span>
+              <% } %>
+            </span>
+          </td>
+          <td class="delegado-correo delegado-correo-cell"><%= u.correo %></td>
+          <td class="delegado-documento"><%= u.documento %></td>
+          <td class="delegado-rol-cell">
             <% if (u.rol_id == 1) { %> Espectador <% } %>
             <% if (u.rol_id == 2) { %> Delegado <% } %>
             <% if (u.rol_id == 3) { %> Admin <% } %>
             <% if (u.rol_id == 99) { %> SuperAdmin <% } %>
           </td>
           <td>
-            <% if (u.puede_asignar_delegado) { %>
-              <span class="badge bg-secondary">Libre</span>
-            <% } else if (u.vinculo && u.vinculo.startsWith('Delegado')) { %>
-              <span class="badge bg-success"><%= u.vinculo %></span>
-            <% } else if (u.vinculo && u.vinculo.startsWith('Jugador')) { %>
-              <span class="badge bg-info"><%= u.vinculo %></span>
+            <% if (u.estado) { %>
+              <span class="badge bg-success delegado-estado-badge">Activo</span>
             <% } else { %>
-              <span class="badge bg-warning text-dark">No disponible</span>
+              <span class="badge bg-warning text-dark delegado-estado-badge">Pendiente</span>
+            <% } %>
+          </td>
+          <td>
+            <% if (u.puede_asignar_delegado) { %>
+              <span class="badge bg-secondary delegado-vinculo-badge">Libre</span>
+            <% } else if (u.vinculo && u.vinculo.startsWith('Delegado')) { %>
+              <span class="badge bg-success delegado-vinculo-badge"><%= u.vinculo %></span>
+            <% } else if (u.vinculo && u.vinculo.startsWith('Jugador')) { %>
+              <span class="badge bg-info delegado-vinculo-badge"><%= u.vinculo %></span>
+            <% } else { %>
+              <span class="badge bg-warning text-dark delegado-vinculo-badge">No disponible</span>
             <% } %>
           </td>
         </tr>

@@ -43,11 +43,11 @@ exports.crear = async (req, res) => {
     });
 
     req.flash("success", "Grupo creado con exito");
-    res.redirect(`/torneos/gestionar/${id_torneo}`);
+    res.redirect(`/torneos/gestionar/${id_torneo}#grupos`);
   } catch (error) {
     console.error("Error al crear grupo:", error);
     req.flash("danger", "No se pudo crear el grupo al parecer ya existe uno similar");
-    res.redirect(req.body.id_torneo ? `/torneos/gestionar/${req.body.id_torneo}` : volverAtras(req));
+    res.redirect(req.body.id_torneo ? `/torneos/gestionar/${req.body.id_torneo}#grupos` : volverAtras(req));
   }
 };
 
@@ -113,7 +113,7 @@ exports.editar = async (req, res) => {
     await grupo.save();
 
     req.flash("success", "Nombre del grupo actualizado");
-    res.redirect(`/torneos/gestionar/${grupo.id_torneo}`);
+    res.redirect(`/torneos/gestionar/${grupo.id_torneo}#grupos`);
   } catch (error) {
     console.error("Error al editar grupo:", error);
     req.flash("danger", "No se pudo actualizar el grupo");
@@ -194,12 +194,12 @@ exports.eliminar = async (req, res) => {
 
     if (grupo.Equipos && grupo.Equipos.length > 0) {
       req.flash("danger", "No se puede eliminar: el grupo contiene equipos");
-      return res.redirect(`/torneos/gestionar/${grupo.id_torneo}`);
+      return res.redirect(`/torneos/gestionar/${grupo.id_torneo}#grupos`);
     }
 
     await grupo.destroy();
     req.flash("success", "Grupo eliminado con exito");
-    res.redirect(`/torneos/gestionar/${grupo.id_torneo}`);
+    res.redirect(`/torneos/gestionar/${grupo.id_torneo}#grupos`);
   } catch (error) {
     console.error("Error al eliminar grupo:", error);
     req.flash("danger", "Error al eliminar grupo");

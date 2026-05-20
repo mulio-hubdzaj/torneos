@@ -3,32 +3,196 @@
 <head>
   <title>Bienvenido al sistema</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    .welcome-index-page {
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .welcome-stack {
+      display: grid;
+      gap: 0.9rem;
+      width: min(520px, calc(100vw - 32px));
+    }
+
+    .welcome-card,
+    .public-access-panel {
+      border: 0;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.94);
+    }
+
+    .welcome-card {
+      padding: clamp(1rem, 3vw, 1.5rem) !important;
+    }
+
+    .welcome-title {
+      color: #003b16;
+      font-size: clamp(1.35rem, 4vw, 1.85rem);
+      font-weight: 800;
+      line-height: 1.12;
+      margin: 0 auto 1rem;
+      max-width: 390px;
+    }
+
+    .welcome-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      justify-content: center;
+    }
+
+    .welcome-actions .btn {
+      min-width: 118px;
+      padding: 0.52rem 0.9rem;
+      font-weight: 700;
+    }
+
+    .public-access-panel {
+      padding: clamp(0.85rem, 2.5vw, 1.1rem) !important;
+    }
+
+    .public-access-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      font-weight: 700;
+      min-height: 46px;
+    }
+
+    .public-access-panel small {
+      line-height: 1.35;
+    }
+
+    .community-list {
+      max-height: min(420px, 62vh);
+      overflow-y: auto;
+    }
+
+    .community-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      border: 1px solid #d7e7dc;
+      border-radius: 6px;
+      background: #f8fbf9;
+    }
+
+    .community-option + .community-option {
+      margin-top: 0.6rem;
+    }
+
+    .community-name {
+      min-width: 0;
+      font-weight: 700;
+      color: #163b25;
+      overflow-wrap: anywhere;
+    }
+
+    .community-code {
+      color: #5d6f65;
+      font-size: 0.84rem;
+    }
+
+    @media (max-width: 576px) {
+      .welcome-index-page {
+        align-items: flex-start !important;
+        min-height: 100dvh !important;
+        padding-top: max(1rem, env(safe-area-inset-top));
+      }
+
+      .welcome-stack {
+        width: min(100%, 420px);
+      }
+
+      .welcome-actions .btn {
+        flex: 1 1 140px;
+      }
+
+      .community-option {
+        align-items: stretch;
+        flex-direction: column;
+      }
+    }
+  </style>
 </head>
 <body class="welcome-index-page d-flex justify-content-center align-items-center min-vh-100">
+  <% const comunidadesDisponibles = typeof comunidades !== 'undefined' ? comunidades : []; %>
 
-  <div class="card shadow p-4 welcome-card">
-    <h1 class="mb-4 text-center">Bienvenido a la App de gestion deportiva</h1>
+  <div class="welcome-stack">
+    <div class="card shadow p-4 welcome-card">
+      <h1 class="welcome-title">Bienvenido a la App de gestion deportiva</h1>
 
-    <% if (locals.messages) { %>
-      <% if (locals.messages.success && locals.messages.success.length > 0) { %>
-        <div class="alert alert-success"><%= locals.messages.success[0] %></div>
+      <% if (locals.messages) { %>
+        <% if (locals.messages.success && locals.messages.success.length > 0) { %>
+          <div class="alert alert-success"><%= locals.messages.success[0] %></div>
+        <% } %>
+        <% if (locals.messages.error && locals.messages.error.length > 0) { %>
+          <div class="alert alert-danger"><%= locals.messages.error[0] %></div>
+        <% } %>
+        <% if (locals.messages.danger && locals.messages.danger.length > 0) { %>
+          <div class="alert alert-danger"><%= locals.messages.danger[0] %></div>
+        <% } %>
+        <% if (locals.messages.info && locals.messages.info.length > 0) { %>
+          <div class="alert alert-info"><%= locals.messages.info[0] %></div>
+        <% } %>
       <% } %>
-      <% if (locals.messages.error && locals.messages.error.length > 0) { %>
-        <div class="alert alert-danger"><%= locals.messages.error[0] %></div>
-      <% } %>
-      <% if (locals.messages.danger && locals.messages.danger.length > 0) { %>
-        <div class="alert alert-danger"><%= locals.messages.danger[0] %></div>
-      <% } %>
-      <% if (locals.messages.info && locals.messages.info.length > 0) { %>
-        <div class="alert alert-info"><%= locals.messages.info[0] %></div>
-      <% } %>
-    <% } %>
 
-    <div class="welcome-actions">
-      <a href="/login" class="btn btn-primary">Iniciar sesion</a>
-      <a href="/registro" class="btn btn-secondary">Crear cuenta</a>
+      <div class="welcome-actions">
+        <a href="/login" class="btn btn-primary">Iniciar sesion</a>
+        <a href="/registro" class="btn btn-secondary">Crear cuenta</a>
+      </div>
+    </div>
+
+    <div class="public-access-panel shadow-sm mt-3 p-3 text-center">
+      <button type="button"
+              class="btn btn-success w-100 public-access-button"
+              data-bs-toggle="modal"
+              data-bs-target="#modalComunidadesPublicas">
+        <i class="bi bi-eye"></i>
+        Ver torneos sin iniciar sesión
+      </button>
+      <small class="form-text text-muted d-block mt-2">
+        Selecciona una comunidad y consulta tabla, fixture y resultados.
+      </small>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalComunidadesPublicas" tabindex="-1" aria-labelledby="modalComunidadesPublicasTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalComunidadesPublicasTitulo">Selecciona comunidad</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <% if (comunidadesDisponibles.length) { %>
+            <div class="community-list">
+              <% comunidadesDisponibles.forEach(comunidad => { %>
+                <div class="community-option">
+                  <div>
+                    <div class="community-name"><%= comunidad.descripcion || comunidad.codigo %></div>
+                    <div class="community-code"><%= comunidad.codigo %></div>
+                  </div>
+                  <a href="/publico/comunidad?entity_id=<%= comunidad.entity_id %>" class="btn btn-success btn-sm">
+                    <i class="bi bi-arrow-right-circle"></i>
+                    Ver torneos
+                  </a>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay comunidades activas para consultar.</div>
+          <% } %>
+        </div>
+      </div>
     </div>
   </div>
 </body>

@@ -82,6 +82,24 @@ async function torneoPermiteAgregarJugadores(idTorneo) {
   }
 }
 
+async function torneoPermiteModificarIconos(idTorneo) {
+  try {
+    const [torneo] = await sequelize.query(`
+      SELECT permitir_modificar_iconos_equipo
+      FROM torneos
+      WHERE id_torneo = :idTorneo
+      LIMIT 1
+    `, {
+      replacements: { idTorneo },
+      type: sequelize.QueryTypes.SELECT
+    });
+    return torneo?.permitir_modificar_iconos_equipo === true;
+  } catch (error) {
+    if (error?.parent?.code === '42703') return false;
+    throw error;
+  }
+}
+
 async function obtenerResumenMovimientoEquipo({ nombre, id_torneo, id_grupo, entityId }) {
   const existente = await Equipo.findOne({
     where: { nombre, id_torneo, entity_id: entityId },
@@ -186,7 +204,7 @@ async function crear(req, res) {
 
     if (!nombre_equipo || !id_grupo || !id_torneo) {
       req.flash("danger", "Datos incompletos para crear equipo");
-      return res.redirect(`/torneos/gestionar/${id_torneo}`);
+      return res.redirect(`/torneos/gestionar/${id_torneo}#grupos`);
     }
 
     const torneo = await Torneo.findByPk(id_torneo, { attributes: ['id_torneo', 'entity_id'], transaction: t });
@@ -225,7 +243,7 @@ async function crear(req, res) {
     if (resumenMovimiento.existe && resumenMovimiento.mismoGrupo) {
       await t.rollback();
       req.flash("warning", `El equipo "${nombre}" ya existe en este grupo`);
-      return res.redirect(`/torneos/gestionar/${id_torneo}`);
+      return res.redirect(`/torneos/gestionar/${id_torneo}#grupos`);
     }
 
     if (resumenMovimiento.existe && !resumenMovimiento.mismoGrupo) {
@@ -233,7 +251,7 @@ async function crear(req, res) {
       if (String(confirmar_mudanza) !== '1') {
         await t.rollback();
         req.flash("warning", "La mudanza del equipo requiere confirmaciÃ³n");
-        return res.redirect(`/torneos/gestionar/${id_torneo}`);
+        return res.redirect(`/torneos/gestionar/${id_torneo}#grupos`);
       }
 
       const equipo = await Equipo.findByPk(resumenMovimiento.equipo.id_equipo, { transaction: t });
@@ -275,18 +293,19 @@ async function crear(req, res) {
     }
 
     await t.commit();
-    res.redirect(`/torneos/gestionar/${id_torneo}`);
+    res.redirect(`/torneos/gestionar/${id_torneo}#grupos`);
   } catch (error) {
     await t.rollback();
     console.error("Error al crear equipo:", error);
     req.flash("danger", "Error al crear equipo");
-    res.redirect(`/torneos/gestionar/${req.body.id_torneo}`);
+    res.redirect(`/torneos/gestionar/${req.body.id_torneo}#grupos`);
   }
 }
 
 
 // Eliminar o desactivar equipo
 async function eliminar(req, res) {
+  let redirectUrl = '/torneos';
   try {
     const redirectHash = req.body.redirect_hash || '#equipos';
     const equipo = await Equipo.findByPk(req.params.id_equipo);
@@ -294,6 +313,7 @@ async function eliminar(req, res) {
       req.flash("danger", "Equipo no encontrado");
       return res.redirect('/torneos');
     }
+    redirectUrl = `/torneos/gestionar/${equipo.id_torneo}${redirectHash}`;
 
     if (!(await puedeAdministrarEquipo(req, equipo))) {
       req.flash("danger", "No puede eliminar equipos de otra entidad");
@@ -318,6 +338,34 @@ async function eliminar(req, res) {
       return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
     }
 
+    const bloqueosEliminacion = [];
+
+    if (equipo.icono && equipo.icono !== '/images/default_team.png') {
+      bloqueosEliminacion.push('logo personalizado');
+    }
+
+    const delegadosVinculados = await DelegadoEquipo.count({
+      where: { id_equipo: equipo.id_equipo }
+    });
+    if (delegadosVinculados > 0) {
+      bloqueosEliminacion.push('delegados asignados');
+    }
+
+    const jugadoresVinculados = await JugadorEquipo.count({
+      where: { id_equipo: equipo.id_equipo }
+    });
+    if (jugadoresVinculados > 0) {
+      bloqueosEliminacion.push('jugadores asignados');
+    }
+
+    if (bloqueosEliminacion.length > 0) {
+      req.flash(
+        "warning",
+        `No se puede eliminar el equipo "${equipo.nombre}" porque tiene ${bloqueosEliminacion.join(', ')}. Quite esos datos o desactive el equipo para conservar el historial.`
+      );
+      return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
+    }
+
     if (req.session.usuario_id) {
       await sequelize.query('SET app.usuario_id = :usuarioId', {
         replacements: { usuarioId: req.session.usuario_id }
@@ -335,8 +383,8 @@ async function eliminar(req, res) {
     return res.redirect(`/torneos/gestionar/${equipo.id_torneo}${redirectHash}`);
   } catch (error) {
     console.error(error);
-    req.flash("danger", "Error al eliminar equipo");
-    res.redirect('/torneos');
+    req.flash("danger", "No se pudo eliminar el equipo. Revise si tiene jugadores, delegados, logo, finanzas, items o historial asociado.");
+    res.redirect(redirectUrl);
   }
 }
 // Formulario de edición
@@ -541,6 +589,7 @@ async function administrar(req, res) {
       req.session.entity_id = equipo.entity_id;
     }
     const permitirAgregarJugadores = await torneoPermiteAgregarJugadores(equipo.id_torneo);
+    const permitirModificarIconos = await torneoPermiteModificarIconos(equipo.id_torneo);
 
     const idsJugadoresEquipo = (equipo.Jugadores || []).map(jugador => jugador.id_jugador).filter(Boolean);
     const sancionesPendientes = idsJugadoresEquipo.length > 0
@@ -578,12 +627,14 @@ async function administrar(req, res) {
              u.correo,
              u.documento,
              u.rol_id,
+             u.estado,
              CASE
                WHEN de.id_usuario IS NOT NULL THEN 'Delegado - ' || e.nombre
+               WHEN u.estado = false THEN 'Pendiente'
                ELSE 'Libre'
              END AS vinculo,
              CASE
-               WHEN u.rol_id = 1 AND de.id_usuario IS NULL THEN true
+               WHEN u.rol_id IN (1, 2) AND de.id_usuario IS NULL THEN true
                ELSE false
              END AS puede_asignar_delegado
       FROM usuarios u
@@ -596,8 +647,7 @@ async function administrar(req, res) {
             )
             AND COALESCE(de.estado, true) = true
       LEFT JOIN equipos e ON e.id_equipo = de.id_equipo
-      WHERE u.entity_id = $1
-        AND u.estado = true;
+      WHERE u.entity_id = $1;
     `, {
       bind: [req.session.entity_id, equipo.id_torneo],
       type: sequelize.QueryTypes.SELECT
@@ -611,6 +661,7 @@ async function administrar(req, res) {
       jugadores: equipo.Jugadores || [],
       delegados: equipo.Delegados || [],
       permitirAgregarJugadores,
+      permitirModificarIconos,
     });
   } catch (error) {
     console.error("Error al administrar equipo:", error);
@@ -622,11 +673,8 @@ async function administrar(req, res) {
 
 async function actualizarIcono(req, res) {
   try {
-    // Setear variable de auditoría en la sesión de Postgres
-    await sequelize.query(`SET app.usuario_id = '${req.session.usuario_id}'`);
-
     const { id_equipo } = req.params;
-    const archivo = req.file; // multer lo guarda aquí
+    const archivo = req.file;
 
     const equipo = await Equipo.findByPk(id_equipo);
     if (!equipo) {
@@ -634,21 +682,27 @@ async function actualizarIcono(req, res) {
       return res.redirect('/equipos');
     }
 
-    if (!(await puedeAdministrarEquipo(req, equipo))) {
+    if (!(await puedeAdministrarEquipo(req, equipo, { permitirDelegado: true }))) {
       req.flash("danger", "No puede actualizar equipos de otra entidad");
       return res.redirect('/torneos');
     }
 
-    // Si se subió archivo, usar su path; si no, default
-    equipo.icono = archivo ? `/uploads/${archivo.filename}` : '/images/default_team.png';
+    if (Number(req.session.rol_id) === 2 && !(await torneoPermiteModificarIconos(equipo.id_torneo))) {
+      req.flash("danger", "El torneo no permite que los delegados modifiquen iconos de sus equipos");
+      return res.redirect(`/equipos/administrar/${id_equipo}`);
+    }
+
+    if (!archivo) {
+      req.flash("warning", "Seleccione una imagen para actualizar el icono");
+      return res.redirect(`/equipos/administrar/${id_equipo}`);
+    }
+
+    await setAuditContext(req, equipo.entity_id || req.session.entity_id);
+
+    equipo.icono = `/uploads/${archivo.filename}`;
     await equipo.save();
 
-    // Si la auditoría ya está en triggers, puedes comentar esta línea
-    // const usuarioId = req.session.usuario_id;
-    // await registrarAuditoria(usuarioId, null, "equipos", "UPDATE_ICONO", { id_equipo });
-
     req.flash("success", "Icono actualizado correctamente");
-    // Redirigir al mismo equipo en administrar
     res.redirect(`/equipos/administrar/${id_equipo}`);
   } catch (error) {
     console.error(error);
@@ -679,12 +733,14 @@ async function buscarUsuariosEntidad(req, res) {
                u.correo,
                u.documento,
                u.rol_id,
+               u.estado,
                CASE
                  WHEN de.id_usuario IS NOT NULL THEN 'Delegado - ' || e.nombre
+                 WHEN u.estado = false THEN 'Pendiente'
                  ELSE 'Libre'
                END AS vinculo,
                CASE
-                 WHEN u.rol_id = 1 AND de.id_usuario IS NULL THEN true
+                 WHEN u.rol_id IN (1, 2) AND de.id_usuario IS NULL THEN true
                  ELSE false
                END AS puede_asignar_delegado
         FROM usuarios u
@@ -698,7 +754,6 @@ async function buscarUsuariosEntidad(req, res) {
               AND COALESCE(de.estado, true) = true
         LEFT JOIN equipos e ON e.id_equipo = de.id_equipo
         WHERE u.entity_id = $1
-          AND u.estado = true
           AND (u.documento ILIKE $3 OR u.nombre ILIKE $3);
       `, {
         bind: [entityId, id_torneo, `%${query}%`],
@@ -712,11 +767,11 @@ async function buscarUsuariosEntidad(req, res) {
                u.correo,
                u.documento,
                u.rol_id,
-               'Libre' AS vinculo,
-               CASE WHEN u.rol_id = 1 THEN true ELSE false END AS puede_asignar_delegado
+               u.estado,
+               CASE WHEN u.estado = false THEN 'Pendiente' ELSE 'Libre' END AS vinculo,
+               CASE WHEN u.rol_id IN (1, 2) THEN true ELSE false END AS puede_asignar_delegado
         FROM usuarios u
         WHERE u.entity_id = $1
-          AND u.estado = true
           AND (u.documento ILIKE $2 OR u.nombre ILIKE $2);
       `, {
         bind: [entityId, `%${query}%`],
@@ -802,9 +857,10 @@ async function actualizarRolDelegadoSegunVinculos(id_usuario, entity_id = null) 
   if (vinculosActivos.length > 0) {
     await sequelize.query(`
       UPDATE usuarios
-      SET rol_id = 2
+      SET rol_id = 2,
+          estado = true
       WHERE id_usuario = $1
-        AND rol_id = 1
+        AND rol_id IN (1, 2)
     `, {
       bind: [id_usuario],
       type: sequelize.QueryTypes.UPDATE
@@ -812,13 +868,48 @@ async function actualizarRolDelegadoSegunVinculos(id_usuario, entity_id = null) 
   } else {
     await sequelize.query(`
       UPDATE usuarios
-      SET rol_id = 1
+      SET rol_id = 1,
+          estado = false
       WHERE id_usuario = $1
-        AND rol_id = 2
+        AND rol_id IN (1, 2)
     `, {
       bind: [id_usuario],
       type: sequelize.QueryTypes.UPDATE
     });
+  }
+}
+
+async function eliminarIcono(req, res) {
+  const { id_equipo } = req.params;
+
+  try {
+    const equipo = await Equipo.findByPk(id_equipo);
+    if (!equipo) {
+      req.flash("danger", "Equipo no encontrado");
+      return res.redirect('/equipos');
+    }
+
+    if (!(await puedeAdministrarEquipo(req, equipo, { permitirDelegado: true }))) {
+      req.flash("danger", "No puede actualizar equipos de otra entidad");
+      return res.redirect('/torneos');
+    }
+
+    if (Number(req.session.rol_id) === 2 && !(await torneoPermiteModificarIconos(equipo.id_torneo))) {
+      req.flash("danger", "El torneo no permite que los delegados modifiquen iconos de sus equipos");
+      return res.redirect(`/equipos/administrar/${id_equipo}`);
+    }
+
+    await setAuditContext(req, equipo.entity_id || req.session.entity_id);
+
+    equipo.icono = '/images/default_team.png';
+    await equipo.save();
+
+    req.flash("success", "Icono personalizado eliminado");
+    return res.redirect(`/equipos/administrar/${id_equipo}`);
+  } catch (error) {
+    console.error("Error al eliminar icono:", error);
+    req.flash("danger", "Error al eliminar icono");
+    return res.redirect(`/equipos/administrar/${id_equipo}`);
   }
 }
 
@@ -870,8 +961,7 @@ async function asignarDelegados(req, res) {
         FROM usuarios u
         WHERE u.id_usuario = $1
           AND u.entity_id = $2
-          AND u.estado = true
-          AND u.rol_id = 1
+          AND u.rol_id IN (1, 2)
           AND NOT EXISTS (
             SELECT 1
             FROM delegados_equipos de
@@ -897,7 +987,7 @@ async function asignarDelegados(req, res) {
       asignados += 1;
     }
 
-    req.flash(asignados > 0 ? 'success' : 'warning', asignados > 0 ? 'Delegados asignados correctamente' : 'Solo se pueden asignar usuarios libres como delegados');
+    req.flash(asignados > 0 ? 'success' : 'warning', asignados > 0 ? 'Delegados asignados correctamente' : 'Solo se pueden asignar usuarios sin vinculo de delegado en este torneo');
     res.redirect(`/equipos/administrar/${id_equipo}`);
   } catch (error) {
     console.error("Error en asignarDelegados:", error);
@@ -1375,6 +1465,7 @@ module.exports = {
   buscarUsuariosEntidad,
   buscarJugadores,
   actualizarIcono,
+  eliminarIcono,
   asignarDelegados,
   desvincularDelegado,
   asignarJugadores,
