@@ -21,7 +21,7 @@ const sessionMaxAgeMsEnv = Number(process.env.SESSION_MAX_AGE_MS);
 const sessionMaxAgeMs = Number.isFinite(sessionMaxAgeMsEnv) && sessionMaxAgeMsEnv > 0
   ? sessionMaxAgeMsEnv
   : DEFAULT_SESSION_MAX_AGE_MS;
-const DEFAULT_ABANDON_TIMEOUT_MS = 1000 * 60 * 3;
+const DEFAULT_ABANDON_TIMEOUT_MS = 1000 * 60 * 5;
 const abandonTimeoutMsEnv = Number(process.env.ABANDON_TIMEOUT_MS);
 const abandonTimeoutMs = Number.isFinite(abandonTimeoutMsEnv) && abandonTimeoutMsEnv > 0
   ? abandonTimeoutMsEnv

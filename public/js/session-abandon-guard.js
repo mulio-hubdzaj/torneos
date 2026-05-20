@@ -1,5 +1,5 @@
 (function () {
-  const timeoutMs = Number(window.APP_ABANDON_TIMEOUT_MS || 180000);
+  const timeoutMs = Number(window.APP_ABANDON_TIMEOUT_MS || 300000);
   const hiddenKey = 'torneos:lastHiddenAt';
   const heartbeatMs = 60000;
 

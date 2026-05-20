@@ -340,10 +340,6 @@ async function eliminar(req, res) {
 
     const bloqueosEliminacion = [];
 
-    if (equipo.icono && equipo.icono !== '/images/default_team.png') {
-      bloqueosEliminacion.push('logo personalizado');
-    }
-
     const delegadosVinculados = await DelegadoEquipo.count({
       where: { id_equipo: equipo.id_equipo }
     });
@@ -356,6 +352,19 @@ async function eliminar(req, res) {
     });
     if (jugadoresVinculados > 0) {
       bloqueosEliminacion.push('jugadores asignados');
+    }
+
+    const [cargasEquipo] = await sequelize.query(`
+      SELECT
+        (SELECT COUNT(*) FROM items_equipo WHERE id_equipo = :equipoId) AS items,
+        (SELECT COUNT(*) FROM finanzas WHERE id_equipo = :equipoId) AS finanzas
+    `, {
+      replacements: { equipoId: equipo.id_equipo },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    if (Number(cargasEquipo?.items || 0) > 0 || Number(cargasEquipo?.finanzas || 0) > 0) {
+      bloqueosEliminacion.push('items o finanzas generados');
     }
 
     if (bloqueosEliminacion.length > 0) {

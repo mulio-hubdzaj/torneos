@@ -996,14 +996,16 @@ function prepararCanvasPortada() {
   if (!img || !hidden || !img.naturalWidth || !img.naturalHeight) return true;
 
   const canvas = document.createElement('canvas');
-  canvas.width = 1600;
-  canvas.height = 500;
+  const canvasWidth = 1600;
+  const canvasHeight = Math.max(120, Math.round(canvasWidth * (img.naturalHeight / img.naturalWidth)));
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d');
   const marco = document.getElementById('portadaAjusteMarco');
   const rect = marco.getBoundingClientRect();
-  const baseScale = Math.max(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+  const baseScale = canvas.width / img.naturalWidth;
   const displayToCanvasX = canvas.width / rect.width;
-  const displayToCanvasY = canvas.height / rect.height;
+  const displayToCanvasY = rect.height ? canvas.height / rect.height : displayToCanvasX;
   const drawWidth = img.naturalWidth * baseScale * estadoPortadaAjuste.zoom;
   const drawHeight = img.naturalHeight * baseScale * estadoPortadaAjuste.zoom;
   const drawX = (canvas.width - drawWidth) / 2 + (estadoPortadaAjuste.x * displayToCanvasX);
@@ -2667,6 +2669,86 @@ async function confirmarToggleEquipo(input) {
   padding-right: 0;
 }
 
+@media (min-width: 769px) {
+  .torneos-page > .tab-content.container,
+  .torneos-page .tab-content {
+    width: min(1360px, calc(100vw - 20px)) !important;
+    max-width: none !important;
+  }
+
+  .torneos-page #partidos .card-partidos {
+    max-width: none;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .fixture-partidos-table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table-responsive {
+    overflow-x: visible !important;
+  }
+
+  .torneos-page #partidos .fixture-partidos-table th,
+  .torneos-page #partidos .fixture-partidos-table td {
+    padding-left: 0.38rem;
+    padding-right: 0.38rem;
+    vertical-align: middle;
+  }
+
+  .torneos-page #partidos .partidos-equipo-nombre,
+  .torneos-page #partidos .fixture-web-col {
+    font-size: 0.78rem;
+  }
+
+  .torneos-page #partidos .estado-select {
+    min-width: 0;
+    font-size: 0.78rem;
+    padding-left: 0.35rem;
+    padding-right: 1.45rem;
+  }
+
+  .torneos-page #partidos .fixture-equipo-col {
+    width: 17%;
+  }
+
+  .torneos-page #partidos .fixture-marcador-col {
+    width: 7%;
+  }
+
+  .torneos-page #partidos .fixture-grupo-col {
+    width: 9%;
+  }
+
+  .torneos-page #partidos .fixture-fecha-col {
+    width: 9%;
+  }
+
+  .torneos-page #partidos .fixture-hora-col {
+    width: 8%;
+  }
+
+  .torneos-page #partidos .fixture-estado-col {
+    width: 12%;
+  }
+
+  .torneos-page #partidos .fixture-acciones-col {
+    width: 21%;
+  }
+
+  .torneos-page #partidos td.partidos-admin-only .btn-group {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 0.2rem;
+  }
+
+  .torneos-page #partidos td.partidos-admin-only .btn {
+    padding: 0.22rem 0.38rem !important;
+    font-size: 0.76rem !important;
+  }
+}
+
 .card.border-left-primary {
   border-left: 4px solid #007bff;
 }
@@ -2785,17 +2867,36 @@ async function confirmarToggleEquipo(input) {
   text-align: center;
 }
 
+.fixture-grupo-col {
+  width: 14%;
+}
+
+.fixture-fecha-col,
+.fixture-hora-col {
+  width: 10%;
+}
+
 .fixture-estado-col {
-  width: 15%;
+  width: 12%;
 }
 
 .fixture-acciones-col {
-  width: 32%;
+  width: 18%;
   text-align: center;
 }
 
 .torneos-page #partidos:not(.partidos-vista-publica) .table-responsive {
   overflow-x: auto !important;
+}
+
+.torneos-page #partidos .fixture-partidos-table thead.table-dark th {
+  background: #0d6efd;
+  border-color: #0b5ed7;
+  color: #fff;
+}
+
+.torneos-page #partidos .partido-detalle-row {
+  display: none;
 }
 
 .carga-partido-table th,
@@ -2910,8 +3011,19 @@ async function confirmarToggleEquipo(input) {
 
 .dashboard-scroll-area {
   max-height: 220px;
-  overflow-y: auto;
+  overflow-y: auto !important;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.dashboard-scroll-area.table-responsive {
+  overflow-x: auto;
+  overflow-y: auto !important;
+}
+
+.dashboard-scroll-area .table {
+  margin-bottom: 0;
 }
 
 .dashboard-scroll-area::-webkit-scrollbar {
@@ -2987,11 +3099,10 @@ async function confirmarToggleEquipo(input) {
 .torneo-portada {
   width: 100%;
   max-width: 860px;
-  max-height: 260px;
   margin-left: auto;
   margin-right: auto;
-  overflow: hidden;
-  background: #0b1f3a;
+  overflow: visible;
+  background: transparent;
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -3000,15 +3111,19 @@ async function confirmarToggleEquipo(input) {
 
 .torneo-portada img {
   display: block;
-  width: 100%;
-  max-height: 260px;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 240px;
   object-fit: contain;
+  border-radius: 6px;
 }
 
 .portada-preview {
   width: 100%;
   max-height: 180px;
-  object-fit: cover;
+  object-fit: contain;
+  background: #0b1f3a;
   border-radius: 6px;
 }
 
@@ -3022,8 +3137,9 @@ async function confirmarToggleEquipo(input) {
 
 .portada-ajuste-marco {
   width: 100%;
-  aspect-ratio: 16 / 5;
-  overflow: hidden;
+  min-height: 80px;
+  max-height: 190px;
+  overflow: auto;
   background: #111827;
   border: 1px solid rgba(15, 23, 42, 0.16);
   border-radius: 6px;
@@ -3037,8 +3153,9 @@ async function confirmarToggleEquipo(input) {
 
 .portada-ajuste-marco img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  max-height: 190px;
+  object-fit: contain;
   transform-origin: center center;
   user-select: none;
   pointer-events: none;
@@ -3764,10 +3881,14 @@ async function confirmarToggleEquipo(input) {
     grid-area: equipoB;
   }
 
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(4) {
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(8) {
     grid-area: estado;
     justify-self: end;
     padding-top: 0;
+  }
+
+  .torneos-page #partidos .fixture-web-col {
+    display: none !important;
   }
 
   .torneos-page #partidos .table tr[data-partido-row] > td {
@@ -3835,12 +3956,12 @@ async function confirmarToggleEquipo(input) {
     grid-area: equipoB;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(4) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(8) {
     grid-area: estado;
     align-self: center;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(5) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(9) {
     grid-area: acciones;
     align-self: center;
   }
@@ -4253,6 +4374,112 @@ async function confirmarToggleEquipo(input) {
     padding-top: 150px;
   }
 
+}
+
+@media (min-width: 769px) {
+  body.torneos-page > .tab-content.container {
+    width: min(1440px, calc(100vw - 16px)) !important;
+    max-width: none !important;
+  }
+
+  body.torneos-page #partidos .card-partidos {
+    max-width: none !important;
+    overflow: visible;
+  }
+
+  body.torneos-page #partidos .fixture-fecha-panel {
+    overflow-x: visible;
+  }
+
+  body.torneos-page #partidos:not(.partidos-vista-publica) .table-responsive {
+    overflow-x: visible !important;
+  }
+
+  body.torneos-page #partidos:not(.partidos-vista-publica) .fixture-partidos-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    font-size: 0.78rem !important;
+  }
+
+  body.torneos-page #partidos .fixture-partidos-table th,
+  body.torneos-page #partidos .fixture-partidos-table td {
+    padding-left: 0.26rem;
+    padding-right: 0.26rem;
+  }
+
+  body.torneos-page #partidos .fixture-equipo-col {
+    width: 16%;
+  }
+
+  body.torneos-page #partidos .fixture-marcador-col {
+    width: 7%;
+  }
+
+  body.torneos-page #partidos .fixture-grupo-col {
+    width: 8%;
+  }
+
+  body.torneos-page #partidos .fixture-fecha-col {
+    width: 8%;
+  }
+
+  body.torneos-page #partidos .fixture-hora-col {
+    width: 7%;
+  }
+
+  body.torneos-page #partidos .fixture-estado-col {
+    width: 12%;
+  }
+
+  body.torneos-page #partidos .fixture-acciones-col {
+    width: 26%;
+  }
+
+  body.torneos-page #partidos .partidos-equipo {
+    grid-template-columns: 18px minmax(0, 1fr) 24px;
+    gap: 0.25rem;
+  }
+
+  body.torneos-page #partidos .partidos-equipo-icono {
+    width: 18px;
+    height: 18px;
+  }
+
+  body.torneos-page #partidos .partidos-equipo-carga {
+    width: 24px;
+    height: 24px;
+  }
+
+  body.torneos-page #partidos .partidos-equipo-nombre {
+    font-size: 0.76rem;
+  }
+
+  body.torneos-page #partidos .estado-select {
+    font-size: 0.76rem;
+    padding-left: 0.25rem;
+    padding-right: 1.25rem;
+  }
+
+  body.torneos-page #partidos td.partidos-admin-only .btn-group {
+    display: inline-flex !important;
+    flex-wrap: nowrap;
+    gap: 0.15rem;
+  }
+
+  body.torneos-page #partidos td.partidos-admin-only form {
+    display: inline-block !important;
+  }
+
+  body.torneos-page #partidos td.partidos-admin-only .btn {
+    width: 26px;
+    height: 26px;
+    padding: 0 !important;
+    font-size: 0.72rem !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }
 </style>
 
@@ -5047,6 +5274,9 @@ async function confirmarToggleEquipo(input) {
                       <th class="fixture-equipo-col">Equipo A</th>
                       <th class="fixture-marcador-col">Marcador</th>
                       <th class="fixture-equipo-col">Equipo B</th>
+                      <th class="fixture-grupo-col fixture-web-col">Grupo</th>
+                      <th class="fixture-fecha-col fixture-web-col">Fecha</th>
+                      <th class="fixture-hora-col fixture-web-col">Hora</th>
                       <th class="fixture-estado-col">Estado</th>
                       <th class="partidos-admin-only fixture-acciones-col">Acciones</th>
                     </tr>
@@ -5054,7 +5284,7 @@ async function confirmarToggleEquipo(input) {
                   <tbody>
                     <% if (!fecha.partidos || fecha.partidos.length === 0) { %>
                       <tr>
-                        <td colspan="5" class="text-center text-muted py-3">
+                        <td colspan="8" class="text-center text-muted py-3">
                           Fecha sin encuentros programados. Use Cruce manual para agregar partidos en esta fecha.
                         </td>
                       </tr>
@@ -5103,6 +5333,14 @@ async function confirmarToggleEquipo(input) {
                             </button>
                           </div>
                         </td>
+                        <td class="fixture-web-col">
+                          <%= partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo' %>
+                          <% if ((partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') && !String(partido.nombre_grupo_display || '').includes(partido.observaciones)) { %>
+                            - <%= partido.observaciones %>
+                          <% } %>
+                        </td>
+                        <td class="fixture-web-col"><%= partido.fecha_formateada || '-' %></td>
+                        <td class="fixture-web-col"><%= partido.hora || '-' %></td>
                         <td>
                           <% const estadoPartidoValor = String(partido.estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_'); %>
                           <% const estadoPartidoTexto = estadoPartidoValor === 'en_curso' ? 'En curso' : (estadoPartidoValor.charAt(0).toUpperCase() + estadoPartidoValor.slice(1)); %>
@@ -5180,12 +5418,12 @@ async function confirmarToggleEquipo(input) {
                         </td>
                       </tr>
                       <tr class="partido-detalle-row <%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>">
-                        <td colspan="5">
+                        <td colspan="8">
                           <div class="partido-detalle" data-partido-id="<%= partido.id_partido %>">
                             <span>
                               <strong>
                                 <%= partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo' %>
-                                <% if (partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') { %>
+                                <% if ((partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') && !String(partido.nombre_grupo_display || '').includes(partido.observaciones)) { %>
                                   - <%= partido.observaciones %>
                                 <% } %>
                               </strong>
@@ -6633,7 +6871,7 @@ inicializarPullToRefresh();
 </script>
 
 <script>
-  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 180000 %>;
+  window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 300000 %>;
 </script>
 <script src="/js/session-abandon-guard.js"></script>
 
