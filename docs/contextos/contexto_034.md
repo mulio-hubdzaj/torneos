@@ -681,3 +681,224 @@ npx.cmd cap sync android
 Nota:
 
 - No se valido deploy de Railway despues del push en esta tanda por corte urgente.
+
+## Actualizacion posterior: PRD, eliminacion de equipo y APK
+
+Fecha: 2026-05-20
+
+### Deploy PRD real
+
+Se detecto que Railway estaba desplegando `main`, no el ultimo `qa`.
+
+Estado Git despues de sincronizar:
+
+```txt
+main -> origin/main
+qa -> origin/qa
+```
+
+Se hizo merge de `qa` a `main` y se empujo a GitHub.
+
+Commits relevantes en `main`:
+
+```txt
+241251d merge qa final a prd
+d54b0e1 ajustar eliminacion equipo prd
+4edb38f actualizar apk torneos pro
+9bbda67 versionar descarga apk torneos pro
+```
+
+PRD luego tomo la nueva version y se confirmo desde navegador:
+
+- Fixture nuevo visible en produccion;
+- cambios de PRD activos;
+- eliminacion de equipo probada despues de limpiar dato residual.
+
+### Eliminacion de equipo `EQUIPO`
+
+Problema:
+
+- La app no dejaba eliminar el equipo aunque visualmente parecia no tener nada.
+- El mensaje viejo mencionaba `logo`, pero el logo default no era la causa.
+
+Se reviso el backup nuevo:
+
+- archivo:
+  - `docs/_privado/db_backups/railway_prd_20260520_1645.sql`
+- guardado a las 16:46 aprox.
+
+Equipo afectado:
+
+```txt
+id_equipo: 17
+nombre: EQUIPO
+id_torneo: 1
+id_grupo: 2
+entity_id: 2
+```
+
+Referencias encontradas:
+
+- no tenia `delegados_equipos`;
+- no tenia `items_equipo`;
+- no tenia `jugadores_equipos`;
+- no tenia `equipos_movimientos_grupo`;
+- no tenia partidos como `equipo_a` ni `equipo_b`;
+- si tenia una fila activa en `finanzas`:
+
+```txt
+id_finanza: 4
+id_equipo: 17
+concepto: Fecha libre #1 - EQUIPO
+tipo: fecha_libre
+saldo: 0.00
+```
+
+La linea vista en `partidos` con `17` correspondia a `id_partido=17`, no a `id_equipo=17`.
+
+SQL recomendado/validado para limpiar quirurgicamente:
+
+```sql
+SELECT * FROM finanzas WHERE id_equipo = 17;
+SELECT * FROM items_equipo WHERE id_equipo = 17;
+SELECT * FROM jugadores_equipos WHERE id_equipo = 17;
+SELECT * FROM delegados_equipos WHERE id_equipo = 17;
+SELECT * FROM partidos WHERE equipo_a = 17 OR equipo_b = 17;
+SELECT * FROM equipos_movimientos_grupo WHERE id_equipo = 17;
+SELECT * FROM equipos WHERE id_equipo = 17;
+
+BEGIN;
+
+DELETE FROM finanzas
+WHERE id_equipo = 17
+  AND id_finanza = 4
+  AND concepto = 'Fecha libre #1 - EQUIPO';
+
+DELETE FROM equipos
+WHERE id_equipo = 17
+  AND nombre = 'EQUIPO'
+  AND id_torneo = 1
+  AND entity_id = 2;
+
+COMMIT;
+```
+
+Resultado informado:
+
+- se pudo eliminar el equipo correctamente;
+- causa real confirmada: fila residual en `finanzas`, no logo.
+
+Cambio de codigo relacionado:
+
+- `controllers/equipoController.js`
+  - el mensaje generico ya no menciona `logo`;
+  - se agrego chequeo explicito de `equipos_movimientos_grupo`;
+  - el bloqueo por `items`/`finanzas` sigue activo.
+
+### Prueba local de eliminacion
+
+Se hizo una prueba local en transaccion:
+
+1. crear equipo temporal;
+2. agregar jugador;
+3. quitar jugador;
+4. agregar item;
+5. quitar item;
+6. intentar eliminar equipo.
+
+Resultado:
+
+```txt
+DESTROY_OK
+```
+
+Nota:
+
+- al primer intento se uso `tipo_vinculo='manual'` y fallo por constraint;
+- valor valido usado luego:
+  - `titular`;
+- la secuencia completa sin registros residuales permite borrar.
+
+### APK Torneos Pro
+
+Problema:
+
+- La descarga web seguia instalando `Torneos PRD`;
+- el archivo servido era `public/downloads/torneos.apk`, viejo;
+- hash PRD descargado no coincidia con hash local nuevo;
+- posible cache de Railway/navegador para `/downloads/torneos.apk`.
+
+Estado fuente Android:
+
+```txt
+appName: Torneos Pro
+appId: com.torneosv2.prd
+server.url: https://torneos-production.up.railway.app
+```
+
+Archivo generado:
+
+```txt
+C:\torneos_v2\public\downloads\torneos.apk
+```
+
+APK nueva local:
+
+```txt
+fecha: 2026-05-20 17:15:55
+tamanho: 4.118.607 bytes
+```
+
+El APK viejo se aparto temporalmente como backup y luego se elimino del directorio de descargas.
+
+Build:
+
+- `npx.cmd cap sync android` OK;
+- `gradlew assembleDebug` fallo con Java 25:
+
+```txt
+Unsupported class file major version 69
+```
+
+- con JDK 17 fallo porque el proyecto pide source 21:
+
+```txt
+invalid source release: 21
+```
+
+- compilo correctamente usando Java 21 del JBR de Android Studio:
+
+```powershell
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat assembleDebug
+```
+
+Como PRD seguia sirviendo el APK viejo por el mismo path, se versiono la descarga:
+
+- nuevo archivo:
+  - `public/downloads/torneos-pro-4edb38f.apk`
+- link en login:
+  - `/downloads/torneos-pro-4edb38f.apk`
+- nombre sugerido al descargar:
+  - `torneos-pro.apk`
+
+Commit:
+
+```txt
+9bbda67 versionar descarga apk torneos pro
+```
+
+Pendiente inmediato:
+
+1. Hacer redeploy en Railway del commit `9bbda67`.
+2. Verificar que el login descargue:
+
+```txt
+https://torneos-production.up.railway.app/downloads/torneos-pro-4edb38f.apk
+```
+
+3. Si Android/Xiaomi sigue mostrando icono/nombre viejo:
+   - desinstalar `Torneos PRD`;
+   - instalar el APK nuevo;
+   - verificar que figure como `Torneos Pro`.
