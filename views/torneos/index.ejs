@@ -200,17 +200,31 @@
         <% if (torneo.descripcion) { %>
           <p class="text-muted"><%= torneo.descripcion %></p>
         <% } %>
+        <%
+          const dashboardTablaTop = ((dashboardInicio || {}).tablaTop || []);
+          const dashboardGoleadoresTop = ((dashboardInicio || {}).goleadoresTop || []);
+          const dashboardPartidosEnCurso = ((dashboardInicio || {}).partidosEnCurso || []);
+          const dashboardUltimosResultados = ((dashboardInicio || {}).ultimosResultados || []);
+          const dashboardProximosPartidos = ((dashboardInicio || {}).proximosPartidos || []);
+          const dashboardTieneDatos =
+            dashboardTablaTop.length ||
+            dashboardGoleadoresTop.length ||
+            dashboardPartidosEnCurso.length ||
+            dashboardUltimosResultados.length ||
+            dashboardProximosPartidos.length;
+        %>
         <div class="row g-3 mt-1">
+          <% if (dashboardTablaTop.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                 <strong>Tabla de posiciones</strong>
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#estadisticas" data-target-subtab="#estadisticasTablaPosiciones">Ver</button>
               </div>
-              <div class="table-responsive bg-white">
+              <div class="table-responsive bg-white dashboard-scroll-area">
                 <table class="table table-sm align-middle mb-0">
                   <tbody>
-                    <% ((dashboardInicio || {}).tablaTop || []).forEach((item, index) => { %>
+                    <% dashboardTablaTop.forEach((item, index) => { %>
                       <tr>
                         <td style="width:40px;"><strong><%= index + 1 %></strong></td>
                         <td>
@@ -220,15 +234,14 @@
                         <td class="text-end"><strong><%= item.puntos %> pts</strong></td>
                       </tr>
                     <% }) %>
-                    <% if (!((dashboardInicio || {}).tablaTop || []).length) { %>
-                      <tr><td class="text-center text-muted py-3">Sin posiciones todavia.</td></tr>
-                    <% } %>
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
+          <% } %>
 
+          <% if (dashboardGoleadoresTop.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
@@ -238,23 +251,21 @@
               <div class="table-responsive bg-white dashboard-scroll-area">
                 <table class="table table-sm align-middle mb-0">
                   <tbody>
-                    <% ((dashboardInicio || {}).goleadoresTop || []).forEach(jugador => { %>
+                    <% dashboardGoleadoresTop.forEach(jugador => { %>
                       <tr>
                         <td><strong><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') %></strong></td>
                         <td><small><%= jugador.equipo || 'Libre' %></small></td>
                         <td class="text-end"><strong><%= jugador.goles %></strong></td>
                       </tr>
                     <% }) %>
-                    <% if (!((dashboardInicio || {}).goleadoresTop || []).length) { %>
-                      <tr><td class="text-center text-muted py-3">Sin goles cargados todavia.</td></tr>
-                    <% } %>
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
+          <% } %>
 
-          <% if (((dashboardInicio || {}).partidosEnCurso || []).length) { %>
+          <% if (dashboardPartidosEnCurso.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0 dashboard-en-curso-card">
               <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
@@ -262,7 +273,7 @@
                 <button type="button" class="btn btn-sm btn-outline-dark dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
               </div>
               <div class="list-group list-group-flush dashboard-scroll-area">
-                <% ((dashboardInicio || {}).partidosEnCurso || []).forEach(partido => { %>
+                <% dashboardPartidosEnCurso.forEach(partido => { %>
                   <div class="list-group-item">
                     <div class="d-flex justify-content-between gap-2 align-items-start">
                       <div>
@@ -276,14 +287,12 @@
                     </small>
                   </div>
                 <% }) %>
-                <% if (!((dashboardInicio || {}).partidosEnCurso || []).length) { %>
-                  <div class="list-group-item text-center text-muted py-3">Sin encuentros en curso.</div>
-                <% } %>
               </div>
             </div>
           </div>
           <% } %>
 
+          <% if (dashboardUltimosResultados.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
@@ -291,19 +300,18 @@
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
               </div>
               <div class="list-group list-group-flush dashboard-scroll-area">
-                <% ((dashboardInicio || {}).ultimosResultados || []).forEach(partido => { %>
+                <% dashboardUltimosResultados.forEach(partido => { %>
                   <div class="list-group-item d-flex justify-content-between align-items-start gap-2">
                     <span class="dashboard-match-title"><%= partido.nombre_equipo_a %> <strong><%= partido.goles_a %> - <%= partido.goles_b %></strong> <%= partido.nombre_equipo_b %></span>
                     <small class="text-muted dashboard-match-date">Fecha <%= partido.numero_fecha || '-' %></small>
                   </div>
                 <% }) %>
-                <% if (!((dashboardInicio || {}).ultimosResultados || []).length) { %>
-                  <div class="list-group-item text-center text-muted py-3">Sin resultados finalizados.</div>
-                <% } %>
               </div>
             </div>
           </div>
+          <% } %>
 
+          <% if (dashboardProximosPartidos.length) { %>
           <div class="col-lg-6">
             <div class="card shadow-sm h-100 border-0">
               <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
@@ -311,7 +319,7 @@
                 <button type="button" class="btn btn-sm btn-outline-light dashboard-tab-link" data-target-tab="#partidos">Fixture</button>
               </div>
               <div class="list-group list-group-flush dashboard-scroll-area">
-                <% ((dashboardInicio || {}).proximosPartidos || []).forEach(partido => { %>
+                <% dashboardProximosPartidos.forEach(partido => { %>
                   <div class="list-group-item">
                     <div class="d-flex justify-content-between align-items-start gap-2">
                       <strong class="dashboard-match-title"><%= partido.nombre_equipo_a %> vs <%= partido.nombre_equipo_b %></strong>
@@ -322,12 +330,16 @@
                     </small>
                   </div>
                 <% }) %>
-                <% if (!((dashboardInicio || {}).proximosPartidos || []).length) { %>
-                  <div class="list-group-item text-center text-muted py-3">Sin encuentros pendientes.</div>
-                <% } %>
               </div>
             </div>
           </div>
+          <% } %>
+
+          <% if (!dashboardTieneDatos) { %>
+            <div class="col-12">
+              <div class="alert alert-light border mb-0">Todavia no hay datos para mostrar en el resumen del torneo.</div>
+            </div>
+          <% } %>
         </div>
       <% } else { %>
         <p class="text-muted">Seleccione un torneo para ver detalles.</p>

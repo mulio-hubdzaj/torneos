@@ -4,6 +4,7 @@ const router = express.Router();
 const { Usuario, Entity, Torneo } = require('../models');
 const bcrypt = require('bcrypt');
 const torneoController = require('../controllers/torneoController');
+const LOGOUT_REDIRECT_URL = process.env.LOGOUT_REDIRECT_URL || 'https://torneos-production.up.railway.app/';
 
 function validarContrasenaSegura(contrasena) {
   const texto = String(contrasena || '');
@@ -339,7 +340,7 @@ router.get('/logout', (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    res.redirect('/login');
+    res.redirect(LOGOUT_REDIRECT_URL);
   });
 });
 

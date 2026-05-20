@@ -308,3 +308,29 @@ EJS_OK login registro
 GET /login -> 200, selector de entidad presente
 GET /registro -> 200, selector de entidad presente
 ```
+
+## Cambio posterior: ajustes APK/web post deploy QA
+
+Pedidos:
+
+- Al cerrar sesion, enviar a `https://torneos-production.up.railway.app/`.
+- En APK, la vista publica/usuario de equipo se cortaba horizontalmente.
+- En el dashboard inicial, agregar scroll a `Tabla de posiciones` como en `Proximos encuentros`.
+- Ocultar cards del dashboard si no tienen datos, como ya se hacia con `En curso`.
+
+Aplicado:
+
+- `routes/authRoutes.js` redirige `/logout` a `LOGOUT_REDIRECT_URL` o, por default, a `https://torneos-production.up.railway.app/`.
+- `views/equipos/ver.ejs` agrega `viewport`, contenedor responsive, scroll horizontal para jugadores y ajustes mobile.
+- `views/torneos/index.ejs` agrega scroll a la tabla de posiciones del dashboard.
+- `views/torneos/index.ejs` oculta las cards vacias de tabla, goleadores, en curso, ultimos resultados y proximos encuentros.
+- Si el dashboard no tiene ningun dato, se muestra un aviso unico en lugar de varias cards vacias.
+
+Verificado:
+
+```txt
+node --check routes\authRoutes.js
+EJS_OK equipo torneo
+npm.cmd test
+GET /logout -> 302 Location https://torneos-production.up.railway.app/
+```
