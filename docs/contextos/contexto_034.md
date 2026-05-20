@@ -575,3 +575,109 @@ npm.cmd test
 ```
 
 Si se confirma la regla, hacer commit hotfix en `qa`, merge a `main` y desplegar.
+
+## Corte urgente: commit final QA subido, deploy/validacion pendiente
+
+Fecha: 2026-05-20
+
+Pedido:
+
+- Suspender aca para poder cerrar sesion.
+- Retomar desde el commit ya pusheado a `origin/qa`.
+
+Estado Git:
+
+- Rama local:
+  - `qa`
+- Commit creado y pusheado:
+  - `dac773d ajustar fixture apk y prd final`
+- Push:
+  - `origin/qa`
+- `git push origin qa` requirio permiso elevado por credenciales del sistema y finalizo OK.
+
+Cambios incluidos en el commit:
+
+- Eliminacion de equipo:
+  - no bloquea por logo/icono;
+  - bloquea por partidos, jugadores, delegados, items o finanzas.
+- Dashboard:
+  - tabla de posiciones muestra todos los equipos;
+  - scroll interno reforzado en tabla, proximos encuentros y ultimos resultados.
+- Fixture web:
+  - vuelve a tabla de escritorio;
+  - mantiene navegador nuevo de fechas con flechas;
+  - se ensancha solo web con `@media (min-width: 769px)`;
+  - se quito columna `Cancha`;
+  - cancha queda en fila detalle si existe;
+  - columna `Acciones` visible/compacta;
+  - `Ida/Vuelta` se calcula por grupo tambien en vista general.
+- Fixture APK/mobile:
+  - no se cambio el layout intencionalmente;
+  - solo recibe la correccion de dato `Ida/Vuelta` desde backend.
+- Portada de torneo:
+  - al guardar/eliminar vuelve a `#torneos`;
+  - preview/guardado ya no recorta banners;
+  - visor no agrega fondo ni marco fijo;
+  - imagen ya guardada con recorte viejo debe subirse nuevamente desde original.
+- Botones atras:
+  - `views/admin/index.ejs`;
+  - `views/entidad/index.ejs`.
+- Cierre por abandono:
+  - default subido de 3 a 5 minutos (`300000 ms`).
+- APK:
+  - nombre visible:
+    - `Torneos Pro`;
+  - app id/default:
+    - `com.torneosv2.prd`;
+  - `npx.cmd cap sync android` ejecutado OK;
+  - el icono adaptativo moderno apunta a `@drawable/ic_launcher_foreground_prd`;
+  - si en Android sigue apareciendo nombre/icono viejo, probable cache/instalacion previa; con `applicationId` nuevo debe instalar como app distinta.
+
+Verificaciones ejecutadas antes del commit:
+
+```powershell
+node --check index.js
+node --check controllers\equipoController.js
+node --check controllers\torneoController.js
+node --check public\js\session-abandon-guard.js
+node --check routes\authRoutes.js
+node --check routes\entidadRoutes.js
+node --check routes\equipoRoutes.js
+node --check routes\torneoRoutes.js
+node -e "const ejs=require('ejs'),fs=require('fs'); for (const f of ['views/torneos/index.ejs','views/admin/index.ejs','views/entidad/index.ejs','views/equipos/administrar.ejs','views/equipos/ver.ejs']) ejs.compile(fs.readFileSync(f,'utf8')); console.log('EJS_OK vistas tocadas')"
+npm.cmd test
+git diff --check
+```
+
+Resultados:
+
+- checks JS OK;
+- EJS OK;
+- `npm.cmd test` OK, pero el proyecto informa `No hay tests definidos`;
+- `git diff --check` sin errores, solo avisos CRLF.
+
+Pendiente al retomar:
+
+1. Revisar `git status --short --branch`.
+2. Confirmar si Railway desplego automaticamente `origin/qa`.
+3. Validar PRD:
+   - home/login;
+   - eliminar equipo sin asociaciones;
+   - Fixture web acciones/Ida-Vuelta/cancha en detalle;
+   - dashboard scroll;
+   - portada;
+   - cierre por abandono 5 minutos si corresponde.
+4. Si se genera APK/AAB PRD:
+   - confirmar que `android/app/src/main/assets/capacitor.config.json` apunte a `https://torneos-production.up.railway.app`;
+   - si hace falta, ejecutar antes de compilar:
+
+```powershell
+$env:CAPACITOR_SERVER_URL="https://torneos-production.up.railway.app"
+$env:CAPACITOR_APP_NAME="Torneos Pro"
+$env:CAPACITOR_APP_ID="com.torneosv2.prd"
+npx.cmd cap sync android
+```
+
+Nota:
+
+- No se valido deploy de Railway despues del push en esta tanda por corte urgente.
