@@ -189,6 +189,24 @@ async function obtenerPermitirModificarIconos(torneoId) {
   }
 }
 
+async function obtenerPermitirDelegadosVerEstadoFinanzas(torneoId) {
+  try {
+    const [config] = await sequelize.query(`
+      SELECT permitir_delegados_ver_estado_finanzas
+      FROM torneos
+      WHERE id_torneo = :torneoId
+      LIMIT 1
+    `, {
+      replacements: { torneoId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    return config?.permitir_delegados_ver_estado_finanzas === true;
+  } catch (error) {
+    if (error?.parent?.code === '42703') return false;
+    throw error;
+  }
+}
+
 async function obtenerGruposOcultosFixture(torneoId) {
   try {
     const grupos = await sequelize.query(`
@@ -278,7 +296,23 @@ function obtenerRivalFinanzas(partido, equipoId) {
   return '';
 }
 
-function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }) {
+function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw, estadisticasPartidos }) {
+  const estadisticasPorPartido = (estadisticasPartidos || []).reduce((acc, item) => {
+    const partidoId = String(item.id_partido || '');
+    if (!partidoId) return acc;
+    if (!acc[partidoId]) acc[partidoId] = [];
+    acc[partidoId].push({
+      id_jugador: item.id_jugador,
+      id_equipo: item.id_equipo || null,
+      nombre: item.nombre || '',
+      apellido: item.apellido || '',
+      goles: Number(item.goles || 0),
+      tarjetas_amarillas: Number(item.tarjetas_amarillas || 0),
+      tarjetas_rojas: Number(item.tarjetas_rojas || 0)
+    });
+    return acc;
+  }, {});
+
   const partidosEnCurso = (partidosRaw || [])
     .filter(partido => normalizarEstadoPartido(partido.estado) === 'en_curso')
     .sort((a, b) => {
@@ -286,7 +320,11 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
       const fechaB = `${b.fecha_input || '9999-12-31'} ${b.hora || '23:59'}`;
       return fechaA.localeCompare(fechaB);
     })
-    .slice(0, 20);
+    .slice(0, 20)
+    .map(partido => ({
+      ...partido,
+      estadisticas: estadisticasPorPartido[String(partido.id_partido)] || []
+    }));
 
   const partidosFinalizados = (partidosRaw || [])
     .filter(partido => normalizarEstadoPartido(partido.estado) === 'finalizado')
@@ -302,7 +340,11 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
 
       return Number(b.id_partido || 0) - Number(a.id_partido || 0);
     })
-    .slice(0, 20);
+    .slice(0, 20)
+    .map(partido => ({
+      ...partido,
+      estadisticas: estadisticasPorPartido[String(partido.id_partido)] || []
+    }));
 
   const proximosPartidos = (partidosRaw || [])
     .filter(partido => {
@@ -613,19 +655,13 @@ exports.gestionar = async (req, res) => {
     const rolSesion = vistaPublica ? 0 : Number(req.session.rol_id || 0);
     let entityId = vistaPublica ? null : req.session.entity_id;
 
-    if (!vistaPublica) {
-      console.log('Sesión actual:', { entity_id: req.session.entity_id, documento: req.session.documento, rol_id: req.session.rol_id });
-    }
-
     // Si el usuario no es super_admin y no tiene entity_id válido, forzar re-login
     if (!vistaPublica && rolSesion !== 99) {
       if (!entityId || isNaN(parseInt(entityId, 10))) {
-        console.log('entityId inválido para rol distinto de super_admin:', entityId);
         req.flash("danger", "Sesión inválida. Por favor, inicie sesión nuevamente.");
         return res.redirect('/login');
       }
       entityId = parseInt(entityId, 10);
-      console.log('entityId convertido:', entityId);
     }
 
     if (!vistaPublica) {
@@ -655,6 +691,7 @@ exports.gestionar = async (req, res) => {
     const torneoData = torneo.get({ plain: true });
     torneoData.permitir_agregar_jugadores = await obtenerPermitirAgregarJugadores(torneoId);
     torneoData.permitir_modificar_iconos_equipo = await obtenerPermitirModificarIconos(torneoId);
+    torneoData.permitir_delegados_ver_estado_finanzas = await obtenerPermitirDelegadosVerEstadoFinanzas(torneoId);
     const entidadActual = await Entity.findByPk(entityId);
     const gruposMapa = new Map((torneoData.Grupos || []).map(grupo => [String(grupo.id_grupo), grupo.nombre_grupo]));
     const gruposOcultosFixture = await obtenerGruposOcultosFixture(torneoId);
@@ -1139,6 +1176,42 @@ exports.gestionar = async (req, res) => {
       replacements: { torneoId: parseInt(torneoId, 10) },
       type: sequelize.QueryTypes.SELECT
     });
+    const estadisticasPartidos = await sequelize.query(`
+      SELECT est.id_partido,
+             est.id_jugador,
+             j.nombre,
+             j.apellido,
+             je.id_equipo,
+             COALESCE(est.goles, 0) AS goles,
+             COALESCE(est.tarjetas_amarillas, 0) AS tarjetas_amarillas,
+             COALESCE(est.tarjetas_rojas, 0) AS tarjetas_rojas
+      FROM estadisticas est
+      INNER JOIN partidos p ON p.id_partido = est.id_partido
+      INNER JOIN jugadores j ON j.id_jugador = est.id_jugador
+      LEFT JOIN LATERAL (
+        SELECT je2.id_equipo
+        FROM jugadores_equipos je2
+        WHERE je2.id_jugador = est.id_jugador
+          AND je2.id_torneo = p.id_torneo
+          AND je2.id_equipo IN (p.equipo_a, p.equipo_b)
+        ORDER BY CASE
+          WHEN je2.id_equipo = p.equipo_a THEN 1
+          WHEN je2.id_equipo = p.equipo_b THEN 2
+          ELSE 3
+        END
+        LIMIT 1
+      ) je ON true
+      WHERE p.id_torneo = :torneoId
+        AND (
+          COALESCE(est.goles, 0) > 0
+          OR COALESCE(est.tarjetas_amarillas, 0) > 0
+          OR COALESCE(est.tarjetas_rojas, 0) > 0
+        )
+      ORDER BY est.id_partido ASC, j.nombre ASC, j.apellido ASC
+    `, {
+      replacements: { torneoId: parseInt(torneoId, 10) },
+      type: sequelize.QueryTypes.SELECT
+    });
     const reglaTarjetas = await obtenerReglaTarjetasTorneo(torneoData.id_torneo);
     const canchas = await Cancha.findAll({
       where: {
@@ -1264,23 +1337,26 @@ exports.gestionar = async (req, res) => {
       return acc;
     }, {});
 
-    const equiposFinanzasVisibles = rolSesion === 2
+    const delegadosVenEstadoFinanzas = torneoData.permitir_delegados_ver_estado_finanzas === true;
+    const equiposFinanzasVisibles = rolSesion === 2 && !delegadosVenEstadoFinanzas
       ? equiposConGrupo.filter(equipo => equipo.es_equipo_delegado)
       : equiposConGrupo;
     const finanzasResumen = equiposFinanzasVisibles.map(equipo => {
       const movimientos = recalcularMovimientosFinanzas(movimientosPorEquipo[String(equipo.id_equipo)] || []);
       const ultimoMovimiento = movimientos[movimientos.length - 1] || null;
       const saldoActual = Number(ultimoMovimiento?.saldo || 0);
+      const puedeVerDetalle = rolSesion !== 2 || equipo.es_equipo_delegado === true;
       return {
         id_equipo: equipo.id_equipo,
         nombre: equipo.nombre,
         icono: equipo.icono || '/images/default_team.png',
         nombre_grupo: equipo.nombre_grupo || 'Sin grupo',
-        saldo_actual: saldoActual,
+        puede_ver_detalle: puedeVerDetalle,
+        saldo_actual: puedeVerDetalle ? saldoActual : null,
         adeuda: saldoActual > 0,
-        total_items: movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0),
-        total_entregado: movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0),
-        movimientos
+        total_items: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0) : null,
+        total_entregado: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0) : null,
+        movimientos: puedeVerDetalle ? movimientos : []
       };
     });
 
@@ -1353,10 +1429,25 @@ exports.gestionar = async (req, res) => {
     const dashboardInicio = armarDashboardInicio({
       estadisticasGeneral,
       rankingGoles,
-      partidosRaw
+      partidosRaw,
+      estadisticasPartidos
     });
 
     //const messages = req.flash();
+
+    const tabsPorRol = vistaPublica
+      ? ['torneos', 'partidos', 'estadisticas']
+      : (rolSesion === 1
+        ? ['torneos', 'jugadores', 'partidos', 'estadisticas']
+        : (rolSesion === 2
+          ? ['torneos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas']
+          : (rolSesion === 3
+            ? ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios']
+            : ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios', 'auditoria'])));
+    const tabsPermitidos = new Set(tabsPorRol);
+    const tabActivaInicial = tabsPermitidos.has(String(req.query.tab || ''))
+      ? String(req.query.tab)
+      : 'torneos';
 
     return res.render('torneos/index', {
       partidos: partidosRaw,
@@ -1385,6 +1476,7 @@ exports.gestionar = async (req, res) => {
       reglaTarjetas,
       finanzasResumen,
       dashboardInicio,
+      tabActivaInicial,
       canchas: canchas.map(cancha => cancha.get({ plain: true })),
       auditoria,
       contextoAuditoria,
@@ -1401,6 +1493,122 @@ exports.gestionar = async (req, res) => {
 exports.gestionarPublico = async (req, res) => {
   req.vistaPublica = true;
   return exports.gestionar(req, res);
+};
+
+exports.resumenPartidosEnCurso = async (req, res) => {
+  try {
+    const torneoId = Number.parseInt(req.params.id_torneo, 10);
+    if (!torneoId) {
+      return res.status(400).json({ success: false, message: 'Torneo invalido' });
+    }
+
+    const torneo = await Torneo.findByPk(torneoId, { attributes: ['id_torneo', 'entity_id'] });
+    if (!torneo) {
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    const esPublico = Boolean(req.vistaPublica || req.session?.vista_publica_activa);
+    if (!esPublico && Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      return res.status(403).json({ success: false, message: 'No puede consultar este torneo' });
+    }
+
+    const partidos = await sequelize.query(`
+      SELECT p.id_partido,
+             p.equipo_a,
+             p.equipo_b,
+             p.numero_fecha,
+             p.fecha,
+             p.hora,
+             p.estado,
+             p.goles_a,
+             p.goles_b,
+             ea.nombre AS nombre_equipo_a,
+             eb.nombre AS nombre_equipo_b
+      FROM partidos p
+      LEFT JOIN equipos ea ON ea.id_equipo = p.equipo_a
+      LEFT JOIN equipos eb ON eb.id_equipo = p.equipo_b
+      WHERE p.id_torneo = :torneoId
+        AND regexp_replace(LOWER(TRIM(COALESCE(p.estado, 'programado'))), '[[:space:]-]+', '_', 'g') = 'en_curso'
+      ORDER BY p.numero_fecha ASC, p.fecha ASC, p.hora ASC, p.id_partido ASC
+      LIMIT 20
+    `, {
+      replacements: { torneoId },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    if (!partidos.length) {
+      return res.json({ success: true, partidos: [] });
+    }
+
+    const partidoIds = partidos.map(partido => partido.id_partido);
+    const estadisticas = await sequelize.query(`
+      SELECT est.id_partido,
+             est.id_jugador,
+             j.nombre,
+             j.apellido,
+             je.id_equipo,
+             COALESCE(est.goles, 0) AS goles,
+             COALESCE(est.tarjetas_amarillas, 0) AS tarjetas_amarillas,
+             COALESCE(est.tarjetas_rojas, 0) AS tarjetas_rojas
+      FROM estadisticas est
+      INNER JOIN partidos p ON p.id_partido = est.id_partido
+      INNER JOIN jugadores j ON j.id_jugador = est.id_jugador
+      LEFT JOIN LATERAL (
+        SELECT je2.id_equipo
+        FROM jugadores_equipos je2
+        WHERE je2.id_jugador = est.id_jugador
+          AND je2.id_torneo = p.id_torneo
+          AND je2.id_equipo IN (p.equipo_a, p.equipo_b)
+        ORDER BY CASE
+          WHEN je2.id_equipo = p.equipo_a THEN 1
+          WHEN je2.id_equipo = p.equipo_b THEN 2
+          ELSE 3
+        END
+        LIMIT 1
+      ) je ON true
+      WHERE est.id_partido IN (:partidoIds)
+        AND (
+          COALESCE(est.goles, 0) > 0
+          OR COALESCE(est.tarjetas_amarillas, 0) > 0
+          OR COALESCE(est.tarjetas_rojas, 0) > 0
+        )
+      ORDER BY est.id_partido ASC, j.nombre ASC, j.apellido ASC
+    `, {
+      replacements: { partidoIds },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const estadisticasPorPartido = estadisticas.reduce((acc, item) => {
+      const key = String(item.id_partido);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({
+        id_jugador: item.id_jugador,
+        id_equipo: item.id_equipo || null,
+        nombre: item.nombre || '',
+        apellido: item.apellido || '',
+        goles: Number(item.goles || 0),
+        tarjetas_amarillas: Number(item.tarjetas_amarillas || 0),
+        tarjetas_rojas: Number(item.tarjetas_rojas || 0)
+      });
+      return acc;
+    }, {});
+
+    return res.json({
+      success: true,
+      partidos: partidos.map(partido => {
+        const fechaInput = normalizarFechaInput(partido.fecha);
+        return {
+          ...partido,
+          fecha_input: fechaInput,
+          fecha_formateada: fechaInput ? fechaInput.split('-').reverse().join('/') : '-',
+          estadisticas: estadisticasPorPartido[String(partido.id_partido)] || []
+        };
+      })
+    });
+  } catch (error) {
+    console.error('Error al obtener partidos en curso:', error);
+    return res.status(500).json({ success: false, message: 'Error al obtener partidos en curso' });
+  }
 };
 
 exports.auditoriaResumen = async (req, res) => {
@@ -1770,6 +1978,48 @@ exports.actualizarPermitirModificarIconos = async (req, res) => {
   }
 };
 
+exports.actualizarPermitirDelegadosVerEstadoFinanzas = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+  try {
+    const permiso = await validarTorneoAdmin(req, torneoId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      return res.redirect('/torneos');
+    }
+
+    const permitir = req.body.permitir_delegados_ver_estado_finanzas === '1';
+
+    if (req.session.usuario_id) {
+      await sequelize.query('SET app.usuario_id = :usuarioId', {
+        replacements: { usuarioId: req.session.usuario_id }
+      });
+    }
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: permiso.torneo.entity_id }
+    });
+
+    await sequelize.query(`
+      UPDATE torneos
+      SET permitir_delegados_ver_estado_finanzas = :permitir
+      WHERE id_torneo = :torneoId
+    `, {
+      replacements: { permitir, torneoId }
+    });
+
+    req.flash(
+      "success",
+      permitir
+        ? "Los delegados pueden ver el estado de otros equipos"
+        : "Los delegados ya no pueden ver el estado de otros equipos"
+    );
+    return res.redirect(`/torneos/gestionar/${torneoId}?tab=finanzas#finanzas`);
+  } catch (error) {
+    console.error("Error al actualizar permiso de estado financiero para delegados:", error);
+    req.flash("danger", "No se pudo actualizar el permiso de estado financiero");
+    return res.redirect(`/torneos/gestionar/${torneoId}?tab=finanzas#finanzas`);
+  }
+};
+
 exports.resumenFinanzas = async (req, res) => {
   try {
     const torneoId = parseInt(req.params.id_torneo, 10);
@@ -1945,6 +2195,8 @@ exports.resumenFinanzas = async (req, res) => {
       return acc;
     }, {});
 
+    const delegadosVenEstadoFinanzas = await obtenerPermitirDelegadosVerEstadoFinanzas(torneoId);
+    let equiposDelegadoSet = new Set();
     let equiposVisibles = equipos;
     if (Number(req.session.rol_id) === 2) {
       const equiposDelegado = await sequelize.query(`
@@ -1959,23 +2211,27 @@ exports.resumenFinanzas = async (req, res) => {
         replacements: { usuarioId: req.session.usuario_id, torneoId },
         type: sequelize.QueryTypes.SELECT
       });
-      const equiposDelegadoSet = new Set(equiposDelegado.map(registro => Number(registro.id_equipo)));
-      equiposVisibles = equipos.filter(equipo => equiposDelegadoSet.has(Number(equipo.id_equipo)));
+      equiposDelegadoSet = new Set(equiposDelegado.map(registro => Number(registro.id_equipo)));
+      if (!delegadosVenEstadoFinanzas) {
+        equiposVisibles = equipos.filter(equipo => equiposDelegadoSet.has(Number(equipo.id_equipo)));
+      }
     }
 
     const resumen = equiposVisibles.map(equipo => {
       const movimientos = recalcularMovimientosFinanzas(movimientosPorEquipo[String(equipo.id_equipo)] || []);
       const saldoActual = Number(movimientos[movimientos.length - 1]?.saldo || 0);
+      const puedeVerDetalle = Number(req.session.rol_id) !== 2 || equiposDelegadoSet.has(Number(equipo.id_equipo));
       return {
         id_equipo: equipo.id_equipo,
         nombre: equipo.nombre,
         icono: equipo.icono || '/images/default_team.png',
         nombre_grupo: equipo.nombre_grupo || 'Sin grupo',
-        saldo_actual: saldoActual,
+        puede_ver_detalle: puedeVerDetalle,
+        saldo_actual: puedeVerDetalle ? saldoActual : null,
         adeuda: saldoActual > 0,
-        total_items: movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0),
-        total_entregado: movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0),
-        movimientos
+        total_items: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0) : null,
+        total_entregado: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0) : null,
+        movimientos: puedeVerDetalle ? movimientos : []
       };
     });
 

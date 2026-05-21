@@ -12,12 +12,25 @@
       overflow-x: hidden;
     }
 
+    body.equipo-ver-page {
+      display: block;
+      align-items: initial;
+      justify-content: initial;
+      color: #102033;
+    }
+
     .equipo-ver-main {
-      width: min(100%, 760px);
+      width: min(100%, 1080px);
+      padding-top: 42px;
+      padding-bottom: 48px;
     }
 
     .equipo-ver-card {
       overflow: hidden;
+      max-width: none;
+      padding: 0;
+      text-align: left;
+      border-radius: 8px;
     }
 
     .equipo-ver-header {
@@ -47,12 +60,37 @@
 
     .equipo-jugadores-scroll {
       max-width: 100%;
-      overflow-x: auto;
+      overflow-x: visible;
       -webkit-overflow-scrolling: touch;
     }
 
     .equipo-jugadores-scroll table {
-      min-width: 520px;
+      min-width: 0;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .equipo-ver-jugadores-table th:nth-child(1),
+    .equipo-ver-jugadores-table td:nth-child(1) {
+      width: 72px;
+    }
+
+    .equipo-ver-jugadores-table th:nth-child(3),
+    .equipo-ver-jugadores-table td:nth-child(3),
+    .equipo-ver-jugadores-table th:nth-child(4),
+    .equipo-ver-jugadores-table td:nth-child(4),
+    .equipo-ver-jugadores-table th:nth-child(5),
+    .equipo-ver-jugadores-table td:nth-child(5) {
+      width: 116px;
+    }
+
+    .equipo-ver-jugadores-table td {
+      vertical-align: middle;
+    }
+
+    .equipo-ver-jugadores-table .jugador-nombre-cell {
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
 
     @media (max-width: 576px) {
@@ -68,8 +106,8 @@
       }
 
       .equipo-ver-main {
-        padding-left: 0.75rem;
-        padding-right: 0.75rem;
+        width: 100%;
+        padding: 18px 10px 36px;
       }
 
       .equipo-ver-card .card-header {
@@ -94,10 +132,103 @@
       .list-group-item {
         gap: 0.5rem;
       }
+
+      .equipo-jugadores-scroll {
+        overflow-x: visible;
+      }
+
+      .equipo-ver-jugadores-table {
+        min-width: 0;
+      }
+
+      .equipo-ver-jugadores-table thead {
+        display: none;
+      }
+
+      .equipo-ver-jugadores-table,
+      .equipo-ver-jugadores-table tbody,
+      .equipo-ver-jugadores-table tr,
+      .equipo-ver-jugadores-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .equipo-ver-jugadores-table tr {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) 64px;
+        grid-template-areas:
+          "numero jugador estado"
+          "numero vinculo capitan";
+        gap: 0.28rem 0.55rem;
+        align-items: center;
+        margin-bottom: 0.55rem;
+        padding: 0.58rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .equipo-ver-jugadores-table td {
+        border: 0;
+        padding: 0;
+        font-size: 0.78rem;
+      }
+
+      .equipo-ver-jugadores-table td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.08rem;
+        font-size: 0.5rem;
+        font-weight: 800;
+        color: #6c757d;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+
+      .equipo-ver-jugadores-table .jugador-numero-cell {
+        grid-area: numero;
+      }
+
+      .equipo-ver-jugadores-table .jugador-numero-cell::before,
+      .equipo-ver-jugadores-table .jugador-nombre-cell::before {
+        display: none;
+      }
+
+      .equipo-ver-jugadores-table .jugador-nombre-cell {
+        grid-area: jugador;
+        font-size: 0.86rem;
+        line-height: 1.15;
+      }
+
+      .equipo-ver-jugadores-table .jugador-vinculo-cell {
+        grid-area: vinculo;
+      }
+
+      .equipo-ver-jugadores-table .jugador-estado-cell {
+        grid-area: estado;
+        text-align: center;
+      }
+
+      .equipo-ver-jugadores-table .jugador-capitan-cell {
+        grid-area: capitan;
+        text-align: center;
+      }
+
+      .equipo-ver-jugadores-table .badge {
+        white-space: normal;
+        line-height: 1.05;
+        font-size: 0.62rem;
+        padding: 0.28rem 0.35rem;
+      }
+
+      .jugador-numero {
+        width: 38px;
+        height: 38px;
+      }
     }
   </style>
 </head>
-<body class="bg-stadium">
+<body class="bg-stadium equipo-ver-page">
   <nav class="navbar navbar-dark bg-dark">
     <div class="container-fluid d-flex justify-content-between align-items-center">
       <span class="navbar-brand fw-bold">Ver equipo</span>
@@ -138,7 +269,7 @@
 
         <h5>Jugadores</h5>
         <div class="table-responsive mb-4 equipo-jugadores-scroll">
-          <table class="table table-sm align-middle">
+          <table class="table table-sm align-middle equipo-ver-jugadores-table">
             <thead class="table-light">
               <tr>
                 <th style="width: 64px;">Nro.</th>
@@ -153,20 +284,20 @@
                 <% jugadores.forEach(j => { %>
                   <% const vinculo = j.JugadorEquipo || {}; %>
                   <tr>
-                    <td><span class="jugador-numero"><%= vinculo.numero_camiseta || '-' %></span></td>
-                    <td>
+                    <td class="jugador-numero-cell" data-label="Nro."><span class="jugador-numero"><%= vinculo.numero_camiseta || '-' %></span></td>
+                    <td class="jugador-nombre-cell" data-label="Jugador">
                       <strong><%= j.nombre %> <%= j.apellido %></strong>
                       <% if (j.documento) { %>
                         <small class="text-muted d-block"><%= j.documento %></small>
                       <% } %>
                     </td>
-                    <td><%= vinculo.tipo_vinculo || 'titular' %></td>
-                    <td>
+                    <td class="jugador-vinculo-cell" data-label="Vinculo"><%= vinculo.tipo_vinculo || 'titular' %></td>
+                    <td class="jugador-estado-cell" data-label="Estado">
                       <span class="badge <%= vinculo.estado === false ? 'text-bg-warning' : 'text-bg-primary' %>">
                         <%= vinculo.estado === false ? 'Inactivo' : 'Activo' %>
                       </span>
                     </td>
-                    <td>
+                    <td class="jugador-capitan-cell" data-label="Capitan">
                       <% if (vinculo.capitan) { %>
                         <span class="badge text-bg-success">Capitan</span>
                       <% } else { %>
@@ -182,9 +313,6 @@
           </table>
         </div>
 
-        <div class="text-end">
-          <a href="<%= returnUrl %>" class="btn btn-secondary">Cerrar</a>
-        </div>
       </div>
     </div>
   </main>

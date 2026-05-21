@@ -85,12 +85,14 @@ router.post('/cambiar-estado/:id', requiereAdmin, async (req, res) => {
 
 // Gestionar torneo específico
 router.get('/gestionar/:id_torneo', torneoController.gestionar);
+router.get('/:id_torneo/en-curso/resumen', torneoController.resumenPartidosEnCurso);
 router.get('/:id_torneo/finanzas/resumen', torneoController.resumenFinanzas);
 router.get('/:id_torneo/auditoria/resumen', torneoController.auditoriaResumen);
 router.post('/:id_torneo/portada', requiereAdmin, upload.single('portada'), torneoController.actualizarPortada);
 router.post('/:id_torneo/portada/eliminar', requiereAdmin, torneoController.eliminarPortada);
 router.post('/:id_torneo/permitir-agregar-jugadores', requiereAdmin, torneoController.actualizarPermitirAgregarJugadores);
 router.post('/:id_torneo/permitir-modificar-iconos', requiereAdmin, torneoController.actualizarPermitirModificarIconos);
+router.post('/:id_torneo/permitir-delegados-ver-estado-finanzas', requiereAdmin, torneoController.actualizarPermitirDelegadosVerEstadoFinanzas);
 router.post('/:id_torneo/regla-tarjetas', requiereAdmin, torneoController.actualizarReglaTarjetas);
 router.post('/:id_torneo/canchas', requiereAdmin, torneoController.crearCancha);
 router.post('/:id_torneo/canchas/:id_cancha', requiereAdmin, torneoController.actualizarCancha);

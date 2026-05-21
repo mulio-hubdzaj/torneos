@@ -4,7 +4,7 @@ const router = express.Router();
 const { Usuario, Entity, Torneo } = require('../models');
 const bcrypt = require('bcrypt');
 const torneoController = require('../controllers/torneoController');
-const LOGOUT_REDIRECT_URL = process.env.LOGOUT_REDIRECT_URL || 'https://torneos-production.up.railway.app/';
+const LOGOUT_REDIRECT_URL = process.env.LOGOUT_REDIRECT_URL || '/';
 
 function validarContrasenaSegura(contrasena) {
   const texto = String(contrasena || '');
@@ -81,6 +81,13 @@ router.get('/publico/torneo/:id_torneo', (req, res, next) => {
   req.session.ultimo_heartbeat = Date.now();
   next();
 }, torneoController.gestionarPublico);
+
+router.get('/publico/torneo/:id_torneo/en-curso/resumen', (req, res, next) => {
+  req.vistaPublica = true;
+  req.session.vista_publica_activa = true;
+  req.session.ultimo_heartbeat = Date.now();
+  next();
+}, torneoController.resumenPartidosEnCurso);
 
 router.get('/cambiar-contrasena', (req, res) => {
   if (!req.session.usuario_id || !req.session.debe_cambiar_contrasena) {

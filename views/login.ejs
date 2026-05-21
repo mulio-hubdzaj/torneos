@@ -133,6 +133,20 @@
       document.body.classList.add('app-browser');
     }
 
+    function volverInicioDesdeLogin() {
+      window.location.replace('/');
+    }
+
+    window.history.replaceState({ pantalla: 'login' }, '', window.location.href);
+    window.history.pushState({ pantalla: 'login-atras' }, '', window.location.href);
+    window.addEventListener('popstate', volverInicioDesdeLogin);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.Capacitor?.Plugins?.App) {
+        window.Capacitor.Plugins.App.addListener('backButton', volverInicioDesdeLogin);
+      }
+    });
+
     function togglePassword(inputId, button) {
       const input = document.getElementById(inputId);
       const icon = button.querySelector('i');
