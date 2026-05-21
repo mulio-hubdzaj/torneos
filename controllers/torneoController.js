@@ -34,6 +34,19 @@ function normalizarFechaInput(fecha) {
   return String(fecha).slice(0, 10);
 }
 
+function archivoPublicoExiste(rutaPublica) {
+  if (!rutaPublica || typeof rutaPublica !== 'string') return false;
+  if (!rutaPublica.startsWith('/uploads/')) return true;
+
+  const rutaNormalizada = path.normalize(rutaPublica)
+    .replace(/^(\.\.[/\\])+/, '')
+    .replace(/^[/\\]+/, '');
+  const rutaAbsoluta = path.join(__dirname, '..', 'public', rutaNormalizada);
+  const publicDir = path.join(__dirname, '..', 'public');
+
+  return rutaAbsoluta.startsWith(publicDir) && fs.existsSync(rutaAbsoluta);
+}
+
 function formatearFechaVisual(fecha) {
   const fechaInput = normalizarFechaInput(fecha);
   if (!fechaInput) return '-';
@@ -689,6 +702,9 @@ exports.gestionar = async (req, res) => {
 
     const grupoSeleccionadoId = req.query.grupo_id ? parseInt(req.query.grupo_id, 10) : null;
     const torneoData = torneo.get({ plain: true });
+    if (torneoData.portada && !archivoPublicoExiste(torneoData.portada)) {
+      torneoData.portada = null;
+    }
     torneoData.permitir_agregar_jugadores = await obtenerPermitirAgregarJugadores(torneoId);
     torneoData.permitir_modificar_iconos_equipo = await obtenerPermitirModificarIconos(torneoId);
     torneoData.permitir_delegados_ver_estado_finanzas = await obtenerPermitirDelegadosVerEstadoFinanzas(torneoId);
