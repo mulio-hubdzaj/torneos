@@ -1360,8 +1360,6 @@ exports.sortearEncuentros = async (req, res) => {
     const { id_torneo, id_grupo } = req.params;
     const { tipo, numFechas } = req.body;
 
-    console.log('Parámetros recibidos:', { id_torneo, id_grupo, tipo, numFechas });
-
     // Validar que el grupo exista
     const grupo = await Equipo.findOne({
       where: { id_grupo },
@@ -1369,7 +1367,6 @@ exports.sortearEncuentros = async (req, res) => {
     });
 
     if (!grupo) {
-      console.log('Grupo no encontrado:', id_grupo);
       req.flash("danger", "Grupo no encontrado");
       return res.redirect(`/torneos/gestionar/${id_torneo}`);
     }
@@ -1394,10 +1391,7 @@ exports.sortearEncuentros = async (req, res) => {
       attributes: ['id_equipo']
     });
 
-    console.log('Equipos encontrados:', equipos.length);
-
     if (equipos.length < 2) {
-      console.log('No hay suficientes equipos');
       req.flash("danger", "Se necesitan al menos 2 equipos para sortear encuentros");
       return res.redirect(`/torneos/gestionar/${id_torneo}`);
     }
@@ -1406,12 +1400,8 @@ exports.sortearEncuentros = async (req, res) => {
     const numFechasInt = parseInt(numFechas);
     const validacion = validarFechas(equipos.length, numFechasInt);
 
-    console.log('Generando partidos:', { tipo, numFechasInt });
-
     // Generar partidos según tipo
     const partidos = generarRoundRobin(equipos, numFechasInt, tipo);
-
-    console.log('Partidos generados:', partidos.length);
 
     // Obtener entity_id del torneo para que los partidos queden asociados correctamente
     const permisoTorneo = await validarAdminTorneo(req, id_torneo);
@@ -1421,33 +1411,60 @@ exports.sortearEncuentros = async (req, res) => {
     }
     const partidoEntityId = permisoTorneo.torneo.entity_id;
 
-    await setAuditContext(req, partidoEntityId);
+    const transaction = await sequelize.transaction();
+    try {
+      await setAuditContext(req, partidoEntityId, transaction);
+      await sequelize.query("SET LOCAL app.omitir_auditoria_partidos_insert = '1'", { transaction });
 
-    // Insertar partidos en la BD
-    for (const partido of partidos) {
-      console.log('Insertando partido:', partido, { entity_id: partidoEntityId });
-      await Partido.create({
-        id_torneo: parseInt(id_torneo, 10),
-        id_grupo: parseInt(id_grupo, 10),
-        equipo_a: partido.equipo_a,
-        equipo_b: partido.equipo_b,
-        numero_fecha: partido.numero_fecha,
-        estado: partido.estado,
-        entity_id: partidoEntityId || null
+      // Insertar partidos en la BD
+      for (const partido of partidos) {
+        await Partido.create({
+          id_torneo: parseInt(id_torneo, 10),
+          id_grupo: parseInt(id_grupo, 10),
+          equipo_a: partido.equipo_a,
+          equipo_b: partido.equipo_b,
+          numero_fecha: partido.numero_fecha,
+          estado: partido.estado,
+          entity_id: partidoEntityId || null
+        }, { transaction });
+      }
+
+      const [grupoDetalle] = await sequelize.query(`
+        SELECT g.nombre_grupo, t.nombre_torneo
+        FROM grupos g
+        INNER JOIN torneos t ON t.id_torneo = g.id_torneo
+        WHERE g.id_grupo = :idGrupo
+        LIMIT 1
+      `, {
+        replacements: { idGrupo: parseInt(id_grupo, 10) },
+        type: sequelize.QueryTypes.SELECT,
+        transaction
       });
+
+      const tipoTexto = tipo === 'ida_vuelta' ? 'ida y vuelta' : 'ida';
+      const detalleAuditoria = `Se sorteo fixture de ${grupoDetalle?.nombre_grupo || 'grupo ' + id_grupo}`
+        + ` en torneo ${grupoDetalle?.nombre_torneo || id_torneo}: ${partidos.length} encuentros`
+        + `, ${numFechasInt} fechas, modalidad ${tipoTexto}`;
+
+      await sequelize.query(`
+        INSERT INTO auditoria (id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+        VALUES (:usuarioId, 'SORTEO', 'partidos', to_jsonb(CAST(:detalle AS text)), now(), :entityId)
+      `, {
+        replacements: {
+          usuarioId: req.session.usuario_id || null,
+          detalle: detalleAuditoria,
+          entityId: partidoEntityId || null
+        },
+        transaction
+      });
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
     }
 
     // Registrar auditoría
-    const usuarioId = req.session.usuario_id;
-    await registrarAuditoria(usuarioId, null, "partidos", "SORTEO", {
-      id_torneo,
-      id_grupo,
-      tipo,
-      numFechas: numFechasInt,
-      totalPartidos: partidos.length,
-      validacion: validacion.valido
-    });
-
     // Mensaje de éxito con validación
     let mensaje = `Encuentros sorteados correctamente. ${partidos.length} partidos generados.`;
     if (!validacion.valido) {

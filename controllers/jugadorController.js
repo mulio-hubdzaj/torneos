@@ -66,7 +66,7 @@ function normalizarFechaNacimiento(valor) {
 exports.nuevo = (req, res) => {
   if (![2, 3, 99].includes(Number(req.session.rol_id))) {
     req.flash("danger", "No tiene permisos para registrar jugadores");
-    return res.redirect(`/torneos/gestionar/${req.query.torneo_id || req.session.torneo_id}#jugadores`);
+    return res.redirect(`/torneos/gestionar/${req.query.torneo_id || req.session.torneo_id}?tab=jugadores#jugadores`);
   }
 
   const entityId = parseInt(req.query.entity_id, 10);
@@ -102,7 +102,7 @@ exports.crear = async (req, res) => {
     if (![2, 3, 99].includes(Number(req.session.rol_id))) {
       req.flash("danger", "No tiene permisos para registrar jugadores");
       await t.rollback();
-      return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+      return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
     }
 
     if (!fechaNacimientoNormalizada) {
@@ -125,7 +125,7 @@ exports.crear = async (req, res) => {
     if (existente) {
       req.flash("danger", "Ya existe un jugador con ese documento en esta entidad");
       await t.rollback();
-      return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+      return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
     }
 
     // 🔑 Setear variable de sesión en Postgres con validación
@@ -154,12 +154,12 @@ exports.crear = async (req, res) => {
 
     await t.commit();
     req.flash("success", "Jugador registrado correctamente");
-    return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+    return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
   } catch (error) {
     await t.rollback();
     console.error(error);
     req.flash("danger", "Error al crear jugador");
-    return res.redirect(`/torneos/gestionar/${req.session.torneo_id}#jugadores`);
+    return res.redirect(`/torneos/gestionar/${req.session.torneo_id}?tab=jugadores#jugadores`);
   }
 };
 
@@ -286,7 +286,7 @@ exports.editar = async (req, res) => {
 
     if (!jugador) {
       req.flash("danger", "Jugador no encontrado");
-      return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+      return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
     }
 
     // 👉 Buscar vínculo del jugador en el torneo actual
@@ -298,7 +298,7 @@ exports.editar = async (req, res) => {
     if (!vinculo) {
       if (!req.session.usuario_id) {
         req.flash("danger", "Sesión inválida: usuario no definido");
-        return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+        return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
       }
 
       // Usar SET para que persista en la conexión
@@ -345,7 +345,7 @@ exports.actualizar = async (req, res) => {
     if (!jugador) {
       req.flash("danger", "Jugador no encontrado");
       await t.rollback();
-      return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+      return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
     }
 
     if (!fechaNacimientoNormalizada) {
@@ -361,7 +361,7 @@ exports.actualizar = async (req, res) => {
     if (duplicado) {
       req.flash("danger", "Ya existe otro jugador con ese documento en esta entidad");
       await t.rollback();
-      return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+      return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
     }
 
     // 🔑 Setear variable de sesión en Postgres con validación
@@ -369,7 +369,7 @@ exports.actualizar = async (req, res) => {
     if (!req.session.usuario_id) {
       req.flash("danger", "Sesión inválida: usuario no definido");
       await t.rollback();
-      return res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+      return res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
     }
 
     // Usar SET en lugar de SET LOCAL
@@ -395,7 +395,7 @@ exports.actualizar = async (req, res) => {
 
     await t.commit();
     req.flash("success", "Jugador actualizado correctamente en el torneo");
-    res.redirect(`/torneos/gestionar/${torneoId}#jugadores`);
+    res.redirect(`/torneos/gestionar/${torneoId}?tab=jugadores#jugadores`);
   } catch (error) {
     await t.rollback();
     console.error(error);

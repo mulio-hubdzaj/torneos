@@ -1,4 +1,9 @@
-
+<%
+  const tabsInicialesPermitidos = ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios', 'auditoria'];
+  const tabInicial = tabsInicialesPermitidos.includes(typeof tabActivaInicial !== 'undefined' ? tabActivaInicial : '') ? tabActivaInicial : 'torneos';
+  const navActiva = id => id === tabInicial ? ' active' : '';
+  const paneActiva = id => id === tabInicial ? ' show active' : '';
+%>
 
 
 <!DOCTYPE html>
@@ -11,7 +16,9 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
-      const hash = window.location.hash;
+      const paramsIniciales = new URLSearchParams(window.location.search);
+      const tabQuery = paramsIniciales.get('tab');
+      const hash = window.location.hash || (tabQuery ? `#${tabQuery}` : '');
       const rolId = Number(<%= Number(rol_id || 0) %>);
       const hashesBloqueados = rolId === 0
         ? ['#grupos', '#jugadores', '#equipos', '#items', '#usuarios', '#auditoria', '#finanzas']
@@ -32,7 +39,7 @@
         }
       }
 
-      const fechaActiva = new URLSearchParams(window.location.search).get('fecha');
+      const fechaActiva = paramsIniciales.get('fecha');
       if (fechaActiva) {
         const fechaTrigger = document.getElementById(`fecha-${fechaActiva}-tab`);
         if (fechaTrigger) {
@@ -73,52 +80,52 @@
 
 
         <li class="nav-item">
-          <a class="nav-link active" 
+          <a class="nav-link<%= navActiva('torneos') %>"
              id="torneos-tab" data-bs-toggle="tab" href="#torneos" role="tab">TORNEOS</a>
         </li>
 
         <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <li class="nav-item">
-            <a class="nav-link" id="items-tab" data-bs-toggle="tab" href="#items" role="tab">Items</a>
+            <a class="nav-link<%= navActiva('items') %>" id="items-tab" data-bs-toggle="tab" href="#items" role="tab">Items</a>
           </li>
         <% } %>
 
         <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <li class="nav-item">
-            <a class="nav-link" 
+            <a class="nav-link<%= navActiva('grupos') %>"
                id="grupos-tab" data-bs-toggle="tab" href="#grupos" role="tab">Grupos</a>
           </li>
         <% } %>
 
         <% if (!esVistaPublica) { %>
           <li class="nav-item">
-            <a class="nav-link" id="jugadores-tab" data-bs-toggle="tab" href="#jugadores" role="tab">Jugadores</a>
+            <a class="nav-link<%= navActiva('jugadores') %>" id="jugadores-tab" data-bs-toggle="tab" href="#jugadores" role="tab">Jugadores</a>
           </li>
         <% } %>
         <% if (rol_id == 2 || rol_id == 3 || rol_id == 99) { %>
           <li class="nav-item">
-            <a class="nav-link" id="equipos-tab" data-bs-toggle="tab" href="#equipos" role="tab">Equipos</a>
+            <a class="nav-link<%= navActiva('equipos') %>" id="equipos-tab" data-bs-toggle="tab" href="#equipos" role="tab">Equipos</a>
           </li>
         <% } %>
         <li class="nav-item">
-          <a class="nav-link" id="partidos-tab" data-bs-toggle="tab" href="#partidos" role="tab">Fixture</a>
+          <a class="nav-link<%= navActiva('partidos') %>" id="partidos-tab" data-bs-toggle="tab" href="#partidos" role="tab">Fixture</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" id="estadisticas-tab" data-bs-toggle="tab" href="#estadisticas" role="tab">Estadísticas</a>
+          <a class="nav-link<%= navActiva('estadisticas') %>" id="estadisticas-tab" data-bs-toggle="tab" href="#estadisticas" role="tab">Estadísticas</a>
         </li>
         <% if (!esVistaPublica && rol_id != 1) { %>
           <li class="nav-item">
-            <a class="nav-link" id="finanzas-tab" data-bs-toggle="tab" href="#finanzas" role="tab">Finanzas</a>
+            <a class="nav-link<%= navActiva('finanzas') %>" id="finanzas-tab" data-bs-toggle="tab" href="#finanzas" role="tab">Finanzas</a>
           </li>
         <% } %>
         <% if (!esVistaPublica && (rol_id == 3 || rol_id == 99)) { %>
           <li class="nav-item">
-            <a class="nav-link" id="usuarios-tab" data-bs-toggle="tab" href="#usuarios" role="tab">Usuarios</a>
+            <a class="nav-link<%= navActiva('usuarios') %>" id="usuarios-tab" data-bs-toggle="tab" href="#usuarios" role="tab">Usuarios</a>
           </li>
         <% } %>
         <% if (!esVistaPublica && rol_id == 99) { %>
           <li class="nav-item">
-            <a class="nav-link" id="auditoria-tab" data-bs-toggle="tab" href="#auditoria" role="tab">Auditoría</a>
+            <a class="nav-link<%= navActiva('auditoria') %>" id="auditoria-tab" data-bs-toggle="tab" href="#auditoria" role="tab">Auditoría</a>
           </li>
         <% } %>
       </ul>
@@ -179,7 +186,7 @@
 
   <!-- TORNEOS -->
 
-    <div class="tab-pane fade show active" 
+    <div class="tab-pane fade<%= paneActiva('torneos') %>"
      id="torneos" role="tabpanel">
 
       <h3 class="text-white">Selección de Torneos</h3>
@@ -358,7 +365,7 @@
     
     <!-- Grupos -->
     <!-- Grupos -->
-<div class="tab-pane fade" 
+<div class="tab-pane fade<%= paneActiva('grupos') %>"
      id="grupos" role="tabpanel">
   <h3 class="text-white">Grupos del Torneo</h3>
 
@@ -683,8 +690,10 @@ function marcarDashboardInicioDesactualizado() {
 function refrescarDashboardInicioSiNecesario() {
   if (!dashboardInicioDesactualizado) return;
   dashboardInicioDesactualizado = false;
-  history.replaceState(null, '', `${window.location.pathname}${window.location.search}#torneos`);
-  window.location.reload();
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', 'torneos');
+  url.hash = '#torneos';
+  window.location.href = url.toString();
 }
 
 function formatearFechaInput(fecha) {
@@ -744,9 +753,11 @@ function renderFinanzasResumen() {
       <td class="text-center finanzas-estado-cell" data-label="Estado">
         ${equipo.adeuda ? '<span class="fw-bold text-danger" title="Equipo con deuda">‼️‼️</span>' : '<span class="badge text-bg-success">Al dia</span>'}
       </td>
-      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell ${equipo.adeuda ? 'text-danger' : 'text-dark'}" data-label="Saldo">${formatoMontoFinanzas(equipo.saldo_actual)}</td>
+      <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell ${equipo.adeuda ? 'text-danger' : 'text-dark'}" data-label="Saldo">${equipo.puede_ver_detalle === false ? '-' : formatoMontoFinanzas(equipo.saldo_actual)}</td>
       <td class="text-end" data-label="Acciones">
-        <button type="button" class="btn btn-sm btn-outline-dark" onclick="abrirDetalleFinanzas('${escaparHtml(equipo.id_equipo)}')">Detalles</button>
+        ${equipo.puede_ver_detalle === false
+          ? '<span class="text-muted small">Sin detalle</span>'
+          : `<button type="button" class="btn btn-sm btn-outline-dark" onclick="abrirDetalleFinanzas('${escaparHtml(equipo.id_equipo)}')">Detalles</button>`}
       </td>
     </tr>
   `).join('');
@@ -770,6 +781,7 @@ async function sincronizarFinanzasDesdeServidor() {
 function abrirDetalleFinanzas(idEquipo) {
   const equipo = finanzasResumen.find(item => String(item.id_equipo) === String(idEquipo));
   if (!equipo) return;
+  if (equipo.puede_ver_detalle === false) return;
 
   document.getElementById('finanzasDetalleTitulo').textContent = `Detalle financiero - ${equipo.nombre}`;
   document.getElementById('finanzasDetalleSubtitulo').textContent = `${equipo.nombre_grupo || 'Sin grupo'} · Saldo actual: ${formatoMontoFinanzas(equipo.saldo_actual)}`;
@@ -830,7 +842,10 @@ function sumarMinutosHora(hora, minutos) {
 }
 
 function recargarManteniendoPestana(hash = '#partidos') {
-  window.location.href = `${window.location.pathname}${window.location.search}${hash}`;
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', hash.replace('#', ''));
+  url.hash = hash;
+  window.location.href = url.toString();
 }
 
 function obtenerEquiposGrupo(grupoId) {
@@ -1250,7 +1265,7 @@ async function confirmarSorteo() {
       setTimeout(() => {
         mostrarAvisoApp(data.message || 'Sorteo generado correctamente.', 'Sorteo');
         document.getElementById('modalAvisoApp')?.addEventListener('hidden.bs.modal', () => {
-          location.reload();
+          recargarManteniendoPestana('#partidos');
         }, { once: true });
       }, 300);
     } else {
@@ -1477,7 +1492,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
       const redirectInput = form.querySelector('input[name="redirect_url"]');
       if (redirectInput) {
-        redirectInput.value = `${window.location.pathname}${window.location.search}#partidos`;
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'partidos');
+        url.hash = '#partidos';
+        redirectInput.value = `${url.pathname}${url.search}${url.hash}`;
       }
 
       form.dataset.confirmadoIntercambiar = '1';
@@ -1634,6 +1652,7 @@ function abrirModalCruceManual(numeroFecha, grupoId = '') {
   if (redirectInput) {
     const params = new URLSearchParams(window.location.search);
     params.set('fecha', numeroFecha);
+    params.set('tab', 'partidos');
     redirectInput.value = `${window.location.pathname}?${params.toString()}#partidos`;
   }
   if (selectGrupo) {
@@ -4838,7 +4857,7 @@ async function confirmarToggleEquipo(input) {
           <input type="hidden" name="id_torneo" value="<%= torneo.id_torneo %>">
           <input type="hidden" name="numero_fecha" id="manualNumeroFecha">
           <input type="hidden" name="ida_vuelta_manual" id="manualIdaVuelta" value="0">
-          <input type="hidden" name="redirect_url" id="manualRedirectUrl" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId : '' %>#partidos">
+          <input type="hidden" name="redirect_url" id="manualRedirectUrl" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&tab=partidos' : '?tab=partidos' %>#partidos">
 
           <div class="mb-3">
             <label for="manualGrupoId" class="form-label">Grupo</label>
@@ -5066,7 +5085,7 @@ async function confirmarToggleEquipo(input) {
 </div>
 
   <!-- pestaña Partidos -->
-  <div class="tab-pane fade" id="partidos">
+  <div class="tab-pane fade<%= paneActiva('partidos') %>" id="partidos">
   <div class="card-partidos p-3 shadow">
     <div class="d-flex justify-content-between align-items-center mb-3 fixture-header">
       <h3 class="mb-0">Fixture</h3>
@@ -5094,7 +5113,7 @@ async function confirmarToggleEquipo(input) {
     <div class="row g-2 align-items-end mb-3">
       <div class="col-md-4">
         <label class="form-label text-dark fw-bold mb-1">Filtrar por grupo</label>
-        <select class="form-select form-select-sm" onchange="window.location = '<%= (esVistaPublica ? '/publico/torneo/' : '/torneos/gestionar/') + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#partidos'">
+        <select class="form-select form-select-sm" onchange="window.location = '<%= (esVistaPublica ? '/publico/torneo/' : '/torneos/gestionar/') + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value + '&tab=partidos' : '?tab=partidos') + '#partidos'">
           <option value="">Vista general</option>
           <% ((typeof gruposFixture !== 'undefined' && gruposFixture) || grupos || []).forEach(grupo => { %>
             <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
@@ -5241,7 +5260,7 @@ async function confirmarToggleEquipo(input) {
                     <% if (grupoSeleccionadoId) { %>
                       <input type="hidden" name="id_grupo" value="<%= grupoSeleccionadoId %>">
                     <% } %>
-                    <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId : '' %>#partidos">
+                    <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&tab=partidos' : '?tab=partidos' %>#partidos">
                     <button type="submit" class="btn btn-outline-danger btn-sm">
                       <i class="bi bi-calendar-x"></i> Eliminar fecha
                     </button>
@@ -5365,7 +5384,7 @@ async function confirmarToggleEquipo(input) {
                               <form action="/partidos/<%= partido.id_partido %>/intercambiar" method="POST"
                                     class="form-intercambiar-equipos"
                                     style="display:inline-block;">
-                                <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha : '?fecha=' + fecha.numero_fecha %>#partidos">
+                                <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha + '&tab=partidos' : '?fecha=' + fecha.numero_fecha + '&tab=partidos' %>#partidos">
                                 <button type="submit" class="btn btn-outline-secondary"
                                         title="Intercambiar Equipo A y Equipo B"
                                         style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
@@ -5406,7 +5425,7 @@ async function confirmarToggleEquipo(input) {
                               <form action="/partidos/<%= partido.id_partido %>/eliminar" method="POST"
                                     class="form-eliminar-encuentro"
                                     style="display:inline-block;">
-                                <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha : '?fecha=' + fecha.numero_fecha %>#partidos">
+                                <input type="hidden" name="redirect_url" value="/torneos/gestionar/<%= torneo.id_torneo %><%= grupoSeleccionadoId ? '?grupo_id=' + grupoSeleccionadoId + '&fecha=' + fecha.numero_fecha + '&tab=partidos' : '?fecha=' + fecha.numero_fecha + '&tab=partidos' %>#partidos">
                                 <button type="submit" class="btn btn-outline-danger"
                                         title="Eliminar encuentro"
                                         style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
@@ -5452,7 +5471,7 @@ async function confirmarToggleEquipo(input) {
 
   <!-- pestaña Estadísticas -->
   <% if (rol_id != 1) { %>
-  <div class="tab-pane fade" id="finanzas">
+  <div class="tab-pane fade<%= paneActiva('finanzas') %>" id="finanzas">
     <div class="p-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h3 class="text-white mb-0">Finanzas</h3>
@@ -5470,7 +5489,7 @@ async function confirmarToggleEquipo(input) {
       <% if (rol_id == 3 || rol_id == 99) { %>
         <div class="row g-2 align-items-end mb-3">
           <div class="col-md-4">
-            <label class="form-label text-white mb-1" for="buscarFinanzasEquipo">Buscar equipo</label>
+            <label class="form-label text-dark mb-1" for="buscarFinanzasEquipo">Buscar equipo</label>
             <div class="input-group">
               <input type="text"
                      class="form-control text-uppercase"
@@ -5484,8 +5503,28 @@ async function confirmarToggleEquipo(input) {
               </button>
             </div>
           </div>
+          <div class="col-md-8 finanzas-admin-only">
+            <form action="/torneos/<%= torneo.id_torneo %>/permitir-delegados-ver-estado-finanzas"
+                  method="POST"
+                  class="form-switch-estado-finanzas d-flex justify-content-md-end">
+              <input type="hidden"
+                     name="permitir_delegados_ver_estado_finanzas"
+                     value="<%= torneo.permitir_delegados_ver_estado_finanzas === true ? '0' : '1' %>">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input"
+                       type="checkbox"
+                       role="switch"
+                       id="switchEstadoFinanzasDelegados"
+                       onchange="confirmarPermisoEstadoFinanzas(this)"
+                       <%= torneo.permitir_delegados_ver_estado_finanzas === true ? 'checked' : '' %>>
+                <label class="form-check-label text-dark" for="switchEstadoFinanzasDelegados">
+                  Delegados pueden ver estado de otros equipos
+                </label>
+              </div>
+            </form>
+          </div>
         </div>
-        <div class="text-white small mb-2">
+        <div class="text-dark small mb-2">
           Equipos visibles: <strong id="finanzasEquiposVisibles">0</strong> / <span id="finanzasEquiposTotal"><%= (finanzasResumen || []).length %></span>
         </div>
       <% } %>
@@ -5524,14 +5563,18 @@ async function confirmarToggleEquipo(input) {
                         <% } %>
                       </td>
                       <td class="text-end fw-bold finanzas-admin-only finanzas-saldo-cell <%= equipoFinanza.adeuda ? 'text-danger' : 'text-dark' %>" data-label="Saldo">
-                        <%= Number(equipoFinanza.saldo_actual || 0).toLocaleString('es-PY') %>
+                        <%= equipoFinanza.puede_ver_detalle === false ? '-' : Number(equipoFinanza.saldo_actual || 0).toLocaleString('es-PY') %>
                       </td>
                       <td class="text-end" data-label="Acciones">
-                        <button type="button"
-                                class="btn btn-sm btn-outline-dark"
-                                onclick="abrirDetalleFinanzas('<%= equipoFinanza.id_equipo %>')">
-                          Detalles
-                        </button>
+                        <% if (equipoFinanza.puede_ver_detalle === false) { %>
+                          <span class="text-muted small">Sin detalle</span>
+                        <% } else { %>
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-dark"
+                                  onclick="abrirDetalleFinanzas('<%= equipoFinanza.id_equipo %>')">
+                            Detalles
+                          </button>
+                        <% } %>
                       </td>
                     </tr>
                   <% }) %>
@@ -5549,14 +5592,14 @@ async function confirmarToggleEquipo(input) {
 </div>
   <% } %>
 
-  <div class="tab-pane fade" id="estadisticas">
+  <div class="tab-pane fade<%= paneActiva('estadisticas') %>" id="estadisticas">
     <div class="p-3">
       <h3 class="text-white mb-3">Estadisticas</h3>
 
       <div class="row g-2 align-items-end mb-3">
         <div class="col-md-4">
           <label class="form-label text-white mb-1">Filtrar por grupo</label>
-          <select class="form-select form-select-sm" onchange="window.location = '<%= (esVistaPublica ? '/publico/torneo/' : '/torneos/gestionar/') + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value : '') + '#estadisticas'">
+          <select class="form-select form-select-sm" onchange="window.location = '<%= (esVistaPublica ? '/publico/torneo/' : '/torneos/gestionar/') + torneo.id_torneo %>' + (this.value ? '?grupo_id=' + this.value + '&tab=estadisticas' : '?tab=estadisticas') + '#estadisticas'">
             <option value="">Vista general</option>
             <% (grupos || []).forEach(grupo => { %>
               <option value="<%= grupo.id_grupo %>" <%= String(grupoSeleccionadoId || '') === String(grupo.id_grupo) ? 'selected' : '' %>>
@@ -5667,7 +5710,7 @@ async function confirmarToggleEquipo(input) {
 </div>
 
   <!-- pestaña Items -->
-  <div class="tab-pane fade" id="items">
+  <div class="tab-pane fade<%= paneActiva('items') %>" id="items">
     <div class="p-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h3 class="text-white mb-0">Items</h3>
@@ -5727,7 +5770,7 @@ async function confirmarToggleEquipo(input) {
 
   <!-- pestaña Equipos -->
   <% if (rol_id == 3 || rol_id == 99) { %>
-  <div class="tab-pane fade" id="usuarios">
+  <div class="tab-pane fade<%= paneActiva('usuarios') %>" id="usuarios">
     <div class="p-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h3 class="text-white mb-0">Usuarios</h3>
@@ -5908,7 +5951,7 @@ async function confirmarToggleEquipo(input) {
   <% } %>
 
   <% if (rol_id == 99) { %>
-  <div class="tab-pane fade" id="auditoria">
+  <div class="tab-pane fade<%= paneActiva('auditoria') %>" id="auditoria">
     <div class="p-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
@@ -5981,7 +6024,7 @@ async function confirmarToggleEquipo(input) {
   </div>
   <% } %>
 
-  <div class="tab-pane fade tab-pane-spaced" id="equipos">
+  <div class="tab-pane fade tab-pane-spaced<%= paneActiva('equipos') %>" id="equipos">
   <div class="card bg-light bg-opacity-75 p-3 shadow">
     <div class="d-flex justify-content-between align-items-center mb-3 jugadores-header">
       <h3 class="mb-0">Equipos</h3>
@@ -6051,7 +6094,7 @@ async function confirmarToggleEquipo(input) {
               <% } %>
 
               <!-- Icono ojo para ver alineaciones -->
-              <a href="/equipos/ver/<%= equipo.id_equipo %>?returnUrl=<%= encodeURIComponent('/torneos/gestionar/' + torneo.id_torneo + '#equipos') %>" 
+              <a href="/equipos/ver/<%= equipo.id_equipo %>?returnUrl=<%= encodeURIComponent('/torneos/gestionar/' + torneo.id_torneo + '?tab=equipos#equipos') %>"
                  class="btn btn-sm btn-info me-2">
                 <i class="bi bi-eye-fill"></i> <!-- Bootstrap icon ojo -->
               </a>
@@ -6123,9 +6166,28 @@ async function confirmarToggleEquipo(input) {
 
       input.closest('form').submit();
     }
+
+    async function confirmarPermisoEstadoFinanzas(input) {
+      const activar = input.checked;
+      const mensaje = activar
+        ? 'Si activa esta opcion, los delegados podran ver si otros equipos estan al dia o adeudan, sin ver importes ni detalles.'
+        : 'Si desactiva esta opcion, los delegados solo veran el estado financiero de sus propios equipos.';
+
+      const confirmado = await confirmarApp(mensaje, 'Confirmar permiso', {
+        aceptar: 'Aceptar',
+        cancelar: 'Cancelar'
+      });
+
+      if (!confirmado) {
+        input.checked = !activar;
+        return;
+      }
+
+      input.closest('form').submit();
+    }
   </script>
 
-  <div class="tab-pane fade tab-pane-spaced" id="jugadores">
+  <div class="tab-pane fade tab-pane-spaced<%= paneActiva('jugadores') %>" id="jugadores">
   <div class="card bg-light bg-opacity-75 p-3 shadow jugadores-panel">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h3 class="mb-0">Jugadores</h3>
@@ -6596,6 +6658,7 @@ function inicializarNavegadorFechasFixture() {
     if (numeroFecha) {
       const url = new URL(window.location.href);
       url.searchParams.set('fecha', numeroFecha);
+      url.searchParams.set('tab', 'partidos');
       url.searchParams.delete('fecha_calendario');
       history.replaceState(null, '', `${url.pathname}${url.search}#partidos`);
     }
@@ -6703,7 +6766,10 @@ document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
     const href = event.target?.getAttribute('href');
     if (!href) return;
 
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${href}`);
+    const urlTab = new URL(window.location.href);
+    urlTab.searchParams.set('tab', href.replace('#', ''));
+    urlTab.hash = href;
+    history.replaceState(null, '', urlTab.toString());
 
     if (href !== '#partidos') {
       sessionStorage.removeItem('partidosModoAdmin');
@@ -6854,7 +6920,11 @@ function inicializarPullToRefresh() {
       indicador.classList.add('is-visible', 'is-ready', 'is-refreshing');
       indicador.style.transform = 'translate(-50%, 46px)';
       if (texto) texto.textContent = 'Actualizando...';
-      window.location.reload();
+      const tabActual = document.querySelector('.navbar [data-bs-toggle="tab"].active')?.getAttribute('href') || window.location.hash || '#torneos';
+      const urlActual = new URL(window.location.href);
+      urlActual.searchParams.set('tab', tabActual.replace('#', ''));
+      urlActual.hash = tabActual;
+      window.location.href = urlActual.toString();
       return;
     }
 

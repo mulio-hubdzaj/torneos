@@ -189,6 +189,24 @@ async function obtenerPermitirModificarIconos(torneoId) {
   }
 }
 
+async function obtenerPermitirDelegadosVerEstadoFinanzas(torneoId) {
+  try {
+    const [config] = await sequelize.query(`
+      SELECT permitir_delegados_ver_estado_finanzas
+      FROM torneos
+      WHERE id_torneo = :torneoId
+      LIMIT 1
+    `, {
+      replacements: { torneoId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    return config?.permitir_delegados_ver_estado_finanzas === true;
+  } catch (error) {
+    if (error?.parent?.code === '42703') return false;
+    throw error;
+  }
+}
+
 async function obtenerGruposOcultosFixture(torneoId) {
   try {
     const grupos = await sequelize.query(`
@@ -613,19 +631,13 @@ exports.gestionar = async (req, res) => {
     const rolSesion = vistaPublica ? 0 : Number(req.session.rol_id || 0);
     let entityId = vistaPublica ? null : req.session.entity_id;
 
-    if (!vistaPublica) {
-      console.log('Sesión actual:', { entity_id: req.session.entity_id, documento: req.session.documento, rol_id: req.session.rol_id });
-    }
-
     // Si el usuario no es super_admin y no tiene entity_id válido, forzar re-login
     if (!vistaPublica && rolSesion !== 99) {
       if (!entityId || isNaN(parseInt(entityId, 10))) {
-        console.log('entityId inválido para rol distinto de super_admin:', entityId);
         req.flash("danger", "Sesión inválida. Por favor, inicie sesión nuevamente.");
         return res.redirect('/login');
       }
       entityId = parseInt(entityId, 10);
-      console.log('entityId convertido:', entityId);
     }
 
     if (!vistaPublica) {
@@ -655,6 +667,7 @@ exports.gestionar = async (req, res) => {
     const torneoData = torneo.get({ plain: true });
     torneoData.permitir_agregar_jugadores = await obtenerPermitirAgregarJugadores(torneoId);
     torneoData.permitir_modificar_iconos_equipo = await obtenerPermitirModificarIconos(torneoId);
+    torneoData.permitir_delegados_ver_estado_finanzas = await obtenerPermitirDelegadosVerEstadoFinanzas(torneoId);
     const entidadActual = await Entity.findByPk(entityId);
     const gruposMapa = new Map((torneoData.Grupos || []).map(grupo => [String(grupo.id_grupo), grupo.nombre_grupo]));
     const gruposOcultosFixture = await obtenerGruposOcultosFixture(torneoId);
@@ -1264,23 +1277,26 @@ exports.gestionar = async (req, res) => {
       return acc;
     }, {});
 
-    const equiposFinanzasVisibles = rolSesion === 2
+    const delegadosVenEstadoFinanzas = torneoData.permitir_delegados_ver_estado_finanzas === true;
+    const equiposFinanzasVisibles = rolSesion === 2 && !delegadosVenEstadoFinanzas
       ? equiposConGrupo.filter(equipo => equipo.es_equipo_delegado)
       : equiposConGrupo;
     const finanzasResumen = equiposFinanzasVisibles.map(equipo => {
       const movimientos = recalcularMovimientosFinanzas(movimientosPorEquipo[String(equipo.id_equipo)] || []);
       const ultimoMovimiento = movimientos[movimientos.length - 1] || null;
       const saldoActual = Number(ultimoMovimiento?.saldo || 0);
+      const puedeVerDetalle = rolSesion !== 2 || equipo.es_equipo_delegado === true;
       return {
         id_equipo: equipo.id_equipo,
         nombre: equipo.nombre,
         icono: equipo.icono || '/images/default_team.png',
         nombre_grupo: equipo.nombre_grupo || 'Sin grupo',
-        saldo_actual: saldoActual,
+        puede_ver_detalle: puedeVerDetalle,
+        saldo_actual: puedeVerDetalle ? saldoActual : null,
         adeuda: saldoActual > 0,
-        total_items: movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0),
-        total_entregado: movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0),
-        movimientos
+        total_items: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0) : null,
+        total_entregado: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0) : null,
+        movimientos: puedeVerDetalle ? movimientos : []
       };
     });
 
@@ -1358,6 +1374,20 @@ exports.gestionar = async (req, res) => {
 
     //const messages = req.flash();
 
+    const tabsPorRol = vistaPublica
+      ? ['torneos', 'partidos', 'estadisticas']
+      : (rolSesion === 1
+        ? ['torneos', 'jugadores', 'partidos', 'estadisticas']
+        : (rolSesion === 2
+          ? ['torneos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas']
+          : (rolSesion === 3
+            ? ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios']
+            : ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios', 'auditoria'])));
+    const tabsPermitidos = new Set(tabsPorRol);
+    const tabActivaInicial = tabsPermitidos.has(String(req.query.tab || ''))
+      ? String(req.query.tab)
+      : 'torneos';
+
     return res.render('torneos/index', {
       partidos: partidosRaw,
       partidosPorFecha,
@@ -1385,6 +1415,7 @@ exports.gestionar = async (req, res) => {
       reglaTarjetas,
       finanzasResumen,
       dashboardInicio,
+      tabActivaInicial,
       canchas: canchas.map(cancha => cancha.get({ plain: true })),
       auditoria,
       contextoAuditoria,
@@ -1770,6 +1801,48 @@ exports.actualizarPermitirModificarIconos = async (req, res) => {
   }
 };
 
+exports.actualizarPermitirDelegadosVerEstadoFinanzas = async (req, res) => {
+  const torneoId = req.params.id_torneo;
+  try {
+    const permiso = await validarTorneoAdmin(req, torneoId);
+    if (!permiso.ok) {
+      req.flash("danger", permiso.message);
+      return res.redirect('/torneos');
+    }
+
+    const permitir = req.body.permitir_delegados_ver_estado_finanzas === '1';
+
+    if (req.session.usuario_id) {
+      await sequelize.query('SET app.usuario_id = :usuarioId', {
+        replacements: { usuarioId: req.session.usuario_id }
+      });
+    }
+    await sequelize.query('SET app.entity_id = :entityId', {
+      replacements: { entityId: permiso.torneo.entity_id }
+    });
+
+    await sequelize.query(`
+      UPDATE torneos
+      SET permitir_delegados_ver_estado_finanzas = :permitir
+      WHERE id_torneo = :torneoId
+    `, {
+      replacements: { permitir, torneoId }
+    });
+
+    req.flash(
+      "success",
+      permitir
+        ? "Los delegados pueden ver el estado de otros equipos"
+        : "Los delegados ya no pueden ver el estado de otros equipos"
+    );
+    return res.redirect(`/torneos/gestionar/${torneoId}?tab=finanzas#finanzas`);
+  } catch (error) {
+    console.error("Error al actualizar permiso de estado financiero para delegados:", error);
+    req.flash("danger", "No se pudo actualizar el permiso de estado financiero");
+    return res.redirect(`/torneos/gestionar/${torneoId}?tab=finanzas#finanzas`);
+  }
+};
+
 exports.resumenFinanzas = async (req, res) => {
   try {
     const torneoId = parseInt(req.params.id_torneo, 10);
@@ -1945,6 +2018,8 @@ exports.resumenFinanzas = async (req, res) => {
       return acc;
     }, {});
 
+    const delegadosVenEstadoFinanzas = await obtenerPermitirDelegadosVerEstadoFinanzas(torneoId);
+    let equiposDelegadoSet = new Set();
     let equiposVisibles = equipos;
     if (Number(req.session.rol_id) === 2) {
       const equiposDelegado = await sequelize.query(`
@@ -1959,23 +2034,27 @@ exports.resumenFinanzas = async (req, res) => {
         replacements: { usuarioId: req.session.usuario_id, torneoId },
         type: sequelize.QueryTypes.SELECT
       });
-      const equiposDelegadoSet = new Set(equiposDelegado.map(registro => Number(registro.id_equipo)));
-      equiposVisibles = equipos.filter(equipo => equiposDelegadoSet.has(Number(equipo.id_equipo)));
+      equiposDelegadoSet = new Set(equiposDelegado.map(registro => Number(registro.id_equipo)));
+      if (!delegadosVenEstadoFinanzas) {
+        equiposVisibles = equipos.filter(equipo => equiposDelegadoSet.has(Number(equipo.id_equipo)));
+      }
     }
 
     const resumen = equiposVisibles.map(equipo => {
       const movimientos = recalcularMovimientosFinanzas(movimientosPorEquipo[String(equipo.id_equipo)] || []);
       const saldoActual = Number(movimientos[movimientos.length - 1]?.saldo || 0);
+      const puedeVerDetalle = Number(req.session.rol_id) !== 2 || equiposDelegadoSet.has(Number(equipo.id_equipo));
       return {
         id_equipo: equipo.id_equipo,
         nombre: equipo.nombre,
         icono: equipo.icono || '/images/default_team.png',
         nombre_grupo: equipo.nombre_grupo || 'Sin grupo',
-        saldo_actual: saldoActual,
+        puede_ver_detalle: puedeVerDetalle,
+        saldo_actual: puedeVerDetalle ? saldoActual : null,
         adeuda: saldoActual > 0,
-        total_items: movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0),
-        total_entregado: movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0),
-        movimientos
+        total_items: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.total_items || 0), 0) : null,
+        total_entregado: puedeVerDetalle ? movimientos.reduce((total, mov) => total + Number(mov.entrega || 0), 0) : null,
+        movimientos: puedeVerDetalle ? movimientos : []
       };
     });
 
