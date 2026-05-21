@@ -290,9 +290,13 @@
               <div class="list-group list-group-flush dashboard-scroll-area">
                 <% dashboardPartidosEnCurso.forEach(partido => { %>
                   <div class="list-group-item" data-dashboard-en-curso-partido="<%= partido.id_partido %>">
-                    <div class="d-flex justify-content-between gap-2 align-items-start">
-                      <div>
-                        <strong class="d-block"><%= partido.nombre_equipo_a || 'Equipo A' %> <span class="text-warning-emphasis"><%= partido.goles_a ?? 0 %> - <%= partido.goles_b ?? 0 %></span> <%= partido.nombre_equipo_b || 'Equipo B' %></strong>
+                    <div class="dashboard-en-curso-header">
+                      <div class="dashboard-en-curso-main">
+                        <strong class="d-block dashboard-score-line">
+                          <span class="dashboard-score-team"><%= partido.nombre_equipo_a || 'Equipo A' %></span>
+                          <span class="dashboard-score-box"><%= partido.goles_a ?? 0 %> - <%= partido.goles_b ?? 0 %></span>
+                          <span class="dashboard-score-team"><%= partido.nombre_equipo_b || 'Equipo B' %></span>
+                        </strong>
                         <small class="text-muted">Fecha <%= partido.numero_fecha || '-' %><% if (partido.fecha_formateada && partido.fecha_formateada !== '-') { %> | <%= partido.fecha_formateada %><% } %><% if (partido.hora && partido.hora !== '-') { %> | <%= partido.hora %><% } %></small>
                       </div>
                       <span class="badge estado-badge-en-curso">En curso</span>
@@ -311,7 +315,7 @@
                             <% if (eventosEquipoA.length) { %>
                               <% eventosEquipoA.forEach(jugador => { %>
                                 <div class="dashboard-live-stat-item">
-                                  <strong><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador' %></strong>
+                                  <span><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador' %></span>
                                   <span class="dashboard-live-eventos">
                                     <% if (Number(jugador.goles || 0) > 0) { %>
                                       <span><%= Number(jugador.goles || 0) %> <%= Number(jugador.goles || 0) === 1 ? 'gol' : 'goles' %></span>
@@ -334,7 +338,7 @@
                             <% if (eventosEquipoB.length) { %>
                               <% eventosEquipoB.forEach(jugador => { %>
                                 <div class="dashboard-live-stat-item">
-                                  <strong><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador' %></strong>
+                                  <span><%= [jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador' %></span>
                                   <span class="dashboard-live-eventos">
                                     <% if (Number(jugador.goles || 0) > 0) { %>
                                       <span><%= Number(jugador.goles || 0) %> <%= Number(jugador.goles || 0) === 1 ? 'gol' : 'goles' %></span>
@@ -374,7 +378,11 @@
               <div class="list-group list-group-flush dashboard-scroll-area">
                 <% dashboardUltimosResultados.forEach(partido => { %>
                   <div class="list-group-item d-flex justify-content-between align-items-start gap-2">
-                    <span class="dashboard-match-title"><%= partido.nombre_equipo_a %> <strong><%= partido.goles_a %> - <%= partido.goles_b %></strong> <%= partido.nombre_equipo_b %></span>
+                    <span class="dashboard-match-title dashboard-match-score-line">
+                      <span class="dashboard-match-team"><%= partido.nombre_equipo_a %></span>
+                      <strong class="dashboard-match-score-box"><%= partido.goles_a %> - <%= partido.goles_b %></strong>
+                      <span class="dashboard-match-team"><%= partido.nombre_equipo_b %></span>
+                    </span>
                     <div class="dashboard-match-actions">
                       <button type="button"
                               class="btn btn-sm btn-outline-primary dashboard-match-stats-btn"
@@ -1040,6 +1048,42 @@ function descargarBlob(nombreArchivo, contenido, tipo) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function esAndroidWebViewApp() {
+  return /Android/i.test(navigator.userAgent || '') || Boolean(window.Capacitor);
+}
+
+function descargarPdfDesdeServidor(nombreArchivo, contenidoPdf) {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = `/torneos/<%= torneo.id_torneo %>/finanzas/pdf-descarga`;
+  form.style.display = 'none';
+
+  const inputNombre = document.createElement('input');
+  inputNombre.type = 'hidden';
+  inputNombre.name = 'nombre_archivo';
+  inputNombre.value = nombreArchivo;
+
+  const inputPdf = document.createElement('input');
+  inputPdf.type = 'hidden';
+  inputPdf.name = 'pdf_base64';
+  inputPdf.value = btoa(contenidoPdf);
+
+  form.appendChild(inputNombre);
+  form.appendChild(inputPdf);
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => form.remove(), 3000);
+}
+
+function descargarPdfArchivo(nombreArchivo, contenidoPdf) {
+  if (esAndroidWebViewApp()) {
+    descargarPdfDesdeServidor(nombreArchivo, contenidoPdf);
+    return;
+  }
+
+  descargarBlob(nombreArchivo, contenidoPdf, 'application/pdf');
+}
+
 function tituloMovimientoFinanzasPdf(movimiento) {
   return normalizarTextoPdf(conceptoVisibleFinanzas(movimiento))
     .replace(/^Encuentro #?([0-9]+)\s*-\s*/i, '#$1 ')
@@ -1176,7 +1220,7 @@ function descargarPdfDetalleFinanzas() {
 
   const pdf = crearPdfDetalleFinanzas(equipo);
   const nombreSeguro = normalizarTextoPdf(equipo.nombre || 'equipo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'equipo';
-  descargarBlob(`detalle-deuda-${nombreSeguro}.pdf`, pdf, 'application/pdf');
+  descargarPdfArchivo(`detalle-deuda-${nombreSeguro}.pdf`, pdf);
 }
 
 function sumarMinutosHora(hora, minutos) {
@@ -2047,13 +2091,35 @@ async function cambiarEstado(selectElement) {
 }
 
 // Guardar marcador
+function actualizarMarcadorPartidoEnVista(partidoId, golesA, golesB, estado = null) {
+  const estadoNormalizado = estado ? normalizarEstadoPartidoCliente(estado) : null;
+  const resultCell = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a]`);
+  if (resultCell) {
+    resultCell.setAttribute('data-goles-a', golesA);
+    resultCell.setAttribute('data-goles-b', golesB);
+    if (estadoNormalizado) resultCell.setAttribute('data-estado', estadoNormalizado);
+    const span = resultCell.querySelector('span');
+    if (span) span.textContent = `${golesA} - ${golesB}`;
+  }
+
+  if (estadoNormalizado) {
+    const selectEstado = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
+    if (selectEstado) {
+      selectEstado.value = estadoNormalizado;
+      selectEstado.dataset.estadoActual = estadoNormalizado;
+    }
+    actualizarAccionesPartido(partidoId, estadoNormalizado);
+  }
+}
+
 async function guardarMarcador() {
   const partidoId = document.getElementById('marcadorPartidoId').value;
   const golesA = document.getElementById('marcadorGolesA').value;
   const golesB = document.getElementById('marcadorGolesB').value;
   const selectEstadoActual = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
-  const estadoActual = selectEstadoActual ? selectEstadoActual.value : '';
-  const estadoMarcador = estadoActual === 'en_curso' ? 'en_curso' : 'finalizado';
+  const marcadorCell = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a]`);
+  const estadoActual = normalizarEstadoPartidoCliente(selectEstadoActual?.value || marcadorCell?.dataset.estado || 'programado');
+  let estadoMarcador = estadoActual;
 
   if (golesA === '' || golesB === '') {
     mostrarAvisoApp('Por favor ingresa ambos marcadores.', 'Marcador');
@@ -2063,6 +2129,14 @@ async function guardarMarcador() {
   if (!marcadorValido(golesA) || !marcadorValido(golesB)) {
     mostrarAvisoApp('El marcador debe ser un número entero entre 0 y 99, sin negativos ni ceros a la izquierda.', 'Marcador');
     return;
+  }
+
+  if (!['en_curso', 'finalizado'].includes(estadoActual)) {
+    estadoMarcador = await elegirEstadoMarcador(
+      'El encuentro todavia no esta en curso ni finalizado. Como queres dejarlo al guardar el marcador?',
+      'Estado del marcador'
+    );
+    if (!estadoMarcador) return;
   }
 
   try {
@@ -2081,22 +2155,7 @@ async function guardarMarcador() {
 
     const data = await response.json();
     if (data.success) {
-      const resultCell = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a]`);
-      if (resultCell) {
-        resultCell.setAttribute('data-goles-a', golesA);
-        resultCell.setAttribute('data-goles-b', golesB);
-        resultCell.setAttribute('data-estado', estadoMarcador);
-        const span = resultCell.querySelector('span');
-        if (span) {
-          span.textContent = `${golesA} - ${golesB}`;
-        }
-      }
-      const selectEstado = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
-      if (selectEstado) {
-        selectEstado.value = estadoMarcador;
-        selectEstado.dataset.estadoActual = estadoMarcador;
-      }
-      actualizarAccionesPartido(partidoId, estadoMarcador);
+      actualizarMarcadorPartidoEnVista(partidoId, golesA, golesB, estadoMarcador);
       recalcularEstadisticasCliente();
       marcarDashboardInicioDesactualizado();
       cerrarModalBootstrapSeguro('modalEditarMarcador');
@@ -2250,13 +2309,13 @@ function renderDetalleEstadisticaJugador(jugador) {
   const rojas = Number(jugador.tarjetas_rojas || 0);
   const eventos = [];
 
-  if (goles > 0) eventos.push(`<strong>${goles} ${goles === 1 ? 'gol' : 'goles'}</strong>`);
+  if (goles > 0) eventos.push(`<span>${goles} ${goles === 1 ? 'gol' : 'goles'}</span>`);
   if (amarillas > 0) eventos.push(renderTarjetasMini(amarillas, 'amarilla'));
   if (rojas > 0) eventos.push(renderTarjetasMini(rojas, 'roja'));
 
   return `
     <div class="encuentro-stats-jugador">
-      <strong>${escaparHtml([jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador')}</strong>
+      <span>${escaparHtml([jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador')}</span>
       <span class="encuentro-stats-eventos">${eventos.join('')}</span>
     </div>
   `;
@@ -2328,7 +2387,7 @@ function renderDashboardEventoJugador(jugador) {
 
   return `
     <div class="dashboard-live-stat-item">
-      <strong>${escaparHtml([jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador')}</strong>
+      <span>${escaparHtml([jugador.nombre, jugador.apellido].filter(Boolean).join(' ') || 'Jugador')}</span>
       <span class="dashboard-live-eventos">${eventos.join('')}</span>
     </div>
   `;
@@ -2394,7 +2453,11 @@ async function refrescarDashboardEnCurso(opciones = {}) {
 
       const titulo = row.querySelector('strong.d-block');
       if (titulo) {
-        titulo.innerHTML = `${escaparHtml(partido.nombre_equipo_a || 'Equipo A')} <span class="text-warning-emphasis">${Number(partido.goles_a || 0)} - ${Number(partido.goles_b || 0)}</span> ${escaparHtml(partido.nombre_equipo_b || 'Equipo B')}`;
+        titulo.innerHTML = `
+          <span class="dashboard-score-team">${escaparHtml(partido.nombre_equipo_a || 'Equipo A')}</span>
+          <span class="dashboard-score-box">${Number(partido.goles_a || 0)} - ${Number(partido.goles_b || 0)}</span>
+          <span class="dashboard-score-team">${escaparHtml(partido.nombre_equipo_b || 'Equipo B')}</span>
+        `;
       }
       renderDashboardEnCursoStats(partido);
     });
@@ -2415,6 +2478,7 @@ function mostrarAvisoApp(mensaje, titulo = 'Atencion') {
     return;
   }
 
+  limpiarBotonesExtraModalAviso();
   document.getElementById('modalAvisoAppTitulo').textContent = titulo;
   const mensajeEl = document.getElementById('modalAvisoAppMensaje');
   mensajeEl.textContent = mensaje;
@@ -2423,8 +2487,10 @@ function mostrarAvisoApp(mensaje, titulo = 'Atencion') {
   mensajeEl.classList.toggle('text-danger', esAvisoAcumulacion);
   mensajeEl.classList.toggle('fw-bold', esAvisoAcumulacion);
   document.getElementById('modalAvisoAppCancelar').classList.add('d-none');
-  document.getElementById('modalAvisoAppAceptar').textContent = 'Aceptar';
-  document.getElementById('modalAvisoAppAceptar').onclick = () => {
+  const btnAceptarAviso = document.getElementById('modalAvisoAppAceptar');
+  btnAceptarAviso.textContent = 'Aceptar';
+  btnAceptarAviso.className = 'btn btn-success';
+  btnAceptarAviso.onclick = () => {
     bootstrap.Modal.getOrCreateInstance(modalEl).hide();
   };
 
@@ -2445,6 +2511,7 @@ function confirmarApp(mensaje, titulo = 'Confirmar', opciones = {}) {
     return Promise.resolve(false);
   }
 
+  limpiarBotonesExtraModalAviso();
   return new Promise(resolve => {
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     const btnCancelar = document.getElementById('modalAvisoAppCancelar');
@@ -2460,7 +2527,9 @@ function confirmarApp(mensaje, titulo = 'Confirmar', opciones = {}) {
     mensajeEl.classList.toggle('fw-bold', destacarMensaje);
     btnCancelar.classList.remove('d-none');
     btnCancelar.textContent = opciones.cancelar || 'Cancelar';
+    btnCancelar.className = 'btn btn-outline-primary';
     btnAceptar.textContent = opciones.aceptar || 'Continuar';
+    btnAceptar.className = 'btn btn-success';
 
     const finalizar = respuesta => {
       respondido = true;
@@ -2473,6 +2542,62 @@ function confirmarApp(mensaje, titulo = 'Confirmar', opciones = {}) {
 
     modalEl.addEventListener('hidden.bs.modal', () => {
       if (!respondido) resolve(false);
+    }, { once: true });
+
+    modal.show();
+  });
+}
+
+function limpiarBotonesExtraModalAviso() {
+  document.querySelectorAll('#modalAvisoApp .modal-aviso-extra').forEach(btn => btn.remove());
+}
+
+function normalizarEstadoPartidoCliente(estado) {
+  return String(estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function elegirEstadoMarcador(mensaje, titulo = 'Estado del encuentro') {
+  const modalEl = document.getElementById('modalAvisoApp');
+  if (!modalEl) return Promise.resolve(null);
+  limpiarBotonesExtraModalAviso();
+
+  return new Promise(resolve => {
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const btnCancelar = document.getElementById('modalAvisoAppCancelar');
+    const btnAceptar = document.getElementById('modalAvisoAppAceptar');
+    const btnEnCurso = document.createElement('button');
+    let respondido = false;
+
+    document.getElementById('modalAvisoAppTitulo').textContent = titulo;
+    const mensajeEl = document.getElementById('modalAvisoAppMensaje');
+    mensajeEl.textContent = mensaje;
+    mensajeEl.classList.add('text-dark');
+    mensajeEl.classList.remove('text-danger', 'fw-bold');
+
+    btnCancelar.classList.remove('d-none');
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.className = 'btn btn-outline-secondary';
+    btnEnCurso.type = 'button';
+    btnEnCurso.className = 'btn btn-warning modal-aviso-extra';
+    btnEnCurso.textContent = 'En curso';
+    btnAceptar.textContent = 'Finalizado';
+    btnAceptar.className = 'btn btn-success';
+    btnAceptar.parentNode.insertBefore(btnEnCurso, btnAceptar);
+
+    const finalizar = respuesta => {
+      respondido = true;
+      limpiarBotonesExtraModalAviso();
+      modal.hide();
+      resolve(respuesta);
+    };
+
+    btnCancelar.onclick = () => finalizar(null);
+    btnEnCurso.onclick = () => finalizar('en_curso');
+    btnAceptar.onclick = () => finalizar('finalizado');
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      limpiarBotonesExtraModalAviso();
+      if (!respondido) resolve(null);
     }, { once: true });
 
     modal.show();
@@ -2547,17 +2672,16 @@ function agregarFilaItemCarga(item = {}) {
     tr.dataset.tarjetaAuto = '1';
   }
   tr.innerHTML = `
-    <td>
+    <td class="carga-items-col-item">
       <select class="form-select form-select-sm carga-item-nombre">
         ${opcionesItemsCarga(item.nombre || '')}
       </select>
     </td>
-    <td><input type="text" inputmode="numeric" class="form-control form-control-sm carga-monto carga-item-monto campo-dinero" value="${formatoMonto(item.monto || 0)}"></td>
-    <td><input type="number" min="1" step="1" class="form-control form-control-sm carga-numero carga-item-cantidad" value="${item.cantidad || 1}"></td>
-    <td><input type="text" class="form-control form-control-sm carga-item-observaciones" value="${escaparHtml(item.observaciones || '')}"></td>
-    <td class="text-end carga-item-total">0.00</td>
-    <td><small class="text-muted">${escaparHtml(item.fecha_registro_fmt || '-')}</small></td>
-    <td class="text-center">
+    <td class="carga-items-col-monto"><input type="text" inputmode="numeric" class="form-control form-control-sm carga-monto carga-item-monto campo-dinero" value="${formatoMonto(item.monto || 0)}"></td>
+    <td class="carga-items-col-cantidad"><input type="number" min="1" step="1" class="form-control form-control-sm carga-numero carga-item-cantidad" value="${item.cantidad || 1}"></td>
+    <td class="carga-items-col-observacion"><input type="text" class="form-control form-control-sm carga-item-observaciones" value="${escaparHtml(item.observaciones || '')}"></td>
+    <td class="text-end carga-item-total carga-items-col-total">0.00</td>
+    <td class="text-center carga-items-col-accion">
       <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove(); recalcularCargaEquipoPartido();">
         <i class="bi bi-trash"></i>
       </button>
@@ -2705,6 +2829,7 @@ function renderCargaJugadores(jugadores) {
       tr.classList.add('table-warning');
       tr.dataset.sancionVigente = '1';
     }
+    tr.dataset.golesOriginal = String(sancionVigente ? 0 : (Number.parseInt(jugador.goles || '0', 10) || 0));
     tr.innerHTML = `
       <td>
         <strong>${jugador.numero_camiseta ? `#${escaparHtml(jugador.numero_camiseta)} ` : ''}${escaparHtml(jugador.nombre || '')} ${escaparHtml(jugador.apellido || '')}</strong>
@@ -2766,7 +2891,8 @@ async function abrirCargaEquipoPartido(partidoId, equipoId, boton = null) {
       equipoNombre: data.equipo.nombre,
       equipoRival: data.equipo.rival || '',
       numeroFecha: data.partido.numero_fecha || null,
-      fechaCalendario: data.partido.fecha || null
+      fechaCalendario: data.partido.fecha || null,
+      estado: normalizarEstadoPartidoCliente(data.partido.estado || 'programado')
     };
     cargaItemsDisponibles = data.items || [];
     cargaReglaTarjetasActual = data.reglaTarjetas || { acumula_amarillas: false };
@@ -3076,6 +3202,14 @@ function obtenerCargaItemsPayload() {
   })).filter(item => item.nombre);
 }
 
+function cargaTieneGolesJugadoresModificados() {
+  return Array.from(document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]')).some(tr => {
+    const golesOriginal = Number.parseInt(tr.dataset.golesOriginal || '0', 10) || 0;
+    const golesActual = Number.parseInt(tr.querySelector('.carga-jugador-goles')?.value || '0', 10) || 0;
+    return golesActual > 0 && golesActual !== golesOriginal;
+  });
+}
+
 async function guardarCargaEquipoPartido() {
   if (!cargaEquipoPartidoActual) return;
   actualizarAcumulacionesAmarillas();
@@ -3083,17 +3217,34 @@ async function guardarCargaEquipoPartido() {
   await resolverDecisionesAcumulacion();
 
   try {
+    const jugadoresPayload = obtenerCargaJugadoresPayload();
+    const itemsPayload = obtenerCargaItemsPayload();
     const { partidoId, equipoId, modo, torneoId, numeroFecha } = cargaEquipoPartidoActual;
     const url = modo === 'libre'
       ? `/partidos/libre/torneos/${torneoId}/fecha/${numeroFecha}/equipo/${equipoId}/carga`
       : `/partidos/${partidoId}/equipo/${equipoId}/carga`;
+    let estadoPartido = null;
+    if (modo !== 'libre' && cargaTieneGolesJugadoresModificados()) {
+      const marcadorCell = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a]`);
+      const estadoActual = normalizarEstadoPartidoCliente(
+        cargaEquipoPartidoActual.estado || marcadorCell?.dataset.estado || 'programado'
+      );
+      if (!['en_curso', 'finalizado'].includes(estadoActual)) {
+        estadoPartido = await elegirEstadoMarcador(
+          'El encuentro esta pendiente/programado. Como queres dejarlo al registrar la carga?',
+          'Estado del encuentro'
+        );
+        if (!estadoPartido) return;
+      }
+    }
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        jugadores: obtenerCargaJugadoresPayload(),
-        items: obtenerCargaItemsPayload(),
-        monto_aportado: valorNumeroInput(document.getElementById('cargaMontoAportado').value)
+        jugadores: jugadoresPayload,
+        items: itemsPayload,
+        monto_aportado: valorNumeroInput(document.getElementById('cargaMontoAportado').value),
+        estado_partido: estadoPartido || undefined
       })
     });
 
@@ -3106,6 +3257,15 @@ async function guardarCargaEquipoPartido() {
     cerrarModalBootstrapSeguro('modalCargaEquipoPartido');
     marcarBotonCargaRegistrada();
     aplicarSancionesEnListaJugadores(data.jugadoresSancionados || []);
+    if (data.marcador && partidoId) {
+      actualizarMarcadorPartidoEnVista(
+        partidoId,
+        data.marcador.goles_a,
+        data.marcador.goles_b,
+        data.marcador.estado
+      );
+      cargaEquipoPartidoActual.estado = normalizarEstadoPartidoCliente(data.marcador.estado);
+    }
     actualizarFinanzasDesdeCarga(data.resumen || {});
     await sincronizarFinanzasDesdeServidor();
     refrescarDashboardEnCurso();
@@ -3459,6 +3619,64 @@ async function confirmarToggleEquipo(input) {
   padding: 10px;
 }
 
+@media (min-width: 769px) {
+  #modalCargaEquipoPartido .modal-carga-equipo-dialog {
+    width: calc(100vw - 12px);
+    max-width: 1440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  #modalCargaEquipoPartido .carga-items-table {
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  #modalCargaEquipoPartido .carga-items-responsive {
+    overflow-x: visible;
+  }
+
+  #modalCargaEquipoPartido .carga-items-table th,
+  #modalCargaEquipoPartido .carga-items-table td {
+    overflow: hidden;
+    padding-left: 0.22rem;
+    padding-right: 0.22rem;
+    white-space: normal;
+  }
+
+  #modalCargaEquipoPartido .carga-items-table .form-control,
+  #modalCargaEquipoPartido .carga-items-table .form-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #modalCargaEquipoPartido .carga-items-col-item {
+    width: 43%;
+  }
+
+  #modalCargaEquipoPartido .carga-items-col-monto {
+    width: 10%;
+  }
+
+  #modalCargaEquipoPartido .carga-items-col-cantidad {
+    width: 7%;
+  }
+
+  #modalCargaEquipoPartido .carga-items-col-observacion {
+    width: 18%;
+  }
+
+  #modalCargaEquipoPartido .carga-items-col-total {
+    width: 14%;
+  }
+
+  #modalCargaEquipoPartido .carga-items-col-accion {
+    width: 8%;
+  }
+}
+
 .finanzas-detalle-movimiento-row > td {
   border-top: 3px solid #495057;
   border-bottom: 0;
@@ -3608,6 +3826,55 @@ async function confirmarToggleEquipo(input) {
   display: none;
 }
 
+.dashboard-en-curso-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+}
+
+.dashboard-en-curso-main,
+.dashboard-en-curso-card .list-group-item > .d-flex > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dashboard-score-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  color: #102033;
+  text-align: center;
+}
+
+.dashboard-score-team {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-score-team:last-child {
+  text-align: right;
+}
+
+.dashboard-score-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #111827;
+  background: #fff;
+  color: #111827;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .dashboard-live-stats {
   display: grid;
   gap: 6px;
@@ -3653,10 +3920,11 @@ async function confirmarToggleEquipo(input) {
   border-bottom: 1px solid #edf0f2;
 }
 
-.dashboard-live-stat-item strong {
+.dashboard-live-stat-item > span:first-child {
   min-width: 0;
   overflow-wrap: anywhere;
   line-height: 1.15;
+  font-weight: 400;
 }
 
 .dashboard-live-eventos {
@@ -3666,7 +3934,7 @@ async function confirmarToggleEquipo(input) {
   flex-wrap: wrap;
   gap: 5px;
   white-space: nowrap;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .dashboard-live-team > .text-muted {
@@ -3729,6 +3997,38 @@ async function confirmarToggleEquipo(input) {
   line-height: 1.25;
 }
 
+.dashboard-match-score-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-match-team {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-match-team:last-child {
+  text-align: right;
+}
+
+.dashboard-match-score-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #111827;
+  background: #fff;
+  color: #111827;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .dashboard-match-date {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -3784,9 +4084,18 @@ async function confirmarToggleEquipo(input) {
 }
 
 .encuentro-stats-marcador {
-  color: #0d6efd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #111827;
+  background: #fff;
+  color: #111827;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -3828,8 +4137,11 @@ async function confirmarToggleEquipo(input) {
   color: #102033;
 }
 
-.encuentro-stats-jugador strong {
+.encuentro-stats-jugador > span:first-child {
+  min-width: 0;
   color: #102033;
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .encuentro-stats-eventos {
@@ -4913,6 +5225,42 @@ async function confirmarToggleEquipo(input) {
     padding-right: 0.12rem;
   }
 
+  .dashboard-score-box {
+    min-width: 64px;
+    min-height: 26px;
+    padding: 0 7px;
+  }
+
+  .dashboard-score-line {
+    gap: 5px;
+    font-size: 0.9rem;
+  }
+
+  .dashboard-en-curso-header {
+    gap: 6px;
+  }
+
+  .dashboard-match-score-line {
+    gap: 5px;
+    font-size: 0.88rem;
+  }
+
+  .dashboard-match-score-box {
+    min-width: 64px;
+    min-height: 26px;
+    padding: 0 7px;
+  }
+
+  .encuentro-stats-score {
+    gap: 5px;
+  }
+
+  .encuentro-stats-marcador {
+    min-width: 64px;
+    min-height: 26px;
+    padding: 0 7px;
+  }
+
   #partidos.partidos-vista-publica .badge {
     font-size: 0.66rem;
     white-space: normal;
@@ -5449,7 +5797,7 @@ async function confirmarToggleEquipo(input) {
 </div>
 
 <div class="modal fade" id="modalCargaEquipoPartido" tabindex="-1" aria-labelledby="cargaPartidoTitulo" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable modal-carga-equipo-dialog">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
         <div>
@@ -5525,17 +5873,16 @@ async function confirmarToggleEquipo(input) {
                 <i class="bi bi-plus-circle"></i> Agregar item
               </button>
             </div>
-            <div class="table-responsive">
-              <table class="table table-sm table-hover carga-partido-table">
+            <div class="table-responsive carga-items-responsive">
+              <table class="table table-sm table-hover carga-partido-table carga-items-table">
                 <thead class="table-light">
                   <tr>
-                    <th>Item</th>
-                    <th>Monto</th>
-                    <th>Cant.</th>
-                    <th>Observacion</th>
-                    <th class="text-end">Total</th>
-                    <th>Agregado</th>
-                    <th></th>
+                    <th class="carga-items-col-item">Item</th>
+                    <th class="carga-items-col-monto">Monto</th>
+                    <th class="carga-items-col-cantidad">Cant.</th>
+                    <th class="carga-items-col-observacion">Observacion</th>
+                    <th class="text-end carga-items-col-total">Total</th>
+                    <th class="carga-items-col-accion"></th>
                   </tr>
                 </thead>
                 <tbody id="cargaItemsTbody"></tbody>
@@ -6328,7 +6675,7 @@ async function confirmarToggleEquipo(input) {
               </button>
             </div>
           </div>
-          <div class="col-md-8 finanzas-admin-only">
+          <div class="col-md-8">
             <form action="/torneos/<%= torneo.id_torneo %>/permitir-delegados-ver-estado-finanzas"
                   method="POST"
                   class="form-switch-estado-finanzas d-flex justify-content-md-end">
@@ -6341,6 +6688,7 @@ async function confirmarToggleEquipo(input) {
                        role="switch"
                        id="switchEstadoFinanzasDelegados"
                        onchange="confirmarPermisoEstadoFinanzas(this)"
+                       disabled
                        <%= torneo.permitir_delegados_ver_estado_finanzas === true ? 'checked' : '' %>>
                 <label class="form-check-label text-dark" for="switchEstadoFinanzasDelegados">
                   Delegados pueden ver estado de otros equipos
@@ -7645,6 +7993,8 @@ function activarVistaPublicaFinanzas() {
   panel?.classList.add('finanzas-vista-publica');
   document.getElementById('btnVistaPublicaFinanzas')?.classList.add('d-none');
   document.getElementById('btnVistaAdminFinanzas')?.classList.remove('d-none');
+  const switchEstadoDelegados = document.getElementById('switchEstadoFinanzasDelegados');
+  if (switchEstadoDelegados) switchEstadoDelegados.disabled = true;
 }
 
 function activarVistaAdminFinanzas() {
@@ -7652,6 +8002,8 @@ function activarVistaAdminFinanzas() {
   panel?.classList.remove('finanzas-vista-publica');
   document.getElementById('btnVistaAdminFinanzas')?.classList.add('d-none');
   document.getElementById('btnVistaPublicaFinanzas')?.classList.remove('d-none');
+  const switchEstadoDelegados = document.getElementById('switchEstadoFinanzasDelegados');
+  if (switchEstadoDelegados) switchEstadoDelegados.disabled = false;
 }
 
 document.getElementById('btnVistaPublicaFinanzas')?.addEventListener('click', activarVistaPublicaFinanzas);
@@ -7694,6 +8046,7 @@ function inicializarPullToRefresh() {
   let distancia = 0;
   let arrastrando = false;
   let actualizando = false;
+  let timeoutActualizacion = null;
 
   function scrollArriba() {
     const scrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
@@ -7705,6 +8058,11 @@ function inicializarPullToRefresh() {
   }
 
   function limpiarIndicador() {
+    if (timeoutActualizacion) {
+      clearTimeout(timeoutActualizacion);
+      timeoutActualizacion = null;
+    }
+    actualizando = false;
     indicador.classList.remove('is-visible', 'is-ready');
     indicador.style.transform = '';
     if (texto) texto.textContent = 'Desliza para actualizar';
@@ -7748,8 +8106,13 @@ function inicializarPullToRefresh() {
       const tabActual = document.querySelector('.navbar [data-bs-toggle="tab"].active')?.getAttribute('href') || window.location.hash || '#torneos';
       const urlActual = new URL(window.location.href);
       urlActual.searchParams.set('tab', tabActual.replace('#', ''));
+      urlActual.searchParams.set('_apk_refresh', String(Date.now()));
       urlActual.hash = tabActual;
-      window.location.href = urlActual.toString();
+      timeoutActualizacion = setTimeout(() => {
+        limpiarIndicador();
+        mostrarAvisoApp('No se pudo completar la actualizacion. Intenta nuevamente.', 'Actualizar');
+      }, 12000);
+      window.location.replace(urlActual.toString());
       return;
     }
 
@@ -7763,6 +8126,13 @@ function inicializarPullToRefresh() {
 }
 
 inicializarPullToRefresh();
+
+(function limpiarMarcaRefreshApk() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('_apk_refresh')) return;
+  url.searchParams.delete('_apk_refresh');
+  history.replaceState(null, '', url.toString());
+})();
 </script>
 
 <script>

@@ -17,8 +17,6 @@ function calcularEdad(fechaNacimiento) {
 
 // Registrar auditoría neutralizada
 async function registrarAuditoria(usuarioId, documento, tabla, accion, detalle, entityId = null) {
-  console.log(">>> registrarAuditoria deshabilitada (auditoría se maneja por triggers en BD)");
-  // No hace nada, solo devuelve OK
   return true;
 }
 

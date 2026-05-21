@@ -87,6 +87,7 @@ router.post('/cambiar-estado/:id', requiereAdmin, async (req, res) => {
 router.get('/gestionar/:id_torneo', torneoController.gestionar);
 router.get('/:id_torneo/en-curso/resumen', torneoController.resumenPartidosEnCurso);
 router.get('/:id_torneo/finanzas/resumen', torneoController.resumenFinanzas);
+router.post('/:id_torneo/finanzas/pdf-descarga', torneoController.descargarPdfFinanzas);
 router.get('/:id_torneo/auditoria/resumen', torneoController.auditoriaResumen);
 router.post('/:id_torneo/portada', requiereAdmin, upload.single('portada'), torneoController.actualizarPortada);
 router.post('/:id_torneo/portada/eliminar', requiereAdmin, torneoController.eliminarPortada);

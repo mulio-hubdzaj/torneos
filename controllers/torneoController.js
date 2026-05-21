@@ -128,8 +128,10 @@ function obtenerAfectadoAuditoria(registro, detalle, detalleLegible) {
   }
 
   const texto = String(detalleLegible || '');
-  const matchTabla = texto.match(/(?:equipos|jugadores|usuarios|torneos|grupos|items|canchas):\s*([^;]+)/i);
+  const matchTabla = texto.match(/(?:equipos|jugadores|usuarios|torneos|grupos|items(?:_equipo)?|delegados_equipos|canchas):\s*([^;]+)/i);
   if (matchTabla) return matchTabla[1].trim();
+  const matchFinanzasEquipo = texto.match(/^Se (?:creo|elimino) finanzas:\s*.+?-\s*([^;]+)$/i);
+  if (matchFinanzasEquipo) return matchFinanzasEquipo[1].trim();
   const matchCambioNombre = texto.match(/nombre de ([^;]+?) a ([^;]+)/i);
   if (matchCambioNombre) return matchCambioNombre[2].trim();
   const matchEquipoDestino = texto.match(/equipo(?:\s+[ab])?\s+de\s+(.+?)\s+a\s+([^;]+)/i);
@@ -2255,6 +2257,50 @@ exports.resumenFinanzas = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener resumen de finanzas:', error);
     return res.status(500).json({ success: false, message: 'Error al obtener resumen de finanzas' });
+  }
+};
+
+exports.descargarPdfFinanzas = async (req, res) => {
+  try {
+    const torneoId = parseInt(req.params.id_torneo, 10);
+    if (!torneoId) {
+      return res.status(400).send('Torneo invalido');
+    }
+
+    if (![2, 3, 99].includes(Number(req.session.rol_id))) {
+      return res.status(403).send('No tiene permisos para descargar finanzas');
+    }
+
+    const torneo = await Torneo.findByPk(torneoId, { attributes: ['id_torneo', 'entity_id'] });
+    if (!torneo) {
+      return res.status(404).send('Torneo no encontrado');
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      return res.status(403).send('No puede descargar finanzas de otra entidad');
+    }
+
+    const nombreArchivo = String(req.body.nombre_archivo || 'detalle-deuda.pdf')
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'detalle-deuda.pdf';
+    const base64 = String(req.body.pdf_base64 || '').trim();
+
+    if (!base64 || !/^[A-Za-z0-9+/=]+$/.test(base64)) {
+      return res.status(400).send('PDF invalido');
+    }
+
+    const pdfBuffer = Buffer.from(base64, 'base64');
+    if (!pdfBuffer.length || pdfBuffer.length > 1500 * 1024 || pdfBuffer.slice(0, 5).toString('ascii') !== '%PDF-') {
+      return res.status(400).send('PDF invalido');
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo.endsWith('.pdf') ? nombreArchivo : `${nombreArchivo}.pdf`}"`);
+    res.setHeader('Content-Length', String(pdfBuffer.length));
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error al descargar PDF de finanzas:', error);
+    return res.status(500).send('Error al descargar PDF');
   }
 };
 
