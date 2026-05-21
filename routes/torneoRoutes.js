@@ -85,6 +85,7 @@ router.post('/cambiar-estado/:id', requiereAdmin, async (req, res) => {
 
 // Gestionar torneo específico
 router.get('/gestionar/:id_torneo', torneoController.gestionar);
+router.get('/:id_torneo/en-curso/resumen', torneoController.resumenPartidosEnCurso);
 router.get('/:id_torneo/finanzas/resumen', torneoController.resumenFinanzas);
 router.get('/:id_torneo/auditoria/resumen', torneoController.auditoriaResumen);
 router.post('/:id_torneo/portada', requiereAdmin, upload.single('portada'), torneoController.actualizarPortada);

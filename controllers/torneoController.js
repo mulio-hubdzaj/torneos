@@ -296,7 +296,23 @@ function obtenerRivalFinanzas(partido, equipoId) {
   return '';
 }
 
-function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }) {
+function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw, estadisticasPartidos }) {
+  const estadisticasPorPartido = (estadisticasPartidos || []).reduce((acc, item) => {
+    const partidoId = String(item.id_partido || '');
+    if (!partidoId) return acc;
+    if (!acc[partidoId]) acc[partidoId] = [];
+    acc[partidoId].push({
+      id_jugador: item.id_jugador,
+      id_equipo: item.id_equipo || null,
+      nombre: item.nombre || '',
+      apellido: item.apellido || '',
+      goles: Number(item.goles || 0),
+      tarjetas_amarillas: Number(item.tarjetas_amarillas || 0),
+      tarjetas_rojas: Number(item.tarjetas_rojas || 0)
+    });
+    return acc;
+  }, {});
+
   const partidosEnCurso = (partidosRaw || [])
     .filter(partido => normalizarEstadoPartido(partido.estado) === 'en_curso')
     .sort((a, b) => {
@@ -304,7 +320,11 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
       const fechaB = `${b.fecha_input || '9999-12-31'} ${b.hora || '23:59'}`;
       return fechaA.localeCompare(fechaB);
     })
-    .slice(0, 20);
+    .slice(0, 20)
+    .map(partido => ({
+      ...partido,
+      estadisticas: estadisticasPorPartido[String(partido.id_partido)] || []
+    }));
 
   const partidosFinalizados = (partidosRaw || [])
     .filter(partido => normalizarEstadoPartido(partido.estado) === 'finalizado')
@@ -320,7 +340,11 @@ function armarDashboardInicio({ estadisticasGeneral, rankingGoles, partidosRaw }
 
       return Number(b.id_partido || 0) - Number(a.id_partido || 0);
     })
-    .slice(0, 20);
+    .slice(0, 20)
+    .map(partido => ({
+      ...partido,
+      estadisticas: estadisticasPorPartido[String(partido.id_partido)] || []
+    }));
 
   const proximosPartidos = (partidosRaw || [])
     .filter(partido => {
@@ -1152,6 +1176,42 @@ exports.gestionar = async (req, res) => {
       replacements: { torneoId: parseInt(torneoId, 10) },
       type: sequelize.QueryTypes.SELECT
     });
+    const estadisticasPartidos = await sequelize.query(`
+      SELECT est.id_partido,
+             est.id_jugador,
+             j.nombre,
+             j.apellido,
+             je.id_equipo,
+             COALESCE(est.goles, 0) AS goles,
+             COALESCE(est.tarjetas_amarillas, 0) AS tarjetas_amarillas,
+             COALESCE(est.tarjetas_rojas, 0) AS tarjetas_rojas
+      FROM estadisticas est
+      INNER JOIN partidos p ON p.id_partido = est.id_partido
+      INNER JOIN jugadores j ON j.id_jugador = est.id_jugador
+      LEFT JOIN LATERAL (
+        SELECT je2.id_equipo
+        FROM jugadores_equipos je2
+        WHERE je2.id_jugador = est.id_jugador
+          AND je2.id_torneo = p.id_torneo
+          AND je2.id_equipo IN (p.equipo_a, p.equipo_b)
+        ORDER BY CASE
+          WHEN je2.id_equipo = p.equipo_a THEN 1
+          WHEN je2.id_equipo = p.equipo_b THEN 2
+          ELSE 3
+        END
+        LIMIT 1
+      ) je ON true
+      WHERE p.id_torneo = :torneoId
+        AND (
+          COALESCE(est.goles, 0) > 0
+          OR COALESCE(est.tarjetas_amarillas, 0) > 0
+          OR COALESCE(est.tarjetas_rojas, 0) > 0
+        )
+      ORDER BY est.id_partido ASC, j.nombre ASC, j.apellido ASC
+    `, {
+      replacements: { torneoId: parseInt(torneoId, 10) },
+      type: sequelize.QueryTypes.SELECT
+    });
     const reglaTarjetas = await obtenerReglaTarjetasTorneo(torneoData.id_torneo);
     const canchas = await Cancha.findAll({
       where: {
@@ -1369,7 +1429,8 @@ exports.gestionar = async (req, res) => {
     const dashboardInicio = armarDashboardInicio({
       estadisticasGeneral,
       rankingGoles,
-      partidosRaw
+      partidosRaw,
+      estadisticasPartidos
     });
 
     //const messages = req.flash();
@@ -1432,6 +1493,122 @@ exports.gestionar = async (req, res) => {
 exports.gestionarPublico = async (req, res) => {
   req.vistaPublica = true;
   return exports.gestionar(req, res);
+};
+
+exports.resumenPartidosEnCurso = async (req, res) => {
+  try {
+    const torneoId = Number.parseInt(req.params.id_torneo, 10);
+    if (!torneoId) {
+      return res.status(400).json({ success: false, message: 'Torneo invalido' });
+    }
+
+    const torneo = await Torneo.findByPk(torneoId, { attributes: ['id_torneo', 'entity_id'] });
+    if (!torneo) {
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    const esPublico = Boolean(req.vistaPublica || req.session?.vista_publica_activa);
+    if (!esPublico && Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      return res.status(403).json({ success: false, message: 'No puede consultar este torneo' });
+    }
+
+    const partidos = await sequelize.query(`
+      SELECT p.id_partido,
+             p.equipo_a,
+             p.equipo_b,
+             p.numero_fecha,
+             p.fecha,
+             p.hora,
+             p.estado,
+             p.goles_a,
+             p.goles_b,
+             ea.nombre AS nombre_equipo_a,
+             eb.nombre AS nombre_equipo_b
+      FROM partidos p
+      LEFT JOIN equipos ea ON ea.id_equipo = p.equipo_a
+      LEFT JOIN equipos eb ON eb.id_equipo = p.equipo_b
+      WHERE p.id_torneo = :torneoId
+        AND regexp_replace(LOWER(TRIM(COALESCE(p.estado, 'programado'))), '[[:space:]-]+', '_', 'g') = 'en_curso'
+      ORDER BY p.numero_fecha ASC, p.fecha ASC, p.hora ASC, p.id_partido ASC
+      LIMIT 20
+    `, {
+      replacements: { torneoId },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    if (!partidos.length) {
+      return res.json({ success: true, partidos: [] });
+    }
+
+    const partidoIds = partidos.map(partido => partido.id_partido);
+    const estadisticas = await sequelize.query(`
+      SELECT est.id_partido,
+             est.id_jugador,
+             j.nombre,
+             j.apellido,
+             je.id_equipo,
+             COALESCE(est.goles, 0) AS goles,
+             COALESCE(est.tarjetas_amarillas, 0) AS tarjetas_amarillas,
+             COALESCE(est.tarjetas_rojas, 0) AS tarjetas_rojas
+      FROM estadisticas est
+      INNER JOIN partidos p ON p.id_partido = est.id_partido
+      INNER JOIN jugadores j ON j.id_jugador = est.id_jugador
+      LEFT JOIN LATERAL (
+        SELECT je2.id_equipo
+        FROM jugadores_equipos je2
+        WHERE je2.id_jugador = est.id_jugador
+          AND je2.id_torneo = p.id_torneo
+          AND je2.id_equipo IN (p.equipo_a, p.equipo_b)
+        ORDER BY CASE
+          WHEN je2.id_equipo = p.equipo_a THEN 1
+          WHEN je2.id_equipo = p.equipo_b THEN 2
+          ELSE 3
+        END
+        LIMIT 1
+      ) je ON true
+      WHERE est.id_partido IN (:partidoIds)
+        AND (
+          COALESCE(est.goles, 0) > 0
+          OR COALESCE(est.tarjetas_amarillas, 0) > 0
+          OR COALESCE(est.tarjetas_rojas, 0) > 0
+        )
+      ORDER BY est.id_partido ASC, j.nombre ASC, j.apellido ASC
+    `, {
+      replacements: { partidoIds },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const estadisticasPorPartido = estadisticas.reduce((acc, item) => {
+      const key = String(item.id_partido);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({
+        id_jugador: item.id_jugador,
+        id_equipo: item.id_equipo || null,
+        nombre: item.nombre || '',
+        apellido: item.apellido || '',
+        goles: Number(item.goles || 0),
+        tarjetas_amarillas: Number(item.tarjetas_amarillas || 0),
+        tarjetas_rojas: Number(item.tarjetas_rojas || 0)
+      });
+      return acc;
+    }, {});
+
+    return res.json({
+      success: true,
+      partidos: partidos.map(partido => {
+        const fechaInput = normalizarFechaInput(partido.fecha);
+        return {
+          ...partido,
+          fecha_input: fechaInput,
+          fecha_formateada: fechaInput ? fechaInput.split('-').reverse().join('/') : '-',
+          estadisticas: estadisticasPorPartido[String(partido.id_partido)] || []
+        };
+      })
+    });
+  } catch (error) {
+    console.error('Error al obtener partidos en curso:', error);
+    return res.status(500).json({ success: false, message: 'Error al obtener partidos en curso' });
+  }
 };
 
 exports.auditoriaResumen = async (req, res) => {
