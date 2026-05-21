@@ -599,6 +599,9 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
 
     const [partido] = await sequelize.query(`
       SELECT p.id_partido, p.id_torneo, p.entity_id, p.numero_fecha, p.fecha,
+             COALESCE(p.goles_a, 0) AS goles_a,
+             COALESCE(p.goles_b, 0) AS goles_b,
+             COALESCE(p.estado, 'programado') AS estado,
              ea.id_equipo AS id_equipo_a, ea.nombre AS equipo_a,
              eb.id_equipo AS id_equipo_b, eb.nombre AS equipo_b
       FROM partidos p
@@ -737,7 +740,10 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
         id_partido: partido.id_partido,
         id_torneo: partido.id_torneo,
         numero_fecha: partido.numero_fecha,
-        fecha: formatearFechaVisual(partido.fecha)
+        fecha: formatearFechaVisual(partido.fecha),
+        goles_a: Number(partido.goles_a || 0),
+        goles_b: Number(partido.goles_b || 0),
+        estado: partido.estado || 'programado'
       },
       equipo: { id_equipo: equipoId, nombre: nombreEquipo, rival: nombreRival || '' },
       jugadores,
@@ -762,6 +768,9 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
     const jugadores = Array.isArray(req.body.jugadores) ? req.body.jugadores : [];
     const items = Array.isArray(req.body.items) ? req.body.items : [];
     const montoAportado = numeroDecimalNoNegativo(req.body.monto_aportado);
+    const estadoPartidoPedido = typeof req.body.estado_partido === 'undefined'
+      ? null
+      : String(req.body.estado_partido || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     const jugadoresSancionados = [];
 
     if (!partidoId || !equipoId || montoAportado === null) {
@@ -769,8 +778,17 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Datos invalidos para guardar' });
     }
 
+    if (estadoPartidoPedido && !['en_curso', 'finalizado'].includes(estadoPartidoPedido)) {
+      await transaction.rollback();
+      return res.status(400).json({ success: false, message: 'Estado de partido no valido para la carga' });
+    }
+
     const [partido] = await sequelize.query(`
       SELECT p.id_partido, p.id_torneo, p.entity_id, p.numero_fecha,
+             p.equipo_a, p.equipo_b,
+             COALESCE(p.goles_a, 0) AS goles_a,
+             COALESCE(p.goles_b, 0) AS goles_b,
+             COALESCE(p.estado, 'programado') AS estado,
              CASE WHEN p.equipo_a = :equipoId THEN ea.nombre ELSE eb.nombre END AS nombre_equipo
       FROM partidos p
       LEFT JOIN equipos ea ON ea.id_equipo = p.equipo_a
@@ -809,6 +827,20 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
       transaction
     });
     const jugadoresPermitidos = new Set(jugadoresEquipo.map(j => Number(j.id_jugador)));
+    const [golesPreviosEquipo] = await sequelize.query(`
+      SELECT COALESCE(SUM(est.goles), 0) AS total_goles
+      FROM estadisticas est
+      WHERE est.id_partido = :partidoId
+        AND est.id_jugador IN (
+          SELECT id_jugador FROM jugadores_equipos
+          WHERE id_equipo = :equipoId AND id_torneo = :torneoId
+        )
+    `, {
+      replacements: { partidoId, equipoId, torneoId: partido.id_torneo },
+      type: sequelize.QueryTypes.SELECT,
+      transaction
+    });
+    let golesEquipoJugadores = 0;
     const reglaTarjetas = await obtenerReglaTarjetasTorneo(partido.id_torneo, transaction);
     const acumuladosAmarillas = await obtenerAcumuladosAmarillas({
       torneoId: partido.id_torneo,
@@ -854,6 +886,8 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
         await transaction.rollback();
         return res.status(400).json({ success: false, message: 'Las estadisticas de jugadores deben ser numeros enteros positivos' });
       }
+
+      golesEquipoJugadores += goles;
 
       if (goles > 0 || amarillas > 0 || rojas > 0) {
         await sequelize.query(`
@@ -1017,13 +1051,44 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
       transaction
     });
 
+    const habiaGolesJugadores = Number(golesPreviosEquipo?.total_goles || 0) > 0;
+    const hayGolesJugadores = golesEquipoJugadores > 0;
+    const debeActualizarMarcadorPorJugadores = habiaGolesJugadores || hayGolesJugadores;
+    const golesAActual = Number(partido.goles_a || 0);
+    const golesBActual = Number(partido.goles_b || 0);
+    const esEquipoA = Number(partido.equipo_a) === equipoId;
+    const marcadorActualizado = {
+      goles_a: debeActualizarMarcadorPorJugadores && esEquipoA ? golesEquipoJugadores : golesAActual,
+      goles_b: debeActualizarMarcadorPorJugadores && !esEquipoA ? golesEquipoJugadores : golesBActual,
+      estado: estadoPartidoPedido || partido.estado || 'programado'
+    };
+
+    if (debeActualizarMarcadorPorJugadores || estadoPartidoPedido) {
+      await sequelize.query(`
+        UPDATE partidos
+        SET goles_a = :golesA,
+            goles_b = :golesB,
+            estado = :estado
+        WHERE id_partido = :partidoId
+      `, {
+        replacements: {
+          partidoId,
+          golesA: marcadorActualizado.goles_a,
+          golesB: marcadorActualizado.goles_b,
+          estado: marcadorActualizado.estado
+        },
+        transaction
+      });
+    }
+
     await transaction.commit();
 
     return res.json({
       success: true,
       message: 'Carga del encuentro guardada',
       resumen: { deudaAnterior, totalItems, montoAportado, saldo },
-      jugadoresSancionados
+      jugadoresSancionados,
+      marcador: marcadorActualizado
     });
   } catch (error) {
     await transaction.rollback();
