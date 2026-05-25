@@ -212,11 +212,14 @@ exports.listar = async (req, res) => {
 // Crear partido manualmente
 exports.crear = async (req, res) => {
   try {
-    const { id_torneo, equipo_a, equipo_b, numero_fecha, id_grupo } = req.body;
+    const { id_torneo, equipo_a, equipo_b, numero_fecha } = req.body;
+    const idGrupoEquipoA = req.body.id_grupo_equipo_a || req.body.id_grupo;
+    const idGrupoEquipoB = req.body.id_grupo_equipo_b || req.body.id_grupo;
+    const id_grupo = req.body.id_grupo || idGrupoEquipoA || idGrupoEquipoB;
     const crearIdaVuelta = req.body.ida_vuelta_manual === '1';
     const redirectUrl = req.body.redirect_url || `/torneos/gestionar/${id_torneo}#partidos`;
     
-    if (!id_torneo || !equipo_a || !equipo_b || !id_grupo) {
+    if (!id_torneo || !equipo_a || !equipo_b || !id_grupo || !idGrupoEquipoA || !idGrupoEquipoB) {
       req.flash("danger", "Faltan parámetros requeridos");
       return res.redirect(redirectUrl);
     }
@@ -229,14 +232,26 @@ exports.crear = async (req, res) => {
     const equiposValidados = await Equipo.findAll({
       where: {
         id_torneo,
-        id_grupo,
         id_equipo: { [Op.in]: [equipo_a, equipo_b] }
       },
-      attributes: ['id_equipo']
+      attributes: ['id_equipo', 'id_grupo']
     });
 
     if (equiposValidados.length !== 2) {
-      req.flash("danger", "Solo se pueden crear cruces entre equipos del mismo grupo");
+      req.flash("danger", "Los equipos seleccionados no pertenecen a este torneo");
+      return res.redirect(redirectUrl);
+    }
+
+    const equipoAValidado = equiposValidados.find(equipo => String(equipo.id_equipo) === String(equipo_a));
+    const equipoBValidado = equiposValidados.find(equipo => String(equipo.id_equipo) === String(equipo_b));
+
+    if (
+      !equipoAValidado ||
+      !equipoBValidado ||
+      String(equipoAValidado.id_grupo || '') !== String(idGrupoEquipoA) ||
+      String(equipoBValidado.id_grupo || '') !== String(idGrupoEquipoB)
+    ) {
+      req.flash("danger", "Cada equipo debe coincidir con el grupo seleccionado");
       return res.redirect(redirectUrl);
     }
 
@@ -328,20 +343,28 @@ exports.actualizarHorario = async (req, res) => {
     const canchaId = id_cancha ? Number.parseInt(id_cancha, 10) : null;
     const partido = await Partido.findByPk(partidoId);
     const torneoRedirect = partido?.id_torneo || torneo_id;
+    const responderJson = req.xhr || String(req.get('accept') || '').includes('application/json');
 
     if (!partido) {
+      if (responderJson) {
+        return res.status(404).json({ success: false, message: 'Partido no encontrado' });
+      }
       req.flash('danger', 'Partido no encontrado');
       return res.redirect(`/torneos/gestionar/${torneoRedirect}#partidos`);
     }
 
     const permisoPartido = validarAdminPartido(req, partido);
     if (!permisoPartido.ok) {
+      if (responderJson) {
+        return res.status(403).json({ success: false, message: permisoPartido.message });
+      }
       req.flash('danger', permisoPartido.message);
       return res.redirect('/torneos');
     }
 
+    let canchaValida = null;
     if (canchaId) {
-      const canchaValida = await Cancha.findOne({
+      canchaValida = await Cancha.findOne({
         where: {
           id_cancha: canchaId,
           id_torneo: partido.id_torneo,
@@ -350,6 +373,9 @@ exports.actualizarHorario = async (req, res) => {
       });
 
       if (!canchaValida) {
+        if (responderJson) {
+          return res.status(400).json({ success: false, message: 'La cancha seleccionada no pertenece a este torneo o esta inactiva' });
+        }
         req.flash('danger', 'La cancha seleccionada no pertenece a este torneo o esta inactiva');
         return res.redirect(`/torneos/gestionar/${torneoRedirect}#partidos`);
       }
@@ -374,10 +400,29 @@ exports.actualizarHorario = async (req, res) => {
       id_cancha: canchaId || null
     });
 
+    if (responderJson) {
+      const fechaInput = normalizarFechaInput(fecha || null);
+      return res.json({
+        success: true,
+        message: 'Horario actualizado correctamente',
+        partido: {
+          id_partido: Number(partidoId),
+          fecha: fechaInput,
+          fecha_formateada: fechaInput ? fechaInput.split('-').reverse().join('/') : '-',
+          hora: hora || '',
+          id_cancha: canchaId || '',
+          nombre_cancha: canchaValida ? canchaValida.nombre : ''
+        }
+      });
+    }
+
     req.flash('success', 'Horario actualizado correctamente');
     return res.redirect(`/torneos/gestionar/${torneoRedirect}#partidos`);
   } catch (error) {
     console.error('Error al actualizar horario:', error);
+    if (req.xhr || String(req.get('accept') || '').includes('application/json')) {
+      return res.status(500).json({ success: false, message: 'Error al actualizar el horario del partido' });
+    }
     req.flash('danger', 'Error al actualizar el horario del partido');
     return res.redirect(`/torneos/gestionar/${req.body.torneo_id || ''}#partidos`);
   }
@@ -1373,13 +1418,20 @@ function validarFechas(numEquipos, fechasIngresadas) {
 
 // Generar round-robin correcto sin equipos jugando 2x por fecha
 function generarRoundRobin(equipos, numFechas, tipo = 'simple') {
+  return generarRoundRobinConLibres(equipos, numFechas, tipo).partidos;
+}
+
+function generarRoundRobinConLibres(equipos, numFechas, tipo = 'simple') {
   const partidos = [];
+  const libresCandidatosPorFecha = new Map();
+  const jugadosPorFecha = new Map();
   const numEquipos = equipos.length;
 
   if (numEquipos < 2) {
-    return partidos;
+    return { partidos, libresPorFecha: {} };
   }
 
+  const equipoGrupoPorId = new Map(equipos.map(e => [String(e.id_equipo), e.id_grupo || null]));
   const lista = equipos.map(e => e.id_equipo);
   if (lista.length % 2 === 1) {
     lista.push(null);
@@ -1388,6 +1440,7 @@ function generarRoundRobin(equipos, numFechas, tipo = 'simple') {
   const n = lista.length;
   const rondasBase = n - 1;
   const totalRondas = tipo === 'ida_vuelta' ? rondasBase * 2 : rondasBase;
+  const fechasDistribucion = Math.max(Number.parseInt(numFechas, 10) || totalRondas, totalRondas);
 
   for (let ronda = 0; ronda < totalRondas; ronda++) {
     const esVuelta = tipo === 'ida_vuelta' && ronda >= rondasBase;
@@ -1402,19 +1455,69 @@ function generarRoundRobin(equipos, numFechas, tipo = 'simple') {
     for (let i = 0; i < n / 2; i++) {
       const equipo_a = equiposRonda[i];
       const equipo_b = equiposRonda[n - 1 - i];
+      const numeroFecha = (ronda % fechasDistribucion) + 1;
 
       if (equipo_a === null || equipo_b === null) {
+        const equipoLibre = equipo_a === null ? equipo_b : equipo_a;
+        if (equipoLibre !== null && equipoLibre !== undefined) {
+          if (!libresCandidatosPorFecha.has(numeroFecha)) libresCandidatosPorFecha.set(numeroFecha, new Map());
+          libresCandidatosPorFecha.get(numeroFecha).set(String(equipoLibre), {
+            id_equipo: equipoLibre,
+            id_grupo: equipoGrupoPorId.get(String(equipoLibre)) || null
+          });
+        }
         continue;
       }
+
+      if (!jugadosPorFecha.has(numeroFecha)) jugadosPorFecha.set(numeroFecha, new Set());
+      jugadosPorFecha.get(numeroFecha).add(String(equipo_a));
+      jugadosPorFecha.get(numeroFecha).add(String(equipo_b));
 
       partidos.push({
         equipo_a: esVuelta ? equipo_b : equipo_a,
         equipo_b: esVuelta ? equipo_a : equipo_b,
-        numero_fecha: (ronda % numFechas) + 1,
+        numero_fecha: numeroFecha,
         estado: 'programado'
       });
     }
   }
+
+  const libresPorFecha = {};
+  libresCandidatosPorFecha.forEach((libresMap, numeroFecha) => {
+    const jugados = jugadosPorFecha.get(numeroFecha) || new Set();
+    libresPorFecha[numeroFecha] = Array.from(libresMap.values())
+      .filter(equipo => !jugados.has(String(equipo.id_equipo)));
+  });
+
+  return { partidos, libresPorFecha };
+}
+
+function armarCrucesConvivencia(libresPorFecha) {
+  const partidos = [];
+
+  Object.entries(libresPorFecha).forEach(([numeroFecha, libresFecha]) => {
+    const pendientes = [...libresFecha].sort((a, b) => {
+      const grupoA = String(a.id_grupo || '');
+      const grupoB = String(b.id_grupo || '');
+      if (grupoA === grupoB) return Number(a.id_equipo) - Number(b.id_equipo);
+      return grupoA.localeCompare(grupoB);
+    });
+
+    while (pendientes.length > 1) {
+      const equipoA = pendientes.shift();
+      const indiceRival = pendientes.findIndex(equipo => String(equipo.id_grupo || '') !== String(equipoA.id_grupo || ''));
+      if (indiceRival === -1) continue;
+      const [equipoB] = pendientes.splice(indiceRival, 1);
+      partidos.push({
+        equipo_a: equipoA.id_equipo,
+        equipo_b: equipoB.id_equipo,
+        id_grupo: equipoA.id_grupo || equipoB.id_grupo || null,
+        numero_fecha: Number(numeroFecha),
+        estado: 'programado',
+        observaciones: 'Conv'
+      });
+    }
+  });
 
   return partidos;
 }
@@ -1548,6 +1651,192 @@ exports.sortearEncuentros = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error al sortear encuentros: ' + error.message
+    });
+  }
+};
+
+exports.sortearEncuentrosCombinados = async (req, res) => {
+  try {
+    const torneoId = Number.parseInt(req.params.id_torneo, 10);
+    const gruposSeleccionados = Array.isArray(req.body.grupos)
+      ? req.body.grupos
+      : (req.body.grupos ? [req.body.grupos] : []);
+    const grupoIds = gruposSeleccionados
+      .map(id => Number.parseInt(id, 10))
+      .filter(id => Number.isInteger(id) && id > 0);
+    const tipo = req.body.tipo === 'ida_vuelta' ? 'ida_vuelta' : 'simple';
+    const numFechasInt = Number.parseInt(req.body.numFechas, 10);
+
+    if (!torneoId || grupoIds.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Seleccione al menos dos grupos para el sorteo combinado'
+      });
+    }
+
+    if (!numFechasInt || numFechasInt <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ingrese una cantidad valida de fechas'
+      });
+    }
+
+    const permisoTorneo = await validarAdminTorneo(req, torneoId);
+    if (!permisoTorneo.ok) {
+      return res.status(403).json({ success: false, message: permisoTorneo.message });
+    }
+    const partidoEntityId = permisoTorneo.torneo.entity_id;
+
+    const grupos = await sequelize.query(`
+      SELECT id_grupo, nombre_grupo
+      FROM grupos
+      WHERE id_torneo = :torneoId
+        AND id_grupo IN (:grupoIds)
+        AND COALESCE(estado, true) = true
+      ORDER BY nombre_grupo ASC
+    `, {
+      replacements: { torneoId, grupoIds },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    if (grupos.length !== grupoIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Uno o mas grupos seleccionados no pertenecen a este torneo'
+      });
+    }
+
+    const partidosExistentes = await Partido.count({
+      where: {
+        id_torneo: torneoId,
+        id_grupo: { [Op.in]: grupoIds }
+      }
+    });
+
+    if (partidosExistentes > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Solo se pueden combinar grupos que aun no tienen sorteo'
+      });
+    }
+
+    const equipos = await Equipo.findAll({
+      where: {
+        id_torneo: torneoId,
+        id_grupo: { [Op.in]: grupoIds },
+        estado: true
+      },
+      attributes: ['id_equipo', 'id_grupo'],
+      order: [['id_grupo', 'ASC'], ['nombre', 'ASC']]
+    });
+
+    const equiposPorGrupo = new Map();
+    grupos.forEach(grupo => equiposPorGrupo.set(String(grupo.id_grupo), []));
+    equipos.forEach(equipo => {
+      const key = String(equipo.id_grupo);
+      if (!equiposPorGrupo.has(key)) equiposPorGrupo.set(key, []);
+      equiposPorGrupo.get(key).push({
+        id_equipo: equipo.id_equipo,
+        id_grupo: equipo.id_grupo
+      });
+    });
+
+    const grupoSinEquipos = grupos.find(grupo => (equiposPorGrupo.get(String(grupo.id_grupo)) || []).length < 2);
+    if (grupoSinEquipos) {
+      return res.status(400).json({
+        success: false,
+        message: `El grupo ${grupoSinEquipos.nombre_grupo} necesita al menos 2 equipos activos`
+      });
+    }
+
+    const fechasCompletasCombinado = Math.max(...grupos.map(grupo => {
+      const equiposGrupo = equiposPorGrupo.get(String(grupo.id_grupo)) || [];
+      return equiposGrupo.length;
+    })) * (tipo === 'ida_vuelta' ? 2 : 1);
+
+    const partidos = [];
+    const libresCombinadosPorFecha = {};
+
+    grupos.forEach(grupo => {
+      const equiposGrupo = equiposPorGrupo.get(String(grupo.id_grupo)) || [];
+      const resultadoGrupo = generarRoundRobinConLibres(equiposGrupo, numFechasInt, tipo);
+
+      resultadoGrupo.partidos.forEach(partido => {
+        partidos.push({
+          ...partido,
+          id_grupo: grupo.id_grupo,
+          observaciones: obtenerEtiquetaFase(tipo, partido.numero_fecha, Math.ceil(numFechasInt / 2)) || null
+        });
+      });
+
+      Object.entries(resultadoGrupo.libresPorFecha).forEach(([numeroFecha, libresFecha]) => {
+        if (!libresCombinadosPorFecha[numeroFecha]) libresCombinadosPorFecha[numeroFecha] = [];
+        libresCombinadosPorFecha[numeroFecha].push(...libresFecha);
+      });
+    });
+
+    const partidosConvivencia = armarCrucesConvivencia(libresCombinadosPorFecha);
+    partidos.push(...partidosConvivencia);
+
+    const transaction = await sequelize.transaction();
+    try {
+      await setAuditContext(req, partidoEntityId, transaction);
+      await sequelize.query("SET LOCAL app.omitir_auditoria_partidos_insert = '1'", { transaction });
+
+      for (const partido of partidos) {
+        await Partido.create({
+          id_torneo: torneoId,
+          id_grupo: partido.id_grupo,
+          equipo_a: partido.equipo_a,
+          equipo_b: partido.equipo_b,
+          numero_fecha: partido.numero_fecha,
+          estado: partido.estado,
+          entity_id: partidoEntityId || null,
+          observaciones: partido.observaciones || null
+        }, { transaction });
+      }
+
+      const nombresGrupos = grupos.map(grupo => grupo.nombre_grupo).join(', ');
+      const tipoTexto = tipo === 'ida_vuelta' ? 'ida y vuelta' : 'ida';
+      const detalleAuditoria = `Se sorteo fixture combinado de ${nombresGrupos}`
+        + ` en torneo ${torneoId}: ${partidos.length} encuentros`
+        + `, ${numFechasInt} fechas, modalidad ${tipoTexto}`
+        + `, ${partidosConvivencia.length} cruces CONV`;
+
+      await sequelize.query(`
+        INSERT INTO auditoria (id_usuario, accion, tabla_afectada, detalle, fecha_hora, entity_id)
+        VALUES (:usuarioId, 'SORTEO', 'partidos', to_jsonb(CAST(:detalle AS text)), now(), :entityId)
+      `, {
+        replacements: {
+          usuarioId: req.session.usuario_id || null,
+          detalle: detalleAuditoria,
+          entityId: partidoEntityId || null
+        },
+        transaction
+      });
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+
+    const tieneAdvertencia = numFechasInt !== fechasCompletasCombinado;
+    const mensaje = `Sorteo combinado generado correctamente. ${partidos.length} partidos generados, incluyendo ${partidosConvivencia.length} cruces CONV.`
+      + (tieneAdvertencia ? ` La cantidad sugerida para este combinado era ${fechasCompletasCombinado}; con ${numFechasInt} puede quedar disparejo.` : '');
+
+    req.flash('success', mensaje);
+    return res.json({
+      success: true,
+      message: mensaje,
+      partidos: partidos.length,
+      cruces_conv: partidosConvivencia.length
+    });
+  } catch (error) {
+    console.error('Error completo en sortearEncuentrosCombinados:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al sortear encuentros combinados: ' + error.message
     });
   }
 };
@@ -1730,8 +2019,28 @@ exports.eliminarFecha = async (req, res) => {
     const filtroGrupoSql = idGrupoNumero ? 'AND id_grupo = :idGrupo' : '';
     const replacements = { torneoId, numeroFecha, idGrupo: idGrupoNumero };
 
-    const [{ total_partidos: totalPartidos = 0 } = {}] = await sequelize.query(`
-      SELECT COUNT(*) AS total_partidos
+    const [{ total_partidos: totalPartidos = 0, partidos_jugados: partidosJugados = 0 } = {}] = await sequelize.query(`
+      SELECT COUNT(*) AS total_partidos,
+             COUNT(*) FILTER (
+               WHERE COALESCE(goles_a, 0) <> 0
+                  OR COALESCE(goles_b, 0) <> 0
+                  OR LOWER(COALESCE(estado, 'programado')) IN ('en_curso', 'finalizado')
+                  OR EXISTS (
+                    SELECT 1
+                    FROM items_equipo ie
+                    WHERE ie.id_partido = partidos.id_partido
+                  )
+                  OR EXISTS (
+                    SELECT 1
+                    FROM finanzas f
+                    WHERE f.id_equipo IN (partidos.equipo_a, partidos.equipo_b)
+                      AND f.id_torneo = partidos.id_torneo
+                      AND f.concepto IN (
+                        CONCAT('Encuentro #', partidos.id_partido, ' - ', (SELECT nombre FROM equipos WHERE id_equipo = partidos.equipo_a)),
+                        CONCAT('Encuentro #', partidos.id_partido, ' - ', (SELECT nombre FROM equipos WHERE id_equipo = partidos.equipo_b))
+                      )
+                  )
+             ) AS partidos_jugados
       FROM partidos
       WHERE id_torneo = :torneoId
         AND numero_fecha = :numeroFecha
@@ -1742,9 +2051,9 @@ exports.eliminarFecha = async (req, res) => {
       transaction
     });
 
-    if (Number(totalPartidos || 0) > 0) {
+    if (Number(partidosJugados || 0) > 0) {
       await transaction.rollback();
-      req.flash("danger", "Solo se puede eliminar una fecha vacia");
+      req.flash("danger", "No se puede eliminar una fecha con encuentros jugados o con carga registrada");
       return res.redirect(redirectUrl);
     }
 
@@ -1756,6 +2065,17 @@ exports.eliminarFecha = async (req, res) => {
     }
     const torneo = permisoTorneo.torneo;
     await setAuditContext(req, torneo?.entity_id || req.session.entity_id, transaction);
+
+    if (Number(totalPartidos || 0) > 0) {
+      await Partido.destroy({
+        where: {
+          id_torneo: torneoId,
+          numero_fecha: numeroFecha,
+          ...(idGrupoNumero ? { id_grupo: idGrupoNumero } : {})
+        },
+        transaction
+      });
+    }
 
     const [compactados] = await sequelize.query(`
       UPDATE partidos
@@ -1802,8 +2122,7 @@ exports.eliminarFecha = async (req, res) => {
       const itemsLibres = await sequelize.query(`
         SELECT id_item_equipo, observaciones
         FROM items_equipo
-        WHERE id_torneo = :torneoId
-          AND observaciones LIKE :marcaLike
+        WHERE observaciones LIKE :marcaLike
       `, {
         replacements: { torneoId, marcaLike: `[fecha_libre:${torneoId}:%` },
         type: sequelize.QueryTypes.SELECT,

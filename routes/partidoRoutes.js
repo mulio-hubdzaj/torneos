@@ -19,6 +19,8 @@ router.get('/', partidoController.listar);
 // Sortear encuentros de un torneo (por grupos) - NUEVA RUTA CON PARÁMETROS
 router.post('/torneos/:id_torneo/grupos/:id_grupo/sortear', requiereAdmin, partidoController.sortearEncuentros);
 
+router.post('/torneos/:id_torneo/sortear-combinado', requiereAdmin, partidoController.sortearEncuentrosCombinados);
+
 // Sortear encuentros de un torneo (por grupos) - RUTA ANTERIOR PARA COMPATIBILIDAD
 router.post('/torneos/:id/sortear', requiereAdmin, partidoController.sortearEncuentros);
 
