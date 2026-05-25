@@ -13,6 +13,7 @@ const jugadorRoutes = require('./routes/jugadorRoutes');
 const jugadorEquipoRoutes = require('./routes/jugadorEquipoRoutes');
 const partidoRoutes = require('./routes/partidoRoutes');
 const itemRoutes = require('./routes/itemRoutes');
+const torneoController = require('./controllers/torneoController');
 const { Entity } = require('./models');
 
 const app = express();
@@ -75,6 +76,7 @@ app.use((req, res, next) => {
     req.path.startsWith('/js') ||
     req.path.startsWith('/images') ||
     req.path.startsWith('/uploads') ||
+    /^\/torneos\/\d+\/finanzas\/pdf\/[a-f0-9]+$/i.test(req.path) ||
     req.path === '/session/heartbeat';
 
   if (req.session?.usuario_id || req.session?.vista_publica_activa) {
@@ -145,6 +147,7 @@ app.get('/session/heartbeat', (req, res) => {
 });
 
 app.use('/', authRoutes);
+app.get('/torneos/:id_torneo/finanzas/pdf/:token', torneoController.verPdfFinanzasTemporal);
 app.use('/admin', requiereSesion, adminRoutes);
 app.use('/entidad', requiereSesion, entidadRoutes);
 app.use('/torneos', requiereSesion, torneoRoutes);

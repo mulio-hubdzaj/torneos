@@ -23,13 +23,15 @@
       <% } %>
     <% } %>
 
-    <form action="/restablecer-contrasena" method="POST">
+    <form action="/restablecer-contrasena" method="POST" autocomplete="on">
       <div class="mb-3">
         <label for="documento" class="form-label">Documento</label>
         <input type="text" id="documento" name="documento"
                pattern="\d{6,12}"
                title="Debe contener solo numeros"
                required
+               autocomplete="username"
+               inputmode="numeric"
                oninput="this.value=this.value.replace(/\s/g,'')"
                class="form-control">
       </div>
@@ -40,6 +42,7 @@
                pattern="^[^\s@]+@[^\s@]+\.[^\s@]{2,}$"
                title="Ingrese un correo valido"
                required
+               autocomplete="email"
                class="form-control">
       </div>
 
@@ -47,6 +50,7 @@
         <label for="entidad" class="form-label">Entidad</label>
         <input type="text" id="entidad" name="entidad"
                required
+               autocomplete="organization"
                style="text-transform: uppercase"
                oninput="this.value=this.value.replace(/\s/g,'')"
                class="form-control">
@@ -59,6 +63,7 @@
                  class="form-control password-segura"
                  pattern="(?=.{8,})(?=(?:.*\d){2,})(?=.*[^A-Za-z0-9\s]).+"
                  title="Minimo 8 caracteres, 1 caracter especial y 2 numeros"
+                 autocomplete="new-password"
                  required>
           <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('contrasena', this)" aria-label="Ver contrasena">
             <i class="bi bi-eye"></i>
@@ -77,7 +82,7 @@
       <div class="mb-3">
         <label for="confirmar_contrasena" class="form-label">Confirmar contrasena</label>
         <div class="input-group">
-          <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" class="form-control password-segura" required>
+          <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" class="form-control password-segura" autocomplete="new-password" required>
           <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('confirmar_contrasena', this)" aria-label="Ver confirmacion">
             <i class="bi bi-eye"></i>
           </button>

@@ -23,7 +23,7 @@
       <% } %>
     <% } %>
 
-    <form action="/cambiar-contrasena" method="POST">
+    <form action="/cambiar-contrasena" method="POST" autocomplete="on">
       <div class="mb-3">
         <label for="contrasena" class="form-label">Nueva contraseña</label>
         <div class="input-group">
@@ -31,6 +31,7 @@
                  class="form-control password-segura"
                  pattern="(?=.{8,})(?=(?:.*\d){2,})(?=.*[^A-Za-z0-9\s]).+"
                  title="Minimo 8 caracteres, 1 caracter especial y 2 numeros"
+                 autocomplete="new-password"
                  required>
           <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('contrasena', this)" aria-label="Ver contrasena">
             <i class="bi bi-eye"></i>
@@ -49,7 +50,7 @@
       <div class="mb-3">
         <label for="confirmar_contrasena" class="form-label">Confirmar contraseña</label>
         <div class="input-group">
-          <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" class="form-control password-segura" minlength="8" required>
+          <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" class="form-control password-segura" autocomplete="new-password" minlength="8" required>
           <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('confirmar_contrasena', this)" aria-label="Ver confirmacion">
             <i class="bi bi-eye"></i>
           </button>

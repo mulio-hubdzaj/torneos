@@ -105,13 +105,14 @@
 
 
   <!-- Formulario de registro -->
-  <form action="/registro" method="POST">
+  <form action="/registro" method="POST" autocomplete="on">
     <div class="mb-3">
       <label for="nombre" class="form-label">Nombre:</label>
       <input type="text" id="nombre" name="nombre"
              pattern="[A-Za-z\s]+"
              title="El nombre solo puede contener letras y espacios"
              required
+             autocomplete="given-name"
              style="text-transform: uppercase"
              class="form-control">
       <small class="form-text text-muted">Solo letras y espacios</small>
@@ -123,6 +124,7 @@
              pattern="[A-Za-z\s]+"
              title="El apellido solo puede contener letras y espacios"
              required
+             autocomplete="family-name"
              style="text-transform: uppercase"
              class="form-control">
       <small class="form-text text-muted">Solo letras y espacios</small>
@@ -134,6 +136,7 @@
              pattern="^[^\s@]+@[^\s@]+\.[^\s@]{2,}$"
              title="Ingrese un correo valido, por ejemplo usuario@dominio.com"
              required
+             autocomplete="email"
              class="form-control">
       <small class="form-text text-muted">Ejemplo: usuario@dominio.com</small>
     </div>
@@ -144,6 +147,8 @@
              pattern="\d{6,8}"
              title="Debe contener solo números y tener entre 6 y 8 dígitos"
              required
+             autocomplete="username"
+             inputmode="numeric"
              style="text-transform: uppercase"
              oninput="this.value=this.value.replace(/\s/g,'')"
              class="form-control">
@@ -157,6 +162,7 @@
              pattern="(?=.{8,})(?=(?:.*\d){2,})(?=.*[^A-Za-z0-9\s]).+"
              title="Minimo 8 caracteres, 1 caracter especial y 2 numeros"
              required
+             autocomplete="new-password"
              class="form-control password-segura">
         <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('contrasena', this)" aria-label="Ver contrasena">
           <i class="bi bi-eye"></i>
@@ -174,7 +180,7 @@
 
     <div class="mb-3">
       <label for="entidad" class="form-label">Entidad:</label>
-      <select id="entidad" name="entidad" class="form-select" required>
+      <select id="entidad" name="entidad" class="form-select" autocomplete="organization" required>
         <option value="" selected disabled>Seleccione una entidad</option>
         <% (typeof entidades !== 'undefined' ? entidades : []).forEach(entidad => { %>
           <option value="<%= entidad.codigo %>">

@@ -1109,7 +1109,7 @@ async function listar(req, res) {
     const { query, id_torneo } = req.body;
     const entityId = req.session.entity_id;
 
-  console.log('📌 BuscarJugadores → entityId:', entityId, 'id_torneo:', id_torneo, 'query:', query);
+  //console.log('📌 BuscarJugadores → entityId:', entityId, 'id_torneo:', id_torneo, 'query:', query);
 
     const jugadores = await sequelize.query(`
 SELECT j.id_jugador,

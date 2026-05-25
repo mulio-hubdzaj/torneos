@@ -89,10 +89,10 @@
 
     <div class="alert alert-danger d-none" id="loginValidacion" role="alert"></div>
 
-    <form action="/login" method="POST" id="formLogin" novalidate>
+    <form action="/login" method="POST" id="formLogin" autocomplete="on" novalidate>
       <div class="mb-3">
         <label for="documento" class="form-label">Documento:</label>
-        <input type="text" id="documento" name="documento" class="form-control" autocomplete="username" required>
+        <input type="text" id="documento" name="documento" class="form-control" autocomplete="username" inputmode="numeric" required>
       </div>
 
       <div class="mb-3">
@@ -107,7 +107,7 @@
 
       <div class="mb-3">
         <label for="entidad" class="form-label">Entidad:</label>
-        <select id="entidad" name="entidad" class="form-select">
+        <select id="entidad" name="entidad" class="form-select" autocomplete="organization">
           <option value="" selected>Seleccione una entidad</option>
           <% (typeof entidades !== 'undefined' ? entidades : []).forEach(entidad => { %>
             <option value="<%= entidad.codigo %>">

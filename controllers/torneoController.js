@@ -8,6 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { Op } = require('sequelize');
 
+const pdfFinanzasTemporales = new Map();
+const PDF_FINANZAS_TTL_MS = 10 * 60 * 1000;
+
 // 🔧 Función auxiliar para calcular edad y meses transcurridos desde último cumpleaños
 function calcularEdadYMeses(fechaNacimiento) {
   const hoy = new Date();
@@ -45,6 +48,37 @@ function archivoPublicoExiste(rutaPublica) {
   const publicDir = path.join(__dirname, '..', 'public');
 
   return rutaAbsoluta.startsWith(publicDir) && fs.existsSync(rutaAbsoluta);
+}
+
+function limpiarPdfFinanzasTemporales() {
+  const ahora = Date.now();
+  for (const [token, item] of pdfFinanzasTemporales.entries()) {
+    if (!item || item.expiraEn <= ahora) {
+      pdfFinanzasTemporales.delete(token);
+    }
+  }
+}
+
+function leerPdfFinanzasDesdeBody(body) {
+  const nombreArchivo = String(body.nombre_archivo || 'detalle-deuda.pdf')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'detalle-deuda.pdf';
+  const base64 = String(body.pdf_base64 || '').trim();
+
+  if (!base64 || !/^[A-Za-z0-9+/=]+$/.test(base64)) {
+    return { ok: false, message: 'PDF invalido' };
+  }
+
+  const pdfBuffer = Buffer.from(base64, 'base64');
+  if (!pdfBuffer.length || pdfBuffer.length > 1500 * 1024 || pdfBuffer.slice(0, 5).toString('ascii') !== '%PDF-') {
+    return { ok: false, message: 'PDF invalido' };
+  }
+
+  return {
+    ok: true,
+    nombreArchivo: nombreArchivo.endsWith('.pdf') ? nombreArchivo : `${nombreArchivo}.pdf`,
+    pdfBuffer
+  };
 }
 
 function formatearFechaVisual(fecha) {
@@ -732,6 +766,32 @@ exports.gestionar = async (req, res) => {
       ...equipo,
       nombre_grupo: gruposMapa.get(String(equipo.id_grupo)) || 'Sin grupo'
     }));
+    const grupoEquipoPorId = new Map(equiposConGrupo.map(equipo => [
+      String(equipo.id_equipo),
+      {
+        id_grupo: equipo.id_grupo,
+        nombre_grupo: equipo.nombre_grupo || 'Sin grupo'
+      }
+    ]));
+    const obtenerNombreGrupoCruce = partido => {
+      if (String(partido.observaciones || '').trim().toLowerCase() === 'conv') {
+        return 'CONV';
+      }
+
+      const grupoEquipoA = grupoEquipoPorId.get(String(partido.equipo_a || ''));
+      const grupoEquipoB = grupoEquipoPorId.get(String(partido.equipo_b || ''));
+      const nombreGrupoBase = partido.nombre_grupo || 'Sin grupo';
+
+      if (!grupoEquipoA || !grupoEquipoB) {
+        return nombreGrupoBase;
+      }
+
+      if (String(grupoEquipoA.id_grupo || '') === String(grupoEquipoB.id_grupo || '')) {
+        return grupoEquipoA.nombre_grupo || nombreGrupoBase;
+      }
+
+      return `${grupoEquipoA.nombre_grupo || 'Sin grupo'}-${grupoEquipoB.nombre_grupo || 'Sin grupo'}`;
+    };
 
     const equiposDelegadoIds = !vistaPublica && req.session.usuario_id
       ? await sequelize.query(`
@@ -962,6 +1022,7 @@ exports.gestionar = async (req, res) => {
 
       partidosRaw = (resultados || []).map(partido => {
         const fechaInput = normalizarFechaInput(partido.fecha);
+        const nombreGrupoCruce = obtenerNombreGrupoCruce(partido);
         return {
           ...partido,
           tiene_equipo_inhabilitado: partido.estado_equipo_a === false || partido.estado_equipo_b === false,
@@ -969,7 +1030,8 @@ exports.gestionar = async (req, res) => {
           icono_equipo_b: partido.icono_equipo_b || '/images/default_team.png',
           fecha_input: fechaInput,
           fecha_formateada: fechaInput ? fechaInput.split('-').reverse().join('/') : '-',
-          nombre_grupo_display: partido.nombre_grupo || 'Sin grupo'
+          nombre_grupo: nombreGrupoCruce,
+          nombre_grupo_display: nombreGrupoCruce
         };
       });
 
@@ -1004,9 +1066,24 @@ exports.gestionar = async (req, res) => {
         });
       });
 
-      const partidosFixtureBase = partidosRaw.filter(partido => !gruposOcultosFixture.has(String(partido.id_grupo)));
+      const grupoPorEquipo = new Map(
+        equiposConGrupo.map(equipo => [String(equipo.id_equipo), equipo.id_grupo])
+      );
+      const obtenerGruposPartido = partido => {
+        const gruposPartido = new Set();
+        if (partido.id_grupo) gruposPartido.add(String(partido.id_grupo));
+        const grupoEquipoA = grupoPorEquipo.get(String(partido.equipo_a || ''));
+        const grupoEquipoB = grupoPorEquipo.get(String(partido.equipo_b || ''));
+        if (grupoEquipoA) gruposPartido.add(String(grupoEquipoA));
+        if (grupoEquipoB) gruposPartido.add(String(grupoEquipoB));
+        return gruposPartido;
+      };
+      const partidosFixtureBase = partidosRaw.filter(partido => {
+        const gruposPartido = obtenerGruposPartido(partido);
+        return !Array.from(gruposPartido).every(grupoId => gruposOcultosFixture.has(String(grupoId)));
+      });
       const partidosVisibles = grupoSeleccionadoId
-        ? partidosFixtureBase.filter(partido => String(partido.id_grupo) === String(grupoSeleccionadoId))
+        ? partidosFixtureBase.filter(partido => obtenerGruposPartido(partido).has(String(grupoSeleccionadoId)))
         : partidosFixtureBase;
 
       const partidosPorFechaMap = {};
@@ -1109,19 +1186,28 @@ exports.gestionar = async (req, res) => {
 
         fecha.partidos.forEach(partido => {
           const fasePartido = fasesPorGrupoFecha.get(`${String(partido.id_grupo || 'sin_grupo')}:${Number(partido.numero_fecha)}`);
-          partido.nombre_grupo_display = fasePartido
+          partido.nombre_grupo_display = String(partido.observaciones || '').trim().toLowerCase() === 'conv'
+            ? 'CONV'
+            : fasePartido
             ? `${partido.nombre_grupo || 'Sin grupo'} - ${fasePartido}`
             : (partido.nombre_grupo || 'Sin grupo');
         });
 
         const gruposEnFecha = new Map();
-        fecha.partidos.forEach(partido => {
-          if (!partido.id_grupo) return;
-          if (!gruposEnFecha.has(partido.id_grupo)) {
-            gruposEnFecha.set(partido.id_grupo, new Set());
+        const registrarEquipoJugadoEnGrupo = (grupoId, equipoId) => {
+          if (!grupoId || !equipoId) return;
+          if (grupoSeleccionadoId && String(grupoId) !== String(grupoSeleccionadoId)) return;
+          if (!gruposEnFecha.has(grupoId)) {
+            gruposEnFecha.set(grupoId, new Set());
           }
-          if (partido.equipo_a) gruposEnFecha.get(partido.id_grupo).add(partido.equipo_a);
-          if (partido.equipo_b) gruposEnFecha.get(partido.id_grupo).add(partido.equipo_b);
+          gruposEnFecha.get(grupoId).add(equipoId);
+        };
+
+        fecha.partidos.forEach(partido => {
+          const grupoEquipoA = grupoPorEquipo.get(String(partido.equipo_a || '')) || partido.id_grupo;
+          const grupoEquipoB = grupoPorEquipo.get(String(partido.equipo_b || '')) || partido.id_grupo;
+          registrarEquipoJugadoEnGrupo(grupoEquipoA, partido.equipo_a);
+          registrarEquipoJugadoEnGrupo(grupoEquipoB, partido.equipo_b);
         });
 
         fecha.equipos_libres = [];
@@ -2280,27 +2366,84 @@ exports.descargarPdfFinanzas = async (req, res) => {
       return res.status(403).send('No puede descargar finanzas de otra entidad');
     }
 
-    const nombreArchivo = String(req.body.nombre_archivo || 'detalle-deuda.pdf')
-      .replace(/[^a-zA-Z0-9._-]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'detalle-deuda.pdf';
-    const base64 = String(req.body.pdf_base64 || '').trim();
-
-    if (!base64 || !/^[A-Za-z0-9+/=]+$/.test(base64)) {
-      return res.status(400).send('PDF invalido');
-    }
-
-    const pdfBuffer = Buffer.from(base64, 'base64');
-    if (!pdfBuffer.length || pdfBuffer.length > 1500 * 1024 || pdfBuffer.slice(0, 5).toString('ascii') !== '%PDF-') {
-      return res.status(400).send('PDF invalido');
+    const pdf = leerPdfFinanzasDesdeBody(req.body);
+    if (!pdf.ok) {
+      return res.status(400).send(pdf.message);
     }
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo.endsWith('.pdf') ? nombreArchivo : `${nombreArchivo}.pdf`}"`);
-    res.setHeader('Content-Length', String(pdfBuffer.length));
-    return res.send(pdfBuffer);
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.nombreArchivo}"`);
+    res.setHeader('Content-Length', String(pdf.pdfBuffer.length));
+    return res.send(pdf.pdfBuffer);
   } catch (error) {
     console.error('Error al descargar PDF de finanzas:', error);
     return res.status(500).send('Error al descargar PDF');
+  }
+};
+
+exports.prepararPdfFinanzas = async (req, res) => {
+  try {
+    const torneoId = parseInt(req.params.id_torneo, 10);
+    if (!torneoId) {
+      return res.status(400).json({ success: false, message: 'Torneo invalido' });
+    }
+
+    if (![2, 3, 99].includes(Number(req.session.rol_id))) {
+      return res.status(403).json({ success: false, message: 'No tiene permisos para descargar finanzas' });
+    }
+
+    const torneo = await Torneo.findByPk(torneoId, { attributes: ['id_torneo', 'entity_id'] });
+    if (!torneo) {
+      return res.status(404).json({ success: false, message: 'Torneo no encontrado' });
+    }
+
+    if (Number(req.session.rol_id) !== 99 && Number(req.session.entity_id) !== Number(torneo.entity_id)) {
+      return res.status(403).json({ success: false, message: 'No puede descargar finanzas de otra entidad' });
+    }
+
+    const pdf = leerPdfFinanzasDesdeBody(req.body);
+    if (!pdf.ok) {
+      return res.status(400).json({ success: false, message: pdf.message });
+    }
+
+    limpiarPdfFinanzasTemporales();
+    const token = crypto.randomBytes(24).toString('hex');
+    pdfFinanzasTemporales.set(token, {
+      torneoId,
+      nombreArchivo: pdf.nombreArchivo,
+      pdfBuffer: pdf.pdfBuffer,
+      expiraEn: Date.now() + PDF_FINANZAS_TTL_MS
+    });
+
+    return res.json({
+      success: true,
+      url: `/torneos/${torneoId}/finanzas/pdf/${token}`
+    });
+  } catch (error) {
+    console.error('Error al preparar PDF de finanzas:', error);
+    return res.status(500).json({ success: false, message: 'Error al preparar PDF' });
+  }
+};
+
+exports.verPdfFinanzasTemporal = async (req, res) => {
+  try {
+    limpiarPdfFinanzasTemporales();
+    const torneoId = parseInt(req.params.id_torneo, 10);
+    const token = String(req.params.token || '');
+    const item = pdfFinanzasTemporales.get(token);
+
+    if (!item || Number(item.torneoId) !== Number(torneoId)) {
+      return res.status(404).send('PDF vencido o no encontrado');
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${item.nombreArchivo}"`);
+    res.setHeader('Content-Length', String(item.pdfBuffer.length));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(item.pdfBuffer);
+  } catch (error) {
+    console.error('Error al abrir PDF temporal de finanzas:', error);
+    return res.status(500).send('Error al abrir PDF');
   }
 };
 
