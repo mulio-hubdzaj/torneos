@@ -1384,20 +1384,25 @@ exports.guardarCargaEquipoLibre = async (req, res) => {
 };
 
 // Validar número de fechas
+function calcularFechasRoundRobinSimple(numEquipos) {
+  return numEquipos % 2 === 1 ? numEquipos : numEquipos - 1;
+}
+
 function validarFechas(numEquipos, fechasIngresadas) {
-  const maxSimple = numEquipos % 2 === 1 ? numEquipos : numEquipos - 1;       // round-robin simple
+  const maxSimple = calcularFechasRoundRobinSimple(numEquipos);       // round-robin simple
   const maxIdaVuelta = maxSimple * 2; // ida y vuelta
+  const equilibrado = numEquipos % 2 === 0 || fechasIngresadas % numEquipos === 0;
 
   let valido = false;
   let mensaje = "";
 
   // Caso válido: menor o igual al máximo simple
-  if (fechasIngresadas > 0 && fechasIngresadas <= maxSimple) {
+  if (fechasIngresadas > 0 && equilibrado) {
     valido = true;
     mensaje = `¡Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ${fechasIngresadas} encuentros de forma balanceada.`;
   }
   // Caso válido: exactamente ida/vuelta
-  else if (fechasIngresadas === maxIdaVuelta) {
+  else if (fechasIngresadas === maxIdaVuelta && equilibrado) {
     valido = true;
     mensaje = `¡Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ida y vuelta (${maxIdaVuelta} encuentros) de forma balanceada.`;
   }
@@ -1413,7 +1418,7 @@ function validarFechas(numEquipos, fechasIngresadas) {
     mensaje = `Error: el número de fechas debe ser mayor a 0.`;
   }
 
-  return { valido, mensaje };
+  return { valido, mensaje, equilibrado };
 }
 
 // Generar round-robin correcto sin equipos jugando 2x por fecha
@@ -1439,11 +1444,14 @@ function generarRoundRobinConLibres(equipos, numFechas, tipo = 'simple') {
 
   const n = lista.length;
   const rondasBase = n - 1;
-  const totalRondas = tipo === 'ida_vuelta' ? rondasBase * 2 : rondasBase;
-  const fechasDistribucion = Math.max(Number.parseInt(numFechas, 10) || totalRondas, totalRondas);
+  const fechasSolicitadas = Number.parseInt(numFechas, 10) || 0;
+  const totalRondas = tipo === 'ida_vuelta'
+    ? rondasBase * 2
+    : Math.max(fechasSolicitadas, rondasBase);
+  const fechasDistribucion = Math.max(fechasSolicitadas || totalRondas, totalRondas);
 
   for (let ronda = 0; ronda < totalRondas; ronda++) {
-    const esVuelta = tipo === 'ida_vuelta' && ronda >= rondasBase;
+    const esVuelta = ronda >= rondasBase;
     const rondaBase = ronda % rondasBase;
 
     const equiposRonda = [...lista];
@@ -1522,6 +1530,41 @@ function armarCrucesConvivencia(libresPorFecha) {
   return partidos;
 }
 
+function validarUnEncuentroPorEquipoYFecha(partidos) {
+  const equiposPorFecha = new Map();
+
+  for (const partido of partidos) {
+    const numeroFecha = Number(partido.numero_fecha);
+    if (!numeroFecha) continue;
+    if (!equiposPorFecha.has(numeroFecha)) equiposPorFecha.set(numeroFecha, new Set());
+    const equiposFecha = equiposPorFecha.get(numeroFecha);
+
+    for (const equipoId of [partido.equipo_a, partido.equipo_b]) {
+      const key = String(equipoId);
+      if (equiposFecha.has(key)) {
+        return {
+          valido: false,
+          message: `El equipo ${equipoId} queda con mas de un encuentro en la fecha ${numeroFecha}. Ajuste la cantidad de fechas o los grupos seleccionados.`
+        };
+      }
+      equiposFecha.add(key);
+    }
+  }
+
+  return { valido: true };
+}
+
+function evaluarEquilibrioCombinado(equiposPorGrupo) {
+  const gruposImpares = Array.from(equiposPorGrupo.values())
+    .map(equiposGrupo => equiposGrupo.length)
+    .filter(totalEquipos => totalEquipos % 2 === 1);
+
+  return {
+    equilibrado: gruposImpares.length % 2 === 0,
+    gruposImpares: gruposImpares.length
+  };
+}
+
 // Sortear encuentros mejorado (recibe parámetros del modal)
 exports.sortearEncuentros = async (req, res) => {
   try {
@@ -1570,6 +1613,13 @@ exports.sortearEncuentros = async (req, res) => {
 
     // Generar partidos según tipo
     const partidos = generarRoundRobin(equipos, numFechasInt, tipo);
+    const validacionCruces = validarUnEncuentroPorEquipoYFecha(partidos);
+    if (!validacionCruces.valido) {
+      return res.status(400).json({
+        success: false,
+        message: validacionCruces.message
+      });
+    }
 
     // Obtener entity_id del torneo para que los partidos queden asociados correctamente
     const permisoTorneo = await validarAdminTorneo(req, id_torneo);
@@ -1751,7 +1801,7 @@ exports.sortearEncuentrosCombinados = async (req, res) => {
 
     const fechasCompletasCombinado = Math.max(...grupos.map(grupo => {
       const equiposGrupo = equiposPorGrupo.get(String(grupo.id_grupo)) || [];
-      return equiposGrupo.length;
+      return calcularFechasRoundRobinSimple(equiposGrupo.length);
     })) * (tipo === 'ida_vuelta' ? 2 : 1);
 
     const partidos = [];
@@ -1777,6 +1827,14 @@ exports.sortearEncuentrosCombinados = async (req, res) => {
 
     const partidosConvivencia = armarCrucesConvivencia(libresCombinadosPorFecha);
     partidos.push(...partidosConvivencia);
+
+    const validacionCruces = validarUnEncuentroPorEquipoYFecha(partidos);
+    if (!validacionCruces.valido) {
+      return res.status(400).json({
+        success: false,
+        message: validacionCruces.message
+      });
+    }
 
     const transaction = await sequelize.transaction();
     try {
@@ -1822,8 +1880,12 @@ exports.sortearEncuentrosCombinados = async (req, res) => {
     }
 
     const tieneAdvertencia = numFechasInt !== fechasCompletasCombinado;
+    const equilibrioCombinado = evaluarEquilibrioCombinado(equiposPorGrupo);
     const mensaje = `Sorteo combinado generado correctamente. ${partidos.length} partidos generados, incluyendo ${partidosConvivencia.length} cruces CONV.`
-      + (tieneAdvertencia ? ` La cantidad sugerida para este combinado era ${fechasCompletasCombinado}; con ${numFechasInt} puede quedar disparejo.` : '');
+      + (equilibrioCombinado.equilibrado
+        ? ` Todos los equipos juegan ${numFechasInt} encuentro(s), sin repetir equipo dentro de una misma fecha.`
+        : ` Atencion: hay ${equilibrioCombinado.gruposImpares} grupos con cantidad impar de equipos; puede quedar al menos un libre sin cruce CONV por fecha.`)
+      + (tieneAdvertencia ? ` La cantidad sugerida para este combinado era ${fechasCompletasCombinado}.` : '');
 
     req.flash('success', mensaje);
     return res.json({
@@ -1877,18 +1939,19 @@ exports.actualizarEstado = async (req, res) => {
       return res.redirect(`/torneos/gestionar/${partido.id_torneo}#partidos`);
     }
 
-    if (estadoActual === 'finalizado') {
+    if (estadoActual === 'finalizado' && nuevoEstado !== 'en_curso') {
       if (acceptJson) {
-        return res.status(400).json({ success: false, message: 'No se puede cambiar el estado de un partido finalizado' });
+        return res.status(400).json({ success: false, message: 'Un partido finalizado solo puede volver a En curso' });
       }
-      req.flash("danger", "No se puede cambiar el estado de un partido finalizado");
+      req.flash("danger", "Un partido finalizado solo puede volver a En curso");
       return res.redirect(`/torneos/gestionar/${partido.id_torneo}#partidos`);
     }
 
     const transicionesValidas = {
       programado: ['en_curso', 'finalizado', 'suspendido'],
       en_curso: ['programado', 'finalizado', 'suspendido'],
-      suspendido: ['programado', 'en_curso', 'finalizado']
+      suspendido: ['programado', 'en_curso', 'finalizado'],
+      finalizado: ['en_curso']
     };
 
     if (!transicionesValidas[estadoActual] || !transicionesValidas[estadoActual].includes(nuevoEstado)) {

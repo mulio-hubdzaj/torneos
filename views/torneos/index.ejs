@@ -1182,7 +1182,7 @@ function descargarPdfDesdeServidor(nombreArchivo, contenidoPdf) {
   setTimeout(() => form.remove(), 3000);
 }
 
-function mostrarEnlacePdfApp(url) {
+function mostrarEnlacePdfApp(url, downloadUrl) {
   const modalEl = document.getElementById('modalAvisoApp');
   const mensajeEl = document.getElementById('modalAvisoAppMensaje');
   if (!modalEl || !mensajeEl) return;
@@ -1207,8 +1207,16 @@ function mostrarEnlacePdfApp(url) {
       window.location.href = url;
     }
   });
+  const btnDescargar = document.createElement('button');
+  btnDescargar.type = 'button';
+  btnDescargar.className = 'btn btn-success w-100 mt-2';
+  btnDescargar.textContent = 'Descargar PDF';
+  btnDescargar.addEventListener('click', () => {
+    window.location.href = downloadUrl || url;
+  });
   mensajeEl.appendChild(texto);
   mensajeEl.appendChild(btnAbrir);
+  mensajeEl.appendChild(btnDescargar);
 
   const btnCancelar = document.getElementById('modalAvisoAppCancelar');
   const btnAceptar = document.getElementById('modalAvisoAppAceptar');
@@ -1237,7 +1245,8 @@ async function abrirPdfDesdeServidor(nombreArchivo, contenidoPdf) {
   }
 
   const url = new URL(data.url, window.location.origin).toString();
-  mostrarEnlacePdfApp(url);
+  const downloadUrl = new URL(data.downloadUrl || data.url, window.location.origin).toString();
+  mostrarEnlacePdfApp(url, downloadUrl);
 }
 
 async function descargarPdfArchivo(nombreArchivo, contenidoPdf) {
@@ -1718,24 +1727,25 @@ function actualizarOpcionesCruceManual() {
 
 // Validar fechas según cantidad de equipos
 function validarFechas(numEquipos, fechasIngresadas) {
-  const maxSimple = numEquipos - 1;
-  const maxIdaVuelta = (numEquipos - 1) * 2;
+  const maxSimple = numEquipos % 2 === 1 ? numEquipos : numEquipos - 1;
+  const maxIdaVuelta = maxSimple * 2;
+  const equilibrado = numEquipos % 2 === 0 || fechasIngresadas % numEquipos === 0;
 
   let valido = false;
   let mensaje = "";
   let tipo = "";
 
-  if (fechasIngresadas > 0 && fechasIngresadas <= maxSimple) {
+  if (fechasIngresadas > 0 && equilibrado) {
     valido = true;
     tipo = "success";
     mensaje = `✅ Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ${fechasIngresadas} encuentros de forma balanceada.`;
-  } else if (fechasIngresadas === maxIdaVuelta) {
+  } else if (fechasIngresadas === maxIdaVuelta && equilibrado) {
     valido = true;
     tipo = "success";
     mensaje = `✅ Excelente! Con ${fechasIngresadas} fechas, todos los equipos juegan ida y vuelta (${maxIdaVuelta} encuentros) de forma balanceada.`;
   } else if (fechasIngresadas > 0) {
     valido = true;
-    tipo = "warning";
+    tipo = "danger";
     mensaje = `⚠️ Atención: con ${numEquipos} equipos y ${fechasIngresadas} fechas, el torneo quedará disparejo. 
     Se sugiere ${maxSimple} (simple) o ${maxIdaVuelta} (ida/vuelta). El sistema generará encuentros aleatorios.`;
   } else {
@@ -1814,7 +1824,7 @@ function actualizarValidacion() {
 // Actualizar resumen de estadísticas
 function actualizarResumen(tipo, fechas) {
   const maxPartidosPorEquipo = (numEquiposActual - 1) * 2;
-  const partidosPorEquipo = Math.min(numEquiposActual - 1, fechas);
+  const partidosPorEquipo = Math.min(maxPartidosPorEquipo, fechas);
   const totalPartidos = Math.floor((numEquiposActual * partidosPorEquipo) / 2);
 
   document.getElementById('resumenEquipos').textContent = numEquiposActual;
@@ -1894,8 +1904,30 @@ function obtenerGruposCombinadosSeleccionados() {
 
 function calcularMaxFechasSorteoCombinado(gruposSeleccionados, tipo) {
   if (!gruposSeleccionados.length) return 0;
-  const maxSimple = Math.max(...gruposSeleccionados.map(grupo => grupo.equipos));
+  const maxSimple = Math.max(...gruposSeleccionados.map(grupo => (
+    grupo.equipos % 2 === 1 ? grupo.equipos : grupo.equipos - 1
+  )));
   return tipo === 'ida_vuelta' ? maxSimple * 2 : maxSimple;
+}
+
+function evaluarEquilibrioSorteoCombinado(gruposSeleccionados, fechas) {
+  if (!gruposSeleccionados.length || !fechas) {
+    return { equilibrado: false, detalle: 'Seleccione grupos y cantidad de fechas.' };
+  }
+
+  const gruposImpares = gruposSeleccionados.filter(grupo => grupo.equipos % 2 === 1);
+  if (gruposImpares.length % 2 === 0) {
+    return {
+      equilibrado: true,
+      detalle: `Todos los equipos jugaran ${fechas} encuentros. Los libres se cruzaran como CONV.`
+    };
+  }
+
+  const nombresImpares = gruposImpares.map(grupo => grupo.nombre).join(', ');
+  return {
+    equilibrado: false,
+    detalle: `Atencion: hay una cantidad impar de grupos con equipos impares (${nombresImpares}). En cada fecha quedara al menos un libre sin cruce CONV, por lo que no todos jugaran la misma cantidad de encuentros.`
+  };
 }
 
 function reiniciarFechasSorteoCombinado() {
@@ -1948,10 +1980,12 @@ function actualizarResumenSorteoCombinado() {
   const modalidad = tipo === 'ida_vuelta' ? 'ida y vuelta' : 'solo ida';
   const fechasCompletas = calcularMaxFechasSorteoCombinado(gruposSeleccionados, tipo);
   const esCantidadCompleta = fechas === fechasCompletas;
-  resumen.className = `alert alert-${esCantidadCompleta ? 'success' : 'warning'} mb-0`;
+  const equilibrio = evaluarEquilibrioSorteoCombinado(gruposSeleccionados, fechas);
+  resumen.className = `alert alert-${equilibrio.equilibrado ? 'success' : 'danger'} mb-0`;
   resumen.innerHTML = `Se sortearan <strong>${nombres}</strong> en modalidad <strong>${modalidad}</strong>, con <strong>${fechas || '-'}</strong> fechas. `
     + `Cantidad sugerida: <strong>${fechasCompletas}</strong>. `
-    + (usarExactas && !esCantidadCompleta ? 'Con cantidad exacta distinta puede quedar disparejo o dejar fechas sin encuentros internos. ' : '')
+    + (usarExactas && !esCantidadCompleta ? 'La cantidad exacta puede repetir parte del calendario interno. ' : '')
+    + `<strong>${equilibrio.equilibrado ? 'Equilibrado:' : 'Revisar:'}</strong> ${equilibrio.detalle} `
     + 'Los libres coincidentes se cruzaran como <strong>CONV</strong>.';
 }
 
@@ -2628,6 +2662,9 @@ function initMatchHandlers() {
 
       if (guardado) {
         select.dataset.estadoActual = estadoNuevo;
+        if (estadoAnterior === 'finalizado' && estadoNuevo === 'en_curso') {
+          recargarManteniendoPestana('#partidos');
+        }
       } else {
         select.value = estadoAnterior;
       }

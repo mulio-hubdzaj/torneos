@@ -2401,7 +2401,8 @@ exports.prepararPdfFinanzas = async (req, res) => {
 
     return res.json({
       success: true,
-      url: `/torneos/${torneoId}/finanzas/pdf/${token}`
+      url: `/torneos/${torneoId}/finanzas/pdf/${token}`,
+      downloadUrl: `/torneos/${torneoId}/finanzas/pdf/${token}?descargar=1`
     });
   } catch (error) {
     console.error('Error al preparar PDF de finanzas:', error);
@@ -2420,8 +2421,10 @@ exports.verPdfFinanzasTemporal = async (req, res) => {
       return res.status(404).send('PDF vencido o no encontrado');
     }
 
+    const descargar = ['1', 'true', 'si'].includes(String(req.query.descargar || '').toLowerCase());
+
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${item.nombreArchivo}"`);
+    res.setHeader('Content-Disposition', `${descargar ? 'attachment' : 'inline'}; filename="${item.nombreArchivo}"`);
     res.setHeader('Content-Length', String(item.pdfBuffer.length));
     res.setHeader('Cache-Control', 'no-store');
     return res.send(item.pdfBuffer);
