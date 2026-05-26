@@ -1139,6 +1139,12 @@ function esAndroidWebViewApp() {
 }
 
 async function abrirUrlExternaPdf(url) {
+  const androidDownloader = window.AndroidDownloader;
+  if (androidDownloader?.open) {
+    androidDownloader.open(url);
+    return;
+  }
+
   const capacitorBrowser = window.Capacitor?.Plugins?.Browser;
   if (capacitorBrowser?.open) {
     await capacitorBrowser.open({ url });
@@ -1157,6 +1163,26 @@ async function abrirUrlExternaPdf(url) {
   }
 
   window.location.href = url;
+}
+
+async function descargarUrlPdfApp(url) {
+  const androidDownloader = window.AndroidDownloader;
+  if (androidDownloader?.download) {
+    androidDownloader.download(url);
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '';
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => {
+    window.location.href = url;
+  }, 250);
 }
 
 function descargarPdfDesdeServidor(nombreArchivo, contenidoPdf) {
@@ -1211,8 +1237,13 @@ function mostrarEnlacePdfApp(url, downloadUrl) {
   btnDescargar.type = 'button';
   btnDescargar.className = 'btn btn-success w-100 mt-2';
   btnDescargar.textContent = 'Descargar PDF';
-  btnDescargar.addEventListener('click', () => {
-    window.location.href = downloadUrl || url;
+  btnDescargar.addEventListener('click', async () => {
+    try {
+      await descargarUrlPdfApp(downloadUrl || url);
+    } catch (error) {
+      console.error(error);
+      window.location.href = downloadUrl || url;
+    }
   });
   mensajeEl.appendChild(texto);
   mensajeEl.appendChild(btnAbrir);
