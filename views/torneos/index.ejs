@@ -1,5 +1,5 @@
 <%
-  const tabsInicialesPermitidos = ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios', 'auditoria'];
+  const tabsInicialesPermitidos = ['torneos', 'items', 'grupos', 'jugadores', 'equipos', 'partidos', 'estadisticas', 'finanzas', 'usuarios', 'auditoria', 'usoapp'];
   const tabInicial = tabsInicialesPermitidos.includes(typeof tabActivaInicial !== 'undefined' ? tabActivaInicial : '') ? tabActivaInicial : 'torneos';
   const navActiva = id => id === tabInicial ? ' active' : '';
   const paneActiva = id => id === tabInicial ? ' show active' : '';
@@ -21,10 +21,10 @@
       const hash = window.location.hash || (tabQuery ? `#${tabQuery}` : '');
       const rolId = Number(<%= Number(rol_id || 0) %>);
       const hashesBloqueados = rolId === 0
-        ? ['#grupos', '#jugadores', '#equipos', '#items', '#usuarios', '#auditoria', '#finanzas']
+        ? ['#grupos', '#jugadores', '#equipos', '#items', '#usuarios', '#auditoria', '#usoapp', '#finanzas']
         : (rolId === 1
-        ? ['#grupos', '#equipos', '#items', '#usuarios', '#auditoria', '#finanzas']
-        : (rolId === 2 ? ['#grupos', '#items', '#usuarios', '#auditoria'] : (rolId === 3 ? ['#auditoria'] : [])));
+        ? ['#grupos', '#equipos', '#items', '#usuarios', '#auditoria', '#usoapp', '#finanzas']
+        : (rolId === 2 ? ['#grupos', '#items', '#usuarios', '#auditoria', '#usoapp'] : (rolId === 3 ? ['#auditoria', '#usoapp'] : [])));
 
       if (hashesBloqueados.includes(hash)) {
         window.location.hash = '#torneos';
@@ -126,6 +126,9 @@
         <% if (!esVistaPublica && rol_id == 99) { %>
           <li class="nav-item">
             <a class="nav-link<%= navActiva('auditoria') %>" id="auditoria-tab" data-bs-toggle="tab" href="#auditoria" role="tab">Auditoría</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link<%= navActiva('usoapp') %>" id="usoapp-tab" data-bs-toggle="tab" href="#usoapp" role="tab">Uso app</a>
           </li>
         <% } %>
       </ul>
@@ -471,7 +474,7 @@
           <div class="card shadow">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
               <strong><%= grupo.nombre_grupo %></strong>
-              <% if (grupo.Equipos && grupo.Equipos.length > 0) { %>
+              <% if (true) { %>
                 <form action="/grupos/eliminar/<%= grupo.id_grupo %>" method="POST"
                       class="form-confirmar-app"
                       data-confirm-title="Eliminar grupo"
@@ -497,7 +500,12 @@
                   <% grupo.Equipos.forEach(equipo => { %>
                     <li class="list-group-item d-flex justify-content-between align-items-center 
                                <%= !equipo.estado ? 'text-muted bg-light' : '' %>">
-                      <span><%= equipo.nombre %></span>
+                      <span>
+                        <%= equipo.nombre %>
+                        <% if (equipo.cruce_manual) { %>
+                          <span class="badge text-bg-warning ms-2">cruce manual</span>
+                        <% } %>
+                      </span>
                       <div class="btn-group">
                         <form action="/equipos/eliminar/<%= equipo.id_equipo %>" method="POST" style="display:inline;">
                           <input type="hidden" name="redirect_hash" value="#grupos">
@@ -519,7 +527,7 @@
                   <% grupo.movimientos_salida.forEach(mov => { %>
                     <div class="alert alert-warning py-1 px-2 mb-1">
                       <strong><%= mov.Equipo ? mov.Equipo.nombre : 'Equipo' %></strong>
-                      <strong>Pasó a otro grupo/fase</strong>
+                      <strong>paso a siguiente grupo/fase</strong>
                       <% if (mov.GrupoDestino) { %>
                         <small class="text-muted">(<%= mov.GrupoDestino.nombre_grupo %>)</small>
                       <% } %>
@@ -845,7 +853,7 @@ let finanzasResumen = <%- JSON.stringify(finanzasResumen || []).replace(/</g, '\
 let finanzasDetalleEquipoActual = null;
 const finanzasPdfTorneoNombre = <%- JSON.stringify([torneo.nombre_torneo, torneo.temporada].filter(Boolean).join(' - ')).replace(/</g, '\\u003c') %>;
 const dashboardEnCursoResumenUrl = '<%= esVistaPublica ? '/publico/torneo/' : '/torneos/' %><%= torneo.id_torneo %>/en-curso/resumen';
-const dashboardPartidosEstadisticas = <%- JSON.stringify(((dashboardInicio || {}).ultimosResultados || []).map(partido => ({
+let dashboardPartidosEstadisticas = <%- JSON.stringify(((dashboardInicio || {}).ultimosResultados || []).map(partido => ({
   id_partido: partido.id_partido,
   equipo_a: partido.equipo_a,
   equipo_b: partido.equipo_b,
@@ -854,7 +862,8 @@ const dashboardPartidosEstadisticas = <%- JSON.stringify(((dashboardInicio || {}
   goles_a: partido.goles_a || 0,
   goles_b: partido.goles_b || 0,
   numero_fecha: partido.numero_fecha || null,
-  estadisticas: partido.estadisticas || []
+  estadisticas: partido.estadisticas || [],
+  cambios: partido.cambios || []
 }))).replace(/</g, '\\u003c') %>;
 
 function marcarDashboardInicioDesactualizado() {
@@ -1431,6 +1440,363 @@ async function descargarPdfDetalleFinanzas() {
     console.error(error);
     mostrarAvisoApp('No se pudo abrir el PDF. Intenta nuevamente.', 'PDF');
   }
+}
+
+function textoPdf(comandos, valor, x, y, opciones = {}) {
+  const size = opciones.size || 8;
+  const font = opciones.bold ? 'F2' : 'F1';
+  comandos.push(`BT /${font} ${size} Tf ${x} ${y} Td (${escaparTextoPdf(valor)}) Tj ET`);
+}
+
+function lineaPdf(comandos, x1, y1, x2, y2) {
+  comandos.push(`${x1} ${y1} m ${x2} ${y2} l S`);
+}
+
+function rectPdf(comandos, x, y, width, height) {
+  comandos.push(`${x} ${y} ${width} ${height} re S`);
+}
+
+function textoPdfEnCaja(comandos, valor, x, y, maxCaracteres, opciones = {}) {
+  const lineas = dividirLineaPdf(valor, maxCaracteres);
+  const altoLinea = opciones.altoLinea || 9;
+  lineas.slice(0, opciones.maxLineas || 2).forEach((linea, index) => {
+    textoPdf(comandos, linea, x, y - (index * altoLinea), opciones);
+  });
+}
+
+function crearPdfListaJugadoresPartido(lista) {
+  const paginas = [];
+  let comandos = [];
+  let y = 805;
+
+  const columnas = [
+    { titulo: '#', x: 32, w: 32, max: 3 },
+    { titulo: 'Documento', x: 64, w: 70, max: 13 },
+    { titulo: 'F. nac.', x: 134, w: 58, max: 10 },
+    { titulo: 'Nombre y apellido', x: 192, w: 178, max: 34 },
+    { titulo: 'Estado', x: 370, w: 65, max: 12 },
+    { titulo: 'Firma jugador', x: 435, w: 128, max: 18 }
+  ];
+
+  const nuevaPagina = () => {
+    if (comandos.length) paginas.push(comandos);
+    comandos = ['0.12 w'];
+    y = 805;
+  };
+
+  const encabezado = () => {
+    textoPdf(comandos, 'Lista de jugadores', 40, y, { size: 14, bold: true });
+    textoPdf(comandos, `Torneo: ${lista.torneo || '-'}`, 340, y, { size: 8 });
+    y -= 20;
+    rectPdf(comandos, 32, y - 70, 531, 78);
+    textoPdf(comandos, `Equipo: ${lista.equipo?.nombre || '-'}`, 42, y - 10, { size: 10, bold: true });
+    textoPdf(comandos, `Fecha Nro: ${lista.numero_fecha || '-'}`, 340, y - 10, { size: 9, bold: true });
+    textoPdf(comandos, `Partido: ${lista.partido?.equipo_a || '-'} vs ${lista.partido?.equipo_b || '-'}`, 42, y - 30, { size: 9, bold: true });
+    textoPdf(comandos, `Fecha de juego: ${lista.fecha_juego || '-'}${lista.hora ? ` ${lista.hora}` : ''}`, 42, y - 50, { size: 9 });
+    textoPdf(comandos, `Generado: ${new Date().toLocaleString('es-PY')}`, 340, y - 50, { size: 8 });
+    y -= 95;
+  };
+
+  const encabezadoTabla = () => {
+    rectPdf(comandos, 32, y - 18, 531, 18);
+    columnas.forEach(col => {
+      textoPdf(comandos, col.titulo, col.x + 4, y - 12, { size: 7, bold: true });
+      if (col.x > 32) lineaPdf(comandos, col.x, y, col.x, y - 18);
+    });
+    y -= 18;
+  };
+
+  nuevaPagina();
+  encabezado();
+  encabezadoTabla();
+
+  const jugadores = lista.jugadores || [];
+  jugadores.forEach(jugador => {
+    if (y < 95) {
+      nuevaPagina();
+      encabezado();
+      encabezadoTabla();
+    }
+
+    const altoFila = 26;
+    rectPdf(comandos, 32, y - altoFila, 531, altoFila);
+    columnas.forEach(col => {
+      if (col.x > 32) lineaPdf(comandos, col.x, y, col.x, y - altoFila);
+    });
+
+    const nombre = `${jugador.nombre || ''} ${jugador.apellido || ''}${jugador.capitan ? ' (C)' : ''}`;
+    textoPdf(comandos, jugador.numero_camiseta || '', 38, y - 16, { size: 8 });
+    textoPdfEnCaja(comandos, jugador.documento || '', 70, y - 11, 12, { size: 7, maxLineas: 2 });
+    textoPdf(comandos, jugador.fecha_nacimiento || '-', 140, y - 16, { size: 7 });
+    textoPdfEnCaja(comandos, nombre, 198, y - 10, 27, { size: 7, maxLineas: 2 });
+    textoPdf(comandos, jugador.habilitado ? 'Habilitado' : '**Inhabilitado', 376, y - 16, { size: 7 });
+    y -= altoFila;
+  });
+
+  if (!jugadores.length) {
+    textoPdf(comandos, 'Sin jugadores vinculados a este equipo.', 42, y - 18, { size: 9, bold: true });
+    y -= 35;
+  }
+
+  if (y < 145) {
+    nuevaPagina();
+    encabezado();
+  }
+
+  y -= 24;
+  textoPdf(comandos, 'Firma de delegados', 40, y, { size: 10, bold: true });
+  y -= 30;
+  const delegados = lista.delegados && lista.delegados.length
+    ? lista.delegados
+    : [{ nombre: 'Delegado', documento: '', rol: 'delegado' }];
+  delegados.forEach(delegado => {
+    if (y < 70) {
+      nuevaPagina();
+      encabezado();
+      textoPdf(comandos, 'Firma de delegados', 40, y, { size: 10, bold: true });
+      y -= 30;
+    }
+    lineaPdf(comandos, 42, y, 245, y);
+    textoPdfEnCaja(comandos, delegado.nombre || 'Delegado', 42, y - 14, 32, { size: 8, maxLineas: 1 });
+    textoPdf(comandos, delegado.documento ? `Doc: ${delegado.documento}` : '', 42, y - 26, { size: 7 });
+    y -= 52;
+  });
+
+  paginas.push(comandos);
+  return crearPdfDesdePaginas(paginas);
+}
+
+async function imprimirListaJugadoresPartido(partidoId, equipoId) {
+  try {
+    const response = await fetch(`/torneos/<%= torneo.id_torneo %>/partidos/${partidoId}/equipos/${equipoId}/lista-jugadores`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await response.json();
+    if (!data.success || !data.lista) {
+      throw new Error(data.message || 'No se pudo preparar la lista');
+    }
+
+    const lista = data.lista;
+    const pdf = crearPdfListaJugadoresPartido(lista);
+    const equipoSeguro = normalizarTextoPdf(lista.equipo?.nombre || 'equipo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'equipo';
+    const fechaSeguro = normalizarTextoPdf(`fecha-${lista.numero_fecha || 'x'}`).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    await descargarPdfArchivo(`lista-jugadores-${fechaSeguro}-${equipoSeguro}.pdf`, pdf);
+  } catch (error) {
+    console.error(error);
+    mostrarAvisoApp(error.message || 'No se pudo imprimir la lista.', 'Lista de jugadores');
+  }
+}
+
+function nombreJugadorPlanilla(jugador) {
+  return `${jugador.numero_camiseta ? `#${jugador.numero_camiseta} ` : ''}${[jugador.nombre, jugador.apellido].filter(Boolean).join(' ')}`.trim() || 'Jugador';
+}
+
+function nombreJugadorPlanillaSinNumero(jugador) {
+  return [jugador.nombre, jugador.apellido].filter(Boolean).join(' ').trim() || 'Jugador';
+}
+
+function minutosPlanilla(valor) {
+  return normalizarMinutosEvento(valor).join(', ') || '-';
+}
+
+function minutosPlanillaCompacto(valor) {
+  const minutos = normalizarMinutosEvento(valor);
+  return minutos.length ? minutos.join(', ') : '-';
+}
+
+function crearPdfPlanillaFinalEquipo(data) {
+  const paginas = [];
+  const comandos = ['0.12 w', '0.12 0.18 0.28 RG'];
+  const partido = data.partido || {};
+  const equipo = data.equipo || {};
+  const jugadores = data.jugadores || [];
+  const items = data.itemsCargados || [];
+  const jugadorPorId = jugadores.reduce((acc, jugador) => {
+    acc[String(jugador.id_jugador)] = jugador;
+    return acc;
+  }, {});
+  const cambios = (data.cambios || []).map(cambio => ({
+    ...cambio,
+    sale: nombreJugadorPlanillaSinNumero(jugadorPorId[String(cambio.jugador_sale_id)] || {}),
+    entra: nombreJugadorPlanillaSinNumero(jugadorPorId[String(cambio.jugador_entra_id)] || {})
+  }));
+
+  const x = {
+    n: 32,
+    jugador: 54,
+    goles: 224,
+    amarillas: 282,
+    rojas: 340,
+    gastos: 472
+  };
+  const fillRect = (x0, y0, width, height, color = '0.96 0.98 1') => {
+    comandos.push(`q ${color} rg ${x0} ${y0} ${width} ${height} re f Q`);
+  };
+  const sectionTitle = (titulo, x0, y0, width) => {
+    fillRect(x0, y0 - 18, width, 18, '0.90 0.95 1');
+    rectPdf(comandos, x0, y0 - 18, width, 18);
+    textoPdf(comandos, titulo, x0 + 8, y0 - 12, { size: 8, bold: true });
+  };
+
+  let y = 805;
+  fillRect(32, 734, 531, 78, '0.94 0.97 1');
+  rectPdf(comandos, 32, 734, 531, 78);
+  fillRect(32, 784, 531, 28, '0.82 0.90 1');
+  textoPdf(comandos, 'PLANILLA FINAL DEL ENCUENTRO', 174, 793, { size: 14, bold: true });
+  textoPdf(comandos, `${equipo.nombre || 'Equipo'} vs ${equipo.rival || 'Rival'}`, 52, 766, { size: 11, bold: true });
+  textoPdf(comandos, `Marcador final: ${Number(partido.goles_a || 0)} - ${Number(partido.goles_b || 0)}`, 330, 766, { size: 10, bold: true });
+  textoPdf(comandos, `Torneo: ${partido.torneo || '-'}`, 52, 756, { size: 8, bold: true });
+  textoPdf(comandos, `Fecha: ${partido.numero_fecha || '-'}  |  Juego: ${partido.fecha || '-'}  |  Hora: ${partido.hora || '-'}`, 52, 748, { size: 8 });
+  textoPdf(comandos, `Generado: ${new Date().toLocaleString('es-PY')}`, 382, 748, { size: 7 });
+  y = 712;
+
+  sectionTitle(`DETALLE DE JUGADORES (${equipo.nombre || 'Equipo'})`, 32, y, 430);
+  y -= 22;
+  fillRect(32, y - 18, 430, 18, '0.88 0.93 0.98');
+  rectPdf(comandos, 32, y - 18, 430, 18);
+  ['NRO', 'Jugador', 'Goles', 'Amarillas', 'Rojas'].forEach((titulo, index) => {
+    const pos = [x.n, x.jugador, x.goles, x.amarillas, x.rojas][index];
+    textoPdf(comandos, titulo, pos + 4, y - 12, { size: 7, bold: true });
+    if (index > 0) lineaPdf(comandos, pos, y, pos, y - 18);
+  });
+  y -= 18;
+
+  jugadores.forEach((jugador, index) => {
+    if (y < 270) return;
+    const alto = 30;
+
+    if (index % 2 === 0) fillRect(32, y - alto, 430, alto, '0.985 0.99 1');
+    rectPdf(comandos, 32, y - alto, 430, alto);
+    [x.jugador, x.goles, x.amarillas, x.rojas].forEach(pos => lineaPdf(comandos, pos, y, pos, y - alto));
+    textoPdf(comandos, jugador.numero_camiseta || '', 38, y - 18, { size: 7 });
+    textoPdfEnCaja(comandos, nombreJugadorPlanillaSinNumero(jugador), 58, y - 10, 30, { size: 7, maxLineas: 2 });
+    textoPdfEnCaja(comandos, minutosPlanillaCompacto(jugador.goles_minutos), 228, y - 10, 12, { size: 6, maxLineas: 3 });
+    textoPdfEnCaja(comandos, minutosPlanillaCompacto(jugador.amarillas_minutos), 286, y - 10, 12, { size: 6, maxLineas: 3 });
+    textoPdfEnCaja(comandos, minutosPlanillaCompacto(jugador.rojas_minutos), 344, y - 10, 12, { size: 6, maxLineas: 3 });
+    y -= alto;
+  });
+
+  const cambiosY = y - 18;
+  sectionTitle('CAMBIOS REALIZADOS', 32, cambiosY, 430);
+  let cy = cambiosY - 24;
+  if (cambios.length) {
+    cambios.forEach((cambio, index) => {
+      if (cy < 158) return;
+      const saleJugador = jugadorPorId[String(cambio.jugador_sale_id)] || {};
+      const entraJugador = jugadorPorId[String(cambio.jugador_entra_id)] || {};
+      const saleNum = saleJugador.numero_camiseta || '-';
+      const entraNum = entraJugador.numero_camiseta || '-';
+      if (index % 2 === 0) fillRect(32, cy - 24, 430, 24, '0.985 0.99 1');
+      rectPdf(comandos, 32, cy - 24, 430, 24);
+      textoPdf(comandos, `Min ${cambio.minuto || '-'}`, 42, cy - 15, { size: 8, bold: true });
+      textoPdf(comandos, `Sale ${saleNum}`, 112, cy - 15, { size: 8, bold: true });
+      textoPdfEnCaja(comandos, cambio.sale || '-', 168, cy - 9, 28, { size: 7, maxLineas: 2 });
+      textoPdf(comandos, `Entra ${entraNum}`, 302, cy - 15, { size: 8, bold: true });
+      textoPdfEnCaja(comandos, cambio.entra || '-', 370, cy - 9, 18, { size: 7, maxLineas: 2 });
+      cy -= 24;
+    });
+  } else {
+    rectPdf(comandos, 32, cy - 24, 430, 24);
+    textoPdf(comandos, 'Sin cambios cargados.', 42, cy - 15, { size: 8 });
+    cy -= 24;
+  }
+
+  fillRect(x.gastos, 304, 91, 390, '0.98 0.99 1');
+  rectPdf(comandos, x.gastos, 304, 91, 390);
+  fillRect(x.gastos, 676, 91, 18, '0.90 0.95 1');
+  textoPdf(comandos, 'GASTOS FECHA', x.gastos + 11, 681, { size: 8, bold: true });
+  let gy = 656;
+  if (items.length) {
+    items.forEach(item => {
+      if (gy < 340) return;
+      const total = Number(item.monto || 0) * Number(item.cantidad || 0);
+      fillRect(x.gastos + 5, gy - 30, 81, 30, '1 1 1');
+      rectPdf(comandos, x.gastos + 5, gy - 30, 81, 30);
+      textoPdfEnCaja(comandos, `${item.nombre || 'Item'} x${item.cantidad || 0}`, x.gastos + 7, gy - 8, 18, { size: 7, maxLineas: 2 });
+      textoPdf(comandos, formatoMonto(total), x.gastos + 52, gy - 22, { size: 7, bold: true });
+      gy -= 36;
+    });
+  } else {
+    textoPdf(comandos, 'Sin gastos cargados', x.gastos + 8, gy, { size: 7 });
+    gy -= 24;
+  }
+  const totalItems = items.reduce((total, item) => total + (Number(item.monto || 0) * Number(item.cantidad || 0)), 0);
+  lineaPdf(comandos, x.gastos + 6, gy, x.gastos + 85, gy);
+  fillRect(x.gastos + 6, gy - 24, 79, 18, '0.94 0.97 1');
+  textoPdf(comandos, `Total: ${formatoMonto(totalItems)}`, x.gastos + 8, gy - 18, { size: 8, bold: true });
+  textoPdf(comandos, `Entrega: ${formatoMonto(data.montoAportado || 0)}`, x.gastos + 8, gy - 34, { size: 7 });
+
+  y = Math.min(cy - 24, 110);
+  const textoCentradoPdf = (valor, centroX, y0, opciones = {}) => {
+    const size = opciones.size || 9;
+    const anchoEstimado = normalizarTextoPdf(valor).length * size * 0.46;
+    textoPdf(comandos, valor, centroX - (anchoEstimado / 2), y0, opciones);
+  };
+  const firmaSimple = (x0, y0, width, titulo) => {
+    const centroX = x0 + (width / 2);
+    const lineaWidth = 116;
+    comandos.push('[2 2] 0 d');
+    lineaPdf(comandos, centroX - (lineaWidth / 2), y0, centroX + (lineaWidth / 2), y0);
+    comandos.push('[] 0 d');
+    textoCentradoPdf(titulo, centroX, y0 - 18, { size: 9 });
+  };
+  const firmaTop = 96;
+  const firmaWidth = 150;
+  firmaSimple(38, firmaTop, firmaWidth, 'Firma delegado');
+  firmaSimple(222, firmaTop, firmaWidth, 'Firma arbitro');
+  firmaSimple(406, firmaTop, firmaWidth, 'Firma mesa de control');
+
+  paginas.push(comandos);
+  return crearPdfDesdePaginas(paginas);
+}
+
+async function imprimirPlanillaFinalPartidoEquipo(lado) {
+  const modal = document.getElementById('modalDocsPartido');
+  if (!modal) return;
+
+  const partidoId = modal.dataset.partidoId;
+  const equipoId = lado === 'b' ? modal.dataset.equipoBId : modal.dataset.equipoAId;
+  if (!partidoId || !equipoId) return;
+
+  try {
+    const response = await fetch(`/partidos/${partidoId}/equipo/${equipoId}/carga`, { headers: { 'Accept': 'application/json' } });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message || 'No se pudo preparar la planilla final');
+    const pdf = crearPdfPlanillaFinalEquipo(data);
+    const equipoSeguro = normalizarTextoPdf(data.equipo?.nombre || 'equipo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'equipo';
+    await descargarPdfArchivo(`planilla-final-${partidoId}-${equipoSeguro}.pdf`, pdf);
+  } catch (error) {
+    console.error(error);
+    mostrarAvisoApp(error.message || 'No se pudo imprimir la planilla final.', 'Planilla final');
+  }
+}
+
+function abrirModalDocsPartido(boton) {
+  const data = boton?.dataset || {};
+  const modal = document.getElementById('modalDocsPartido');
+  if (!modal) return;
+
+  modal.dataset.partidoId = data.partidoId || '';
+  modal.dataset.equipoAId = data.equipoAId || '';
+  modal.dataset.equipoBId = data.equipoBId || '';
+
+  document.getElementById('docsPartidoTitulo').textContent = `Docs - Fecha ${data.numeroFecha || '-'}`;
+  document.getElementById('docsPartidoSubtitulo').textContent = `${data.equipoANombre || 'Equipo A'} vs ${data.equipoBNombre || 'Equipo B'}`;
+  document.getElementById('docsEquipoANombre').textContent = data.equipoANombre || 'Equipo A';
+  document.getElementById('docsEquipoBNombre').textContent = data.equipoBNombre || 'Equipo B';
+  document.getElementById('docsEquipoAIcono').src = data.equipoAIcono || '/images/default_team.png';
+  document.getElementById('docsEquipoBIcono').src = data.equipoBIcono || '/images/default_team.png';
+
+  bootstrap.Modal.getOrCreateInstance(modal).show();
+}
+
+function imprimirDocsPartidoEquipo(lado) {
+  const modal = document.getElementById('modalDocsPartido');
+  if (!modal) return;
+
+  const partidoId = modal.dataset.partidoId;
+  const equipoId = lado === 'b' ? modal.dataset.equipoBId : modal.dataset.equipoAId;
+  if (partidoId && equipoId) imprimirListaJugadoresPartido(partidoId, equipoId);
 }
 
 function actualizarHorarioPartidoEnVista(partidoId, partido = {}) {
@@ -2745,6 +3111,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let cargaEquipoPartidoActual = null;
 let cargaItemsDisponibles = [];
+let cargaJugadoresCambio = [];
 let cargaEquipoPartidoBotonActual = null;
 let cargaReglaTarjetasActual = { acumula_amarillas: false };
 
@@ -2803,6 +3170,38 @@ function renderColumnaEstadisticasEquipo(titulo, jugadores) {
   `;
 }
 
+function formatearJugadorCambio(nombre, numeroCamiseta, jugadorId) {
+  const nombreSeguro = nombre || `Jugador ${jugadorId || '-'}`;
+  const numeroSeguro = String(numeroCamiseta || '').trim();
+  return numeroSeguro ? `${numeroSeguro} - ${nombreSeguro}` : nombreSeguro;
+}
+
+function renderCambioJugador(cambio) {
+  const sale = formatearJugadorCambio(cambio.jugador_sale_nombre, cambio.jugador_sale_numero_camiseta, cambio.jugador_sale_id);
+  const entra = formatearJugadorCambio(cambio.jugador_entra_nombre, cambio.jugador_entra_numero_camiseta, cambio.jugador_entra_id);
+  const minuto = cambio.minuto ? `<span class="encuentro-cambio-minuto">${escaparHtml(cambio.minuto)}</span>` : '';
+  return `
+    <div class="encuentro-stats-cambio">
+      ${minuto}
+      <span><i class="bi bi-arrow-down-left text-danger"></i> ${escaparHtml(sale)}</span>
+      <span><i class="bi bi-arrow-up-right text-success"></i> ${escaparHtml(entra)}</span>
+    </div>
+  `;
+}
+
+function renderColumnaCambiosEquipo(titulo, cambios) {
+  const contenido = cambios.length
+    ? cambios.map(renderCambioJugador).join('')
+    : '<div class="encuentro-stats-vacio">Sin cambios.</div>';
+
+  return `
+    <div class="encuentro-stats-columna">
+      <div class="encuentro-stats-columna-titulo">${escaparHtml(titulo)}</div>
+      <div class="encuentro-stats-lista">${contenido}</div>
+    </div>
+  `;
+}
+
 function abrirModalEstadisticasEncuentro(partidoId) {
   const partido = (dashboardPartidosEstadisticas || []).find(item => String(item.id_partido) === String(partidoId));
   if (!partido) return;
@@ -2813,6 +3212,7 @@ function abrirModalEstadisticasEncuentro(partidoId) {
 
   const detalle = document.getElementById('modalStatsDetalle');
   const estadisticas = Array.isArray(partido.estadisticas) ? partido.estadisticas : [];
+  const cambios = Array.isArray(partido.cambios) ? partido.cambios : [];
   const conEventos = estadisticas.filter(jugador =>
     Number(jugador.goles || 0) > 0 ||
     Number(jugador.tarjetas_amarillas || 0) > 0 ||
@@ -2830,16 +3230,28 @@ function abrirModalEstadisticasEncuentro(partidoId) {
     const equipo = String(jugador.id_equipo || '');
     return equipo !== equipoAId && equipo !== equipoBId;
   }).sort(ordenarJugadores);
+  const cambiosEquipoA = cambios.filter(cambio => String(cambio.equipo_id || '') === equipoAId);
+  const cambiosEquipoB = cambios.filter(cambio => String(cambio.equipo_id || '') === equipoBId);
+  const cambiosSinEquipo = cambios.filter(cambio => {
+    const equipo = String(cambio.equipo_id || '');
+    return equipo !== equipoAId && equipo !== equipoBId;
+  });
 
-  detalle.innerHTML = conEventos.length
+  detalle.innerHTML = (conEventos.length || cambios.length)
     ? `
       <div class="encuentro-stats-columnas">
         ${renderColumnaEstadisticasEquipo(partido.nombre_equipo_a || 'Equipo A', jugadoresEquipoA)}
         ${renderColumnaEstadisticasEquipo(partido.nombre_equipo_b || 'Equipo B', jugadoresEquipoB)}
       </div>
       ${jugadoresSinEquipo.length ? `<div class="mt-2">${renderColumnaEstadisticasEquipo('Sin equipo asignado', jugadoresSinEquipo)}</div>` : ''}
+      <div class="encuentro-stats-seccion">Cambios</div>
+      <div class="encuentro-stats-columnas">
+        ${renderColumnaCambiosEquipo(partido.nombre_equipo_a || 'Equipo A', cambiosEquipoA)}
+        ${renderColumnaCambiosEquipo(partido.nombre_equipo_b || 'Equipo B', cambiosEquipoB)}
+      </div>
+      ${cambiosSinEquipo.length ? `<div class="mt-2">${renderColumnaCambiosEquipo('Sin equipo asignado', cambiosSinEquipo)}</div>` : ''}
     `
-    : '<div class="text-center text-muted py-3">No hay goles ni tarjetas cargadas para este encuentro.</div>';
+    : '<div class="text-center text-muted py-3">No hay goles, tarjetas ni cambios cargados para este encuentro.</div>';
 
   bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEstadisticasEncuentro')).show();
 }
@@ -2862,10 +3274,23 @@ function renderDashboardEventoJugador(jugador) {
   `;
 }
 
-function renderDashboardEquipoEnCurso(titulo, jugadores) {
-  const eventos = jugadores.length
-    ? jugadores.map(renderDashboardEventoJugador).join('')
-    : '<small class="text-muted">Sin eventos.</small>';
+function renderDashboardCambioJugador(cambio) {
+  const sale = formatearJugadorCambio(cambio.jugador_sale_nombre, cambio.jugador_sale_numero_camiseta, cambio.jugador_sale_id);
+  const entra = formatearJugadorCambio(cambio.jugador_entra_nombre, cambio.jugador_entra_numero_camiseta, cambio.jugador_entra_id);
+  const minuto = cambio.minuto ? `<span class="dashboard-live-cambio-minuto">${escaparHtml(cambio.minuto)}</span>` : '';
+  return `
+    <div class="dashboard-live-stat-item dashboard-live-cambio">
+      <span>${minuto}<i class="bi bi-arrow-down-left text-danger"></i> ${escaparHtml(sale)}</span>
+      <span><i class="bi bi-arrow-up-right text-success"></i> ${escaparHtml(entra)}</span>
+    </div>
+  `;
+}
+
+function renderDashboardEquipoEnCurso(titulo, jugadores, cambios = []) {
+  const eventos = [
+    ...jugadores.map(renderDashboardEventoJugador),
+    ...cambios.map(renderDashboardCambioJugador)
+  ].join('') || '<small class="text-muted">Sin eventos.</small>';
 
   return `
     <div class="dashboard-live-team">
@@ -2884,15 +3309,26 @@ function renderDashboardEnCursoStats(partido) {
     Number(jugador.tarjetas_amarillas || 0) > 0 ||
     Number(jugador.tarjetas_rojas || 0) > 0
   );
+  const cambios = Array.isArray(partido.cambios) ? partido.cambios : [];
+  const equipoAId = String(partido.equipo_a || '');
+  const equipoBId = String(partido.equipo_b || '');
 
-  contenedor.innerHTML = eventos.length
+  contenedor.innerHTML = (eventos.length || cambios.length)
     ? `
       <div class="dashboard-live-columns">
-        ${renderDashboardEquipoEnCurso(partido.nombre_equipo_a || 'Equipo A', eventos.filter(jugador => String(jugador.id_equipo || '') === String(partido.equipo_a || '')))}
-        ${renderDashboardEquipoEnCurso(partido.nombre_equipo_b || 'Equipo B', eventos.filter(jugador => String(jugador.id_equipo || '') === String(partido.equipo_b || '')))}
+        ${renderDashboardEquipoEnCurso(
+          partido.nombre_equipo_a || 'Equipo A',
+          eventos.filter(jugador => String(jugador.id_equipo || '') === equipoAId),
+          cambios.filter(cambio => String(cambio.equipo_id || '') === equipoAId)
+        )}
+        ${renderDashboardEquipoEnCurso(
+          partido.nombre_equipo_b || 'Equipo B',
+          eventos.filter(jugador => String(jugador.id_equipo || '') === equipoBId),
+          cambios.filter(cambio => String(cambio.equipo_id || '') === equipoBId)
+        )}
       </div>
     `
-    : '<small class="text-muted">Sin goles ni tarjetas cargadas.</small>';
+    : '<small class="text-muted">Sin goles, tarjetas ni cambios cargados.</small>';
 }
 
 let dashboardEnCursoRefrescoActivo = false;
@@ -2939,6 +3375,10 @@ async function refrescarDashboardEnCurso(opciones = {}) {
     dashboardEnCursoRefrescoActivo = false;
   }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  refrescarDashboardEnCurso({ forzar: true });
+});
 
 function mostrarAvisoApp(mensaje, titulo = 'Atencion') {
   const modalEl = document.getElementById('modalAvisoApp');
@@ -3103,6 +3543,9 @@ function configurarSuspFechasDecision(tr, bloquear = false) {
   const input = tr.querySelector('.carga-jugador-suspendidos');
   if (!input) return;
 
+  if (bloquear) {
+    mostrarCamposSuspensionCarga(tr, true);
+  }
   input.disabled = Boolean(bloquear);
   input.classList.toggle('bg-light', Boolean(bloquear));
   input.classList.toggle('text-muted', Boolean(bloquear));
@@ -3221,7 +3664,7 @@ function actualizarAcumulacionAmarillasFila(tr, avisar = false) {
 
 function actualizarAcumulacionesAmarillas(avisar = false) {
   let hayAcumulacion = false;
-  document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]').forEach(tr => {
+  document.querySelectorAll('#cargaTarjetasTbody tr[data-jugador-id]').forEach(tr => {
     hayAcumulacion = actualizarAcumulacionAmarillasFila(tr, avisar) || hayAcumulacion;
   });
   return hayAcumulacion;
@@ -3232,7 +3675,7 @@ function obtenerNombreJugadorCarga(tr) {
 }
 
 async function resolverDecisionesAcumulacion() {
-  const filas = Array.from(document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]'))
+  const filas = Array.from(document.querySelectorAll('#cargaTarjetasTbody tr[data-jugador-id]'))
     .filter(tr => actualizarAcumulacionAmarillasFila(tr) && !tr.dataset.accionAcumulacion);
   const regla = cargaReglaTarjetasActual || {};
   const fechasDefault = Number.parseInt(regla.fechas_suspension_acumulacion || '1', 10) || 1;
@@ -3264,27 +3707,167 @@ async function resolverDecisionesAcumulacion() {
 
 function aplicarBusquedaCargaJugadores() {
   const busqueda = normalizarNombreItem(document.getElementById('buscarCargaJugadores')?.value || '');
-  document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]').forEach(tr => {
+  document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id], #cargaTarjetasTbody tr[data-jugador-id]').forEach(tr => {
     const texto = normalizarNombreItem(tr.dataset.busqueda || '');
     tr.classList.toggle('d-none', Boolean(busqueda) && !texto.includes(busqueda));
   });
 }
 
+function normalizarMinutosEvento(valor) {
+  if (Array.isArray(valor)) return valor.map(v => String(v).trim()).filter(Boolean);
+  return String(valor || '').split(/[,\s;]+/).map(v => v.trim()).filter(Boolean);
+}
+
+function obtenerMinutosEventoFila(tr, tipo) {
+  return Array.from(tr.querySelectorAll(`.carga-jugador-minuto-${tipo}`))
+    .map(input => input.value.trim())
+    .filter(Boolean);
+}
+
+function formatearCampoTiempoEvento(input) {
+  const soloDigitos = String(input.value || '').replace(/\D/g, '').slice(0, 5);
+  if (!soloDigitos) {
+    input.value = '';
+    return;
+  }
+  if (soloDigitos.length <= 2) {
+    input.value = soloDigitos;
+    return;
+  }
+  const minutos = soloDigitos.slice(0, -2);
+  const segundos = soloDigitos.slice(-2);
+  input.value = `${Number(minutos)}:${segundos}`;
+}
+
+function sincronizarEventoDesdeDetalle(tr, tipo) {
+  const selectorInput = {
+    gol: '.carga-jugador-goles',
+    amarilla: '.carga-jugador-amarillas',
+    roja: '.carga-jugador-rojas'
+  }[tipo];
+  const input = tr.querySelector(selectorInput);
+  const eventos = tr.querySelectorAll(`.carga-jugador-minuto-${tipo}`);
+  if (input) {
+    input.value = eventos.length;
+  }
+  actualizarEstadoContadorEvento(tr, tipo);
+}
+
+function actualizarEstadoVacioEventos(tr, tipo) {
+  const claseContenedor = {
+    gol: '.carga-goles-detalle',
+    amarilla: '.carga-amarilla-detalle',
+    roja: '.carga-roja-detalle'
+  }[tipo];
+  const contenedor = claseContenedor ? tr.querySelector(claseContenedor) : null;
+  if (!contenedor) return;
+  const tieneEventos = Boolean(contenedor.querySelector(`.carga-jugador-minuto-${tipo}`));
+  contenedor.classList.toggle('carga-eventos-vacio', !tieneEventos);
+  if (!tieneEventos) {
+    contenedor.innerHTML = '';
+  } else {
+    contenedor.querySelectorAll('small.text-muted').forEach(el => el.remove());
+  }
+  actualizarEstadoContadorEvento(tr, tipo);
+}
+
+function actualizarEstadoContadorEvento(tr, tipo) {
+  const selectorInput = {
+    gol: '.carga-jugador-goles',
+    amarilla: '.carga-jugador-amarillas',
+    roja: '.carga-jugador-rojas'
+  }[tipo];
+  const input = tr.querySelector(selectorInput);
+  const wrapper = input?.closest('.carga-contador-evento');
+  if (!input || !wrapper) return;
+
+  const cantidad = Number.parseInt(input.value || '0', 10) || 0;
+  const tieneDetalle = Boolean(tr.querySelector(`.carga-jugador-minuto-${tipo}`));
+  const mostrar = cantidad > 0 || tieneDetalle || document.activeElement === input;
+  wrapper.classList.toggle('d-none', !mostrar);
+  wrapper.closest('td')?.classList.toggle('carga-contador-oculto', !mostrar);
+}
+
+function mostrarCamposSuspensionCarga(origen, enfocar = false) {
+  const tr = origen?.closest ? origen.closest('tr[data-jugador-id]') : origen;
+  if (!tr) return;
+
+  const campos = tr.querySelector('.carga-suspension-fields');
+  const boton = tr.querySelector('.carga-btn-suspension');
+  if (!campos) return;
+
+  campos.classList.remove('d-none');
+  boton?.classList.add('d-none');
+  if (enfocar) {
+    setTimeout(() => tr.querySelector('.carga-jugador-suspendidos')?.focus(), 0);
+  }
+}
+
+function actualizarEstadoSuspensionCarga(tr) {
+  const campos = tr.querySelector('.carga-suspension-fields');
+  const boton = tr.querySelector('.carga-btn-suspension');
+  const suspendidos = tr.querySelector('.carga-jugador-suspendidos');
+  const observaciones = tr.querySelector('.carga-jugador-observaciones');
+  if (!campos || !boton || !suspendidos || !observaciones) return;
+
+  const tieneSuspension = (Number.parseInt(suspendidos.value || '0', 10) || 0) > 0 || Boolean((observaciones.value || '').trim());
+  campos.classList.toggle('d-none', !tieneSuspension);
+  boton.classList.toggle('d-none', tieneSuspension);
+}
+
+function agregarMinutoEventoCarga(origen, tipo, minuto = '') {
+  const tr = origen?.closest ? origen.closest('tr[data-jugador-id]') : origen;
+  if (!tr) return;
+  const claseContenedor = {
+    gol: '.carga-goles-detalle',
+    amarilla: '.carga-amarilla-detalle',
+    roja: '.carga-roja-detalle'
+  }[tipo];
+  const contenedor = claseContenedor ? tr.querySelector(claseContenedor) : null;
+  if (!contenedor) return;
+  if (contenedor.classList.contains('carga-eventos-vacio')) {
+    contenedor.innerHTML = '';
+    contenedor.classList.remove('carga-eventos-vacio');
+  }
+
+  const grupo = document.createElement('div');
+  grupo.className = 'input-group input-group-sm';
+  grupo.innerHTML = `
+    <span class="input-group-text">mm:ss</span>
+    <input type="text" inputmode="numeric" pattern="^([0-9]{1,3}:[0-5][0-9]|[0-9]{1,3})$" class="form-control carga-jugador-minuto-${tipo}" value="${escaparHtml(minuto)}" placeholder="18:30">
+    <button type="button" class="btn btn-outline-danger" title="Quitar evento">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  `;
+  grupo.querySelector(`.carga-jugador-minuto-${tipo}`).addEventListener('input', event => {
+    formatearCampoTiempoEvento(event.target);
+    sincronizarEventoDesdeDetalle(tr, tipo);
+  });
+  grupo.querySelector('button').addEventListener('click', () => {
+    grupo.remove();
+    sincronizarEventoDesdeDetalle(tr, tipo);
+    actualizarEstadoVacioEventos(tr, tipo);
+  });
+  contenedor.appendChild(grupo);
+  sincronizarEventoDesdeDetalle(tr, tipo);
+  actualizarEstadoVacioEventos(tr, tipo);
+  grupo.querySelector(`.carga-jugador-minuto-${tipo}`)?.focus();
+}
+
 function renderCargaJugadores(jugadores) {
-  const tbody = document.getElementById('cargaJugadoresTbody');
-  tbody.innerHTML = '';
+  const tbodyGoles = document.getElementById('cargaJugadoresTbody');
+  const tbodyTarjetas = document.getElementById('cargaTarjetasTbody');
+  tbodyGoles.innerHTML = '';
+  tbodyTarjetas.innerHTML = '';
 
   if (!jugadores.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Este equipo no tiene jugadores activos vinculados.</td></tr>';
+    tbodyGoles.innerHTML = '<tr><td colspan="3" class="text-center text-muted">Este equipo no tiene jugadores activos vinculados.</td></tr>';
+    tbodyTarjetas.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Este equipo no tiene jugadores activos vinculados.</td></tr>';
     return;
   }
 
   jugadores.forEach(jugador => {
-    const tr = document.createElement('tr');
-    tr.dataset.jugadorId = jugador.id_jugador;
-    tr.dataset.amarillasPrevias = jugador.amarillas_acumuladas_previas || 0;
-    tr.dataset.amarillasLimite = jugador.amarillas_para_suspension || 0;
-    tr.dataset.busqueda = [
+    const busqueda = [
       jugador.numero_camiseta ? `#${jugador.numero_camiseta}` : '',
       jugador.numero_camiseta || '',
       jugador.nombre || '',
@@ -3294,35 +3877,168 @@ function renderCargaJugadores(jugadores) {
     const vinculoActivo = !(jugador.estado_vinculo === false || jugador.estado_vinculo === 'f' || jugador.estado_vinculo === 0);
     const sancionVigente = !vinculoActivo;
     const motivoBloqueo = jugador.observacion_vinculo || jugador.suspension_vigente_observaciones || '';
+    const jugadorCelda = `
+      <td data-label="Jugador" class="carga-jugador-cell">
+        <strong>${jugador.numero_camiseta ? `#${escaparHtml(jugador.numero_camiseta)} ` : ''}${escaparHtml(jugador.nombre || '')} ${escaparHtml(jugador.apellido || '')}</strong>
+        <small class="text-muted d-block">${escaparHtml(jugador.documento || '')}</small>
+        ${sancionVigente ? `<span class="badge text-bg-warning">Suspendido ${escaparHtml(jugador.suspension_partidos_restantes || 1)} fecha</span>` : ''}
+        ${sancionVigente && motivoBloqueo ? `<small class="text-muted d-block">${escaparHtml(motivoBloqueo)}</small>` : ''}
+      </td>
+    `;
+
+    const trGoles = document.createElement('tr');
+    trGoles.dataset.jugadorId = jugador.id_jugador;
+    trGoles.dataset.busqueda = busqueda;
     if (sancionVigente) {
-      tr.classList.add('table-warning');
-      tr.dataset.sancionVigente = '1';
+      trGoles.classList.add('table-warning');
+      trGoles.dataset.sancionVigente = '1';
     }
-    tr.dataset.golesOriginal = String(sancionVigente ? 0 : (Number.parseInt(jugador.goles || '0', 10) || 0));
-    tr.innerHTML = `
-      <td>
+    trGoles.dataset.golesOriginal = String(sancionVigente ? 0 : (Number.parseInt(jugador.goles || '0', 10) || 0));
+    trGoles.innerHTML = `
+      ${jugadorCelda}
+      <td data-label="Goles" class="carga-evento-cell">
+        <div class="carga-contador-evento d-none">
+          <span class="carga-contador-label">Goles</span>
+          <input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-goles" value="${sancionVigente ? 0 : (jugador.goles || 0)}" ${sancionVigente ? 'disabled' : ''}>
+        </div>
+      </td>
+      <td data-label="Goles del jugador" class="carga-evento-cell">
+        <div class="carga-goles-detalle d-grid gap-1"></div>
+        <button type="button" class="btn btn-outline-success btn-sm mt-1 carga-btn-agregar-gol" ${sancionVigente ? 'disabled' : ''} onclick="agregarMinutoEventoCarga(this, 'gol')">
+          <i class="bi bi-plus-circle"></i> Gol
+        </button>
+      </td>
+    `;
+
+    const trTarjetas = document.createElement('tr');
+    trTarjetas.dataset.jugadorId = jugador.id_jugador;
+    trTarjetas.dataset.amarillasPrevias = jugador.amarillas_acumuladas_previas || 0;
+    trTarjetas.dataset.amarillasLimite = jugador.amarillas_para_suspension || 0;
+    trTarjetas.dataset.busqueda = busqueda;
+    if (sancionVigente) {
+      trTarjetas.classList.add('table-warning');
+      trTarjetas.dataset.sancionVigente = '1';
+    }
+    trTarjetas.innerHTML = `
+      <td data-label="Jugador" class="carga-jugador-cell">
         <strong>${jugador.numero_camiseta ? `#${escaparHtml(jugador.numero_camiseta)} ` : ''}${escaparHtml(jugador.nombre || '')} ${escaparHtml(jugador.apellido || '')}</strong>
         <small class="text-muted d-block">${escaparHtml(jugador.documento || '')}</small>
         <small class="text-muted d-block carga-acumulado-amarillas"></small>
         ${sancionVigente ? `<span class="badge text-bg-warning">Suspendido ${escaparHtml(jugador.suspension_partidos_restantes || 1)} fecha</span>` : ''}
         ${sancionVigente && motivoBloqueo ? `<small class="text-muted d-block">${escaparHtml(motivoBloqueo)}</small>` : ''}
       </td>
-      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-goles" value="${sancionVigente ? 0 : (jugador.goles || 0)}" ${sancionVigente ? 'disabled' : ''}></td>
-      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-amarillas" value="${sancionVigente ? 0 : (jugador.tarjetas_amarillas || 0)}" ${sancionVigente ? 'disabled' : ''}></td>
-      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-rojas" value="${sancionVigente ? 0 : (jugador.tarjetas_rojas || 0)}" ${sancionVigente ? 'disabled' : ''}></td>
-      <td><input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-suspendidos" value="${jugador.partidos_suspendidos || 0}"></td>
-      <td><input type="text" class="form-control form-control-sm carga-jugador-observaciones" value="${escaparHtml(jugador.suspension_observaciones || '')}"></td>
+      <td data-label="Amarillas" class="carga-evento-cell">
+        <div class="carga-contador-evento d-none">
+          <span class="carga-contador-label">Amarillas</span>
+          <input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-amarillas" value="${sancionVigente ? 0 : (jugador.tarjetas_amarillas || 0)}" ${sancionVigente ? 'disabled' : ''}>
+        </div>
+        <div class="carga-amarilla-detalle d-grid gap-1 mt-1"></div>
+        <button type="button" class="btn btn-outline-warning btn-sm mt-1" ${sancionVigente ? 'disabled' : ''} onclick="agregarMinutoEventoCarga(this, 'amarilla')">
+          <i class="bi bi-plus-circle"></i> Amarilla
+        </button>
+      </td>
+      <td data-label="Rojas" class="carga-evento-cell">
+        <div class="carga-contador-evento d-none">
+          <span class="carga-contador-label">Rojas</span>
+          <input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-rojas" value="${sancionVigente ? 0 : (jugador.tarjetas_rojas || 0)}" ${sancionVigente ? 'disabled' : ''}>
+        </div>
+        <div class="carga-roja-detalle d-grid gap-1 mt-1"></div>
+        <button type="button" class="btn btn-outline-danger btn-sm mt-1" ${sancionVigente ? 'disabled' : ''} onclick="agregarMinutoEventoCarga(this, 'roja')">
+          <i class="bi bi-plus-circle"></i> Roja
+        </button>
+      </td>
+      <td data-label="Suspension" class="carga-suspension-cell" colspan="2">
+        <div class="carga-suspension-fields d-none">
+          <div class="carga-suspension-grid">
+            <input type="number" min="0" step="1" class="form-control form-control-sm carga-numero carga-jugador-suspendidos" value="${jugador.partidos_suspendidos || 0}" aria-label="Fechas de suspension">
+            <input type="text" class="form-control form-control-sm carga-jugador-observaciones" value="${escaparHtml(jugador.suspension_observaciones || '')}" placeholder="Motivo suspension" aria-label="Motivo suspension">
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm carga-btn-suspension" onclick="mostrarCamposSuspensionCarga(this, true)">
+          <i class="bi bi-plus-circle"></i> Susp.
+        </button>
+      </td>
     `;
-    tbody.appendChild(tr);
-    tr.querySelectorAll('.carga-jugador-amarillas, .carga-jugador-rojas').forEach(input => {
+    tbodyGoles.appendChild(trGoles);
+    tbodyTarjetas.appendChild(trTarjetas);
+
+    normalizarMinutosEvento(jugador.goles_minutos).forEach(minuto => agregarMinutoEventoCarga(trGoles, 'gol', minuto));
+    normalizarMinutosEvento(jugador.amarillas_minutos).forEach(minuto => agregarMinutoEventoCarga(trTarjetas, 'amarilla', minuto));
+    normalizarMinutosEvento(jugador.rojas_minutos).forEach(minuto => agregarMinutoEventoCarga(trTarjetas, 'roja', minuto));
+    actualizarEstadoVacioEventos(trGoles, 'gol');
+    ['amarilla', 'roja'].forEach(tipo => actualizarEstadoVacioEventos(trTarjetas, tipo));
+
+    ['gol'].forEach(tipo => {
+      const input = trGoles.querySelector({
+        gol: '.carga-jugador-goles',
+        amarilla: '.carga-jugador-amarillas',
+        roja: '.carga-jugador-rojas'
+      }[tipo]);
+      input?.addEventListener('input', () => actualizarEstadoContadorEvento(trGoles, tipo));
+      input?.addEventListener('blur', () => actualizarEstadoContadorEvento(trGoles, tipo));
+      actualizarEstadoContadorEvento(trGoles, tipo);
+    });
+    ['amarilla', 'roja'].forEach(tipo => {
+      const input = trTarjetas.querySelector({
+        amarilla: '.carga-jugador-amarillas',
+        roja: '.carga-jugador-rojas'
+      }[tipo]);
+      input?.addEventListener('input', () => actualizarEstadoContadorEvento(trTarjetas, tipo));
+      input?.addEventListener('blur', () => actualizarEstadoContadorEvento(trTarjetas, tipo));
+      actualizarEstadoContadorEvento(trTarjetas, tipo);
+    });
+
+    actualizarEstadoSuspensionCarga(trTarjetas);
+    trTarjetas.querySelectorAll('.carga-jugador-suspendidos, .carga-jugador-observaciones').forEach(input => {
+      input.addEventListener('input', () => mostrarCamposSuspensionCarga(trTarjetas));
+    });
+    trTarjetas.querySelectorAll('.carga-jugador-amarillas, .carga-jugador-rojas').forEach(input => {
       input.addEventListener('input', () => {
-        delete tr.dataset.accionAcumulacion;
-        configurarSuspFechasDecision(tr, false);
-        actualizarAcumulacionAmarillasFila(tr, input.classList.contains('carga-jugador-amarillas'));
+        delete trTarjetas.dataset.accionAcumulacion;
+        configurarSuspFechasDecision(trTarjetas, false);
+        actualizarAcumulacionAmarillasFila(trTarjetas, input.classList.contains('carga-jugador-amarillas'));
       });
     });
-    actualizarAcumulacionAmarillasFila(tr);
+    actualizarAcumulacionAmarillasFila(trTarjetas);
   });
+}
+
+function opcionesJugadoresCambio(valorSeleccionado = '') {
+  return [
+    '<option value="">Seleccione jugador</option>',
+    ...cargaJugadoresCambio.map(jugador => {
+      const etiqueta = `${jugador.numero_camiseta ? `#${jugador.numero_camiseta} ` : ''}${jugador.nombre || ''} ${jugador.apellido || ''}`.trim();
+      const selected = String(valorSeleccionado || '') === String(jugador.id_jugador) ? 'selected' : '';
+      return `<option value="${escaparHtml(jugador.id_jugador)}" ${selected}>${escaparHtml(etiqueta)}</option>`;
+    })
+  ].join('');
+}
+
+function agregarFilaCambioCarga(cambio = {}) {
+  const tbody = document.getElementById('cargaCambiosTbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><select class="form-select form-select-sm carga-cambio-sale">${opcionesJugadoresCambio(cambio.jugador_sale_id)}</select></td>
+    <td><select class="form-select form-select-sm carga-cambio-entra">${opcionesJugadoresCambio(cambio.jugador_entra_id)}</select></td>
+    <td><input type="text" inputmode="numeric" pattern="^([0-9]{1,3}:[0-5][0-9]|[0-9]{1,3})$" class="form-control form-control-sm carga-cambio-minuto" value="${escaparHtml(cambio.minuto || '')}" placeholder="18:30"></td>
+    <td class="text-center">
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove();">
+        <i class="bi bi-trash"></i>
+      </button>
+    </td>
+  `;
+  tbody.appendChild(tr);
+  tr.querySelector('.carga-cambio-minuto')?.addEventListener('input', event => {
+    formatearCampoTiempoEvento(event.target);
+  });
+}
+
+function renderCargaCambios(cambios = []) {
+  const tbody = document.getElementById('cargaCambiosTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  cambios.forEach(cambio => agregarFilaCambioCarga(cambio));
 }
 
 function recalcularCargaEquipoPartido() {
@@ -3364,6 +4080,7 @@ async function abrirCargaEquipoPartido(partidoId, equipoId, boton = null) {
       estado: normalizarEstadoPartidoCliente(data.partido.estado || 'programado')
     };
     cargaItemsDisponibles = data.items || [];
+    cargaJugadoresCambio = data.jugadores || [];
     cargaReglaTarjetasActual = data.reglaTarjetas || { acumula_amarillas: false };
 
     document.getElementById('cargaPartidoTitulo').textContent = `${data.equipo.nombre} - Fecha ${data.partido.numero_fecha || '-'}`;
@@ -3371,10 +4088,15 @@ async function abrirCargaEquipoPartido(partidoId, equipoId, boton = null) {
     document.getElementById('cargaDeudaAnterior').value = formatoMonto(data.deudaAnterior);
     document.getElementById('cargaMontoAportado').value = formatoMonto(data.montoAportado);
     document.getElementById('cargaItemsTbody').innerHTML = '';
+    document.getElementById('cargaCambiosTbody').innerHTML = '';
+    document.getElementById('cargaCambiosTabNav')?.classList.remove('d-none');
+    mostrarEstadoCargaEquipo('');
     const buscadorCarga = document.getElementById('buscarCargaJugadores');
     if (buscadorCarga) buscadorCarga.value = '';
 
     renderCargaJugadores(data.jugadores || []);
+    renderCargaCambios(data.cambios || []);
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#cargaJugadoresTab"]')).show();
 
     if (data.itemsCargados && data.itemsCargados.length > 0) {
       data.itemsCargados.forEach(item => agregarFilaItemCarga(item));
@@ -3517,6 +4239,7 @@ async function abrirCargaEquipoLibre(torneoId, numeroFecha, equipoId, boton = nu
       fechaCalendario: data.partido.fecha || null
     };
     cargaItemsDisponibles = data.items || [];
+    cargaJugadoresCambio = [];
     cargaReglaTarjetasActual = { acumula_amarillas: false };
 
     document.getElementById('cargaPartidoTitulo').textContent = `${data.equipo.nombre} - Fecha ${data.partido.numero_fecha || '-'} libre`;
@@ -3524,8 +4247,13 @@ async function abrirCargaEquipoLibre(torneoId, numeroFecha, equipoId, boton = nu
     document.getElementById('cargaDeudaAnterior').value = formatoMonto(data.deudaAnterior);
     document.getElementById('cargaMontoAportado').value = formatoMonto(data.montoAportado);
     document.getElementById('cargaItemsTbody').innerHTML = '';
+    document.getElementById('cargaCambiosTbody').innerHTML = '';
+    document.getElementById('cargaCambiosTabNav')?.classList.add('d-none');
+    mostrarEstadoCargaEquipo('');
 
     renderCargaJugadores([]);
+    renderCargaCambios([]);
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#cargaItemsTab"]')).show();
 
     if (data.itemsCargados && data.itemsCargados.length > 0) {
       data.itemsCargados.forEach(item => agregarFilaItemCarga(item));
@@ -3544,6 +4272,80 @@ function marcarBotonCargaRegistrada() {
   cargaEquipoPartidoBotonActual.classList.remove('btn-warning');
   cargaEquipoPartidoBotonActual.classList.add('btn-success');
   cargaEquipoPartidoBotonActual.title = 'Carga registrada';
+}
+
+function mostrarEstadoCargaEquipo(mensaje = '', tipo = 'muted') {
+  const estado = document.getElementById('cargaEquipoEstadoGuardado');
+  if (!estado) return;
+
+  estado.textContent = mensaje;
+  estado.className = `me-auto small fw-bold text-${tipo}`;
+}
+
+function sincronizarOriginalesCargaJugadores() {
+  document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]').forEach(tr => {
+    const golesActual = Number.parseInt(tr.querySelector('.carga-jugador-goles')?.value || '0', 10) || 0;
+    tr.dataset.golesOriginal = String(golesActual);
+  });
+}
+
+function obtenerNombreJugadorCargaPorId(jugadorId) {
+  const jugador = (cargaJugadoresCambio || []).find(item => String(item.id_jugador) === String(jugadorId));
+  return {
+    nombre: jugador?.nombre || '',
+    apellido: jugador?.apellido || '',
+    completo: [jugador?.nombre, jugador?.apellido].filter(Boolean).join(' '),
+    numero_camiseta: jugador?.numero_camiseta || ''
+  };
+}
+
+function actualizarDashboardEstadisticasDesdeCarga(jugadoresPayload = [], cambiosPayload = [], marcador = null) {
+  if (!cargaEquipoPartidoActual?.partidoId || !Array.isArray(dashboardPartidosEstadisticas)) return;
+
+  const partidoId = String(cargaEquipoPartidoActual.partidoId);
+  const equipoId = String(cargaEquipoPartidoActual.equipoId);
+  const partido = dashboardPartidosEstadisticas.find(item => String(item.id_partido) === partidoId);
+  if (!partido) return;
+
+  partido.estadisticas = (partido.estadisticas || []).filter(item => String(item.id_equipo || '') !== equipoId);
+  jugadoresPayload.forEach(jugador => {
+    const goles = Number(jugador.goles || 0);
+    const amarillas = Number(jugador.tarjetas_amarillas || 0);
+    const rojas = Number(jugador.tarjetas_rojas || 0);
+    if (goles <= 0 && amarillas <= 0 && rojas <= 0) return;
+
+    const nombre = obtenerNombreJugadorCargaPorId(jugador.id_jugador);
+    partido.estadisticas.push({
+      id_jugador: jugador.id_jugador,
+      id_equipo: cargaEquipoPartidoActual.equipoId,
+      nombre: nombre.nombre,
+      apellido: nombre.apellido,
+      goles,
+      tarjetas_amarillas: amarillas,
+      tarjetas_rojas: rojas
+    });
+  });
+
+  partido.cambios = (partido.cambios || []).filter(item => String(item.equipo_id || '') !== equipoId);
+  cambiosPayload.forEach(cambio => {
+    const sale = obtenerNombreJugadorCargaPorId(cambio.jugador_sale_id);
+    const entra = obtenerNombreJugadorCargaPorId(cambio.jugador_entra_id);
+    partido.cambios.push({
+      equipo_id: cargaEquipoPartidoActual.equipoId,
+      jugador_sale_id: cambio.jugador_sale_id,
+      jugador_entra_id: cambio.jugador_entra_id,
+      jugador_sale_nombre: sale.completo,
+      jugador_entra_nombre: entra.completo,
+      jugador_sale_numero_camiseta: sale.numero_camiseta,
+      jugador_entra_numero_camiseta: entra.numero_camiseta,
+      minuto: cambio.minuto || ''
+    });
+  });
+
+  if (marcador) {
+    partido.goles_a = marcador.goles_a ?? partido.goles_a;
+    partido.goles_b = marcador.goles_b ?? partido.goles_b;
+  }
 }
 
 function aplicarSancionesEnListaJugadores(jugadoresSancionados = []) {
@@ -3651,15 +4453,31 @@ function actualizarFinanzasDesdeCarga(resumen = {}) {
 }
 
 function obtenerCargaJugadoresPayload() {
-  return Array.from(document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]')).map(tr => ({
-    id_jugador: tr.dataset.jugadorId,
-    goles: tr.querySelector('.carga-jugador-goles')?.value || 0,
-    tarjetas_amarillas: tr.querySelector('.carga-jugador-amarillas')?.value || 0,
-    tarjetas_rojas: tr.querySelector('.carga-jugador-rojas')?.value || 0,
-    partidos_suspendidos: tr.querySelector('.carga-jugador-suspendidos')?.value || 0,
-    suspension_observaciones: tr.querySelector('.carga-jugador-observaciones')?.value || '',
-    accion_acumulacion: tr.dataset.accionAcumulacion || ''
-  }));
+  return Array.from(document.querySelectorAll('#cargaJugadoresTbody tr[data-jugador-id]')).map(trGoles => {
+    const jugadorId = trGoles.dataset.jugadorId;
+    const trTarjetas = Array.from(document.querySelectorAll('#cargaTarjetasTbody tr[data-jugador-id]'))
+      .find(tr => String(tr.dataset.jugadorId) === String(jugadorId));
+    return {
+      id_jugador: jugadorId,
+      goles: trGoles.querySelector('.carga-jugador-goles')?.value || 0,
+      goles_minutos: obtenerMinutosEventoFila(trGoles, 'gol'),
+      tarjetas_amarillas: trTarjetas?.querySelector('.carga-jugador-amarillas')?.value || 0,
+      amarillas_minutos: trTarjetas ? obtenerMinutosEventoFila(trTarjetas, 'amarilla') : [],
+      tarjetas_rojas: trTarjetas?.querySelector('.carga-jugador-rojas')?.value || 0,
+      rojas_minutos: trTarjetas ? obtenerMinutosEventoFila(trTarjetas, 'roja') : [],
+      partidos_suspendidos: trTarjetas?.querySelector('.carga-jugador-suspendidos')?.value || 0,
+      suspension_observaciones: trTarjetas?.querySelector('.carga-jugador-observaciones')?.value || '',
+      accion_acumulacion: trTarjetas?.dataset.accionAcumulacion || ''
+    };
+  });
+}
+
+function obtenerCargaCambiosPayload() {
+  return Array.from(document.querySelectorAll('#cargaCambiosTbody tr')).map(tr => ({
+    jugador_sale_id: tr.querySelector('.carga-cambio-sale')?.value || '',
+    jugador_entra_id: tr.querySelector('.carga-cambio-entra')?.value || '',
+    minuto: tr.querySelector('.carga-cambio-minuto')?.value || ''
+  })).filter(cambio => cambio.jugador_sale_id || cambio.jugador_entra_id || cambio.minuto);
 }
 
 function obtenerCargaItemsPayload() {
@@ -3681,6 +4499,16 @@ function cargaTieneGolesJugadoresModificados() {
 
 async function guardarCargaEquipoPartido() {
   if (!cargaEquipoPartidoActual) return;
+  const botonGuardar = document.getElementById('btnGuardarCargaEquipoPartido');
+  const htmlBotonOriginal = botonGuardar?.innerHTML || '';
+  if (botonGuardar?.disabled) return;
+
+  if (botonGuardar) {
+    botonGuardar.disabled = true;
+    botonGuardar.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Guardando';
+  }
+  mostrarEstadoCargaEquipo('Guardando...', 'muted');
+
   actualizarAcumulacionesAmarillas();
   recalcularCargaEquipoPartido();
   await resolverDecisionesAcumulacion();
@@ -3688,6 +4516,7 @@ async function guardarCargaEquipoPartido() {
   try {
     const jugadoresPayload = obtenerCargaJugadoresPayload();
     const itemsPayload = obtenerCargaItemsPayload();
+    const cambiosPayload = obtenerCargaCambiosPayload();
     const { partidoId, equipoId, modo, torneoId, numeroFecha } = cargaEquipoPartidoActual;
     const url = modo === 'libre'
       ? `/partidos/libre/torneos/${torneoId}/fecha/${numeroFecha}/equipo/${equipoId}/carga`
@@ -3712,6 +4541,7 @@ async function guardarCargaEquipoPartido() {
       body: JSON.stringify({
         jugadores: jugadoresPayload,
         items: itemsPayload,
+        cambios: cambiosPayload,
         monto_aportado: valorNumeroInput(document.getElementById('cargaMontoAportado').value),
         estado_partido: estadoPartido || undefined
       })
@@ -3720,11 +4550,12 @@ async function guardarCargaEquipoPartido() {
     const data = await response.json();
     if (!data.success) {
       mostrarAvisoApp(data.message || 'No se pudo guardar la carga', 'Carga del encuentro');
+      mostrarEstadoCargaEquipo('No se pudo guardar.', 'danger');
       return;
     }
 
-    cerrarModalBootstrapSeguro('modalCargaEquipoPartido');
     marcarBotonCargaRegistrada();
+    sincronizarOriginalesCargaJugadores();
     aplicarSancionesEnListaJugadores(data.jugadoresSancionados || []);
     if (data.marcador && partidoId) {
       actualizarMarcadorPartidoEnVista(
@@ -3735,14 +4566,21 @@ async function guardarCargaEquipoPartido() {
       );
       cargaEquipoPartidoActual.estado = normalizarEstadoPartidoCliente(data.marcador.estado);
     }
+    actualizarDashboardEstadisticasDesdeCarga(jugadoresPayload, cambiosPayload, data.marcador || null);
     actualizarFinanzasDesdeCarga(data.resumen || {});
     await sincronizarFinanzasDesdeServidor();
     refrescarDashboardEnCurso();
     marcarDashboardInicioDesactualizado();
-    mostrarAvisoApp('Carga del encuentro guardada correctamente', 'Carga guardada');
+    mostrarEstadoCargaEquipo('Guardado. Puede seguir cargando o cerrar.', 'success');
   } catch (error) {
     console.error(error);
     mostrarAvisoApp('Error al guardar la carga del encuentro', 'Carga del encuentro');
+    mostrarEstadoCargaEquipo('Error al guardar.', 'danger');
+  } finally {
+    if (botonGuardar) {
+      botonGuardar.disabled = false;
+      botonGuardar.innerHTML = htmlBotonOriginal || '<i class="bi bi-save"></i> Registrar carga';
+    }
   }
 }
 
@@ -3939,7 +4777,7 @@ async function confirmarToggleEquipo(input) {
 
 .partidos-equipo {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -3968,6 +4806,93 @@ async function confirmarToggleEquipo(input) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.partidos-equipo-lista {
+  height: 26px;
+  min-width: 54px;
+  padding: 0 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #0f5132;
+  border-color: #198754;
+  background: #f6fff9;
+}
+
+.partidos-equipo-lista:hover,
+.partidos-equipo-lista:focus {
+  color: #fff;
+  background: #198754;
+  border-color: #198754;
+}
+
+.fixture-docs-col {
+  width: 48px;
+}
+
+.fixture-docs-cell {
+  text-align: center;
+}
+
+.fixture-docs-btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  line-height: 1;
+}
+
+.fixture-docs-btn i {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.docs-partido-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.docs-partido-equipo {
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fff;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.docs-partido-equipo-header {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+  min-height: 42px;
+}
+
+.docs-partido-equipo-header img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.docs-partido-equipo-header strong {
+  color: #111827;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.docs-partido-accion {
+  width: 100%;
+  justify-content: center;
+  font-weight: 800;
 }
 
 .partido-detalle-row td {
@@ -4092,6 +5017,31 @@ async function confirmarToggleEquipo(input) {
   max-width: 74px;
 }
 
+.carga-contador-evento {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.carga-contador-label {
+  color: #495057;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.carga-evento-cell .input-group-text {
+  font-size: 0.76rem;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.carga-suspension-grid {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 74px minmax(160px, 1fr);
+}
+
 .carga-monto {
   max-width: 110px;
 }
@@ -4158,6 +5108,133 @@ async function confirmarToggleEquipo(input) {
 
   #modalCargaEquipoPartido .carga-items-col-accion {
     width: 8%;
+  }
+}
+
+@media (max-width: 768px) {
+  #modalCargaEquipoPartido .modal-dialog {
+    height: 100%;
+    margin: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  #modalCargaEquipoPartido .modal-content {
+    border: 0;
+    border-radius: 0;
+    min-height: 100%;
+  }
+
+  #modalCargaEquipoPartido .modal-body {
+    padding: 0.75rem;
+  }
+
+  #modalCargaEquipoPartido .modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: #fff;
+  }
+
+  #modalCargaEquipoPartido .nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  #modalCargaEquipoPartido .nav-tabs .nav-item {
+    flex: 1 0 auto;
+  }
+
+  #modalCargaEquipoPartido .nav-tabs .nav-link {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #modalCargaEquipoPartido #cargaJugadoresTab .table-responsive {
+    overflow-x: visible;
+  }
+
+  #modalCargaEquipoPartido .carga-jugadores-table {
+    display: block;
+    min-width: 0;
+  }
+
+  #modalCargaEquipoPartido .carga-jugadores-table thead {
+    display: none;
+  }
+
+  #modalCargaEquipoPartido .carga-jugadores-table tbody {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  #modalCargaEquipoPartido .carga-jugadores-table tr[data-jugador-id] {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0.7rem;
+    border: 1px solid #dbe2ea;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  #modalCargaEquipoPartido .carga-jugadores-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  #modalCargaEquipoPartido .carga-jugador-cell,
+  #modalCargaEquipoPartido .carga-suspension-cell {
+    grid-column: 1 / -1;
+  }
+
+  #modalCargaEquipoPartido #cargaJugadoresTab td[data-label="Goles del jugador"] {
+    grid-column: 1 / -1;
+  }
+
+  #modalCargaEquipoPartido .carga-evento-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  #modalCargaEquipoPartido .carga-evento-cell::before,
+  #modalCargaEquipoPartido .carga-suspension-cell::before {
+    content: attr(data-label);
+    color: #6c757d;
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  #modalCargaEquipoPartido .carga-contador-oculto,
+  #modalCargaEquipoPartido td[data-label="Goles"].carga-evento-cell::before {
+    display: none;
+  }
+
+  #modalCargaEquipoPartido .carga-contador-evento {
+    justify-content: space-between;
+  }
+
+  #modalCargaEquipoPartido .carga-evento-cell .btn,
+  #modalCargaEquipoPartido .carga-btn-suspension {
+    width: 100%;
+  }
+
+  #modalCargaEquipoPartido .carga-evento-cell .input-group {
+    width: 100%;
+  }
+
+  #modalCargaEquipoPartido .carga-evento-cell .input-group-text {
+    display: none;
+  }
+
+  #modalCargaEquipoPartido .carga-suspension-grid {
+    grid-template-columns: 72px minmax(0, 1fr);
   }
 }
 
@@ -4421,6 +5498,25 @@ async function confirmarToggleEquipo(input) {
   font-weight: 400;
 }
 
+.dashboard-live-cambio {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  background: #f8f9fa;
+}
+
+.dashboard-live-cambio span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #111827;
+  font-weight: 800;
+}
+
+.dashboard-live-cambio-minuto {
+  color: #495057;
+  font-weight: 800;
+}
+
 .dashboard-live-team > .text-muted {
   min-height: 28px;
   display: flex;
@@ -4635,6 +5731,35 @@ async function confirmarToggleEquipo(input) {
   flex-wrap: wrap;
   gap: 6px;
   color: #102033;
+}
+
+.encuentro-stats-seccion {
+  color: #102033;
+  font-weight: 900;
+  margin-top: 0.35rem;
+}
+
+.encuentro-stats-cambio {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 8px;
+  background: #f8f9fa;
+}
+
+.encuentro-stats-cambio span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #111827;
+  font-weight: 800;
+}
+
+.encuentro-cambio-minuto {
+  color: #495057;
+  font-weight: 900;
 }
 
 .encuentro-stats-vacio {
@@ -5484,15 +6609,15 @@ async function confirmarToggleEquipo(input) {
     padding: 0.58rem 0.42rem 0.45rem;
   }
 
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(1) {
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(2) {
     grid-area: equipoA;
   }
 
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(2) {
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(3) {
     grid-area: marcador;
   }
 
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(3) {
+  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(4) {
     grid-area: equipoB;
   }
 
@@ -5543,10 +6668,10 @@ async function confirmarToggleEquipo(input) {
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] {
-    grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr);
+    grid-template-columns: 54px minmax(0, 1fr) 58px minmax(0, 1fr);
     grid-template-areas:
-      "equipoA marcador equipoB"
-      "estado estado acciones";
+      "docs equipoA marcador equipoB"
+      "estado estado estado acciones";
     gap: 0.45rem 0.35rem;
     align-items: stretch;
     padding: 0.72rem 0.52rem 0.62rem;
@@ -5559,15 +6684,20 @@ async function confirmarToggleEquipo(input) {
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(1) {
-    grid-area: equipoA;
+    grid-area: docs;
+    align-self: center;
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(2) {
+    grid-area: equipoA;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(3) {
     grid-area: marcador;
     align-self: center;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(3) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(4) {
     grid-area: equipoB;
   }
 
@@ -5682,7 +6812,7 @@ async function confirmarToggleEquipo(input) {
   }
 
   .torneos-page #partidos .partidos-equipo {
-    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-columns: 18px minmax(0, 1fr) 28px;
     gap: 0.22rem;
   }
 
@@ -6102,6 +7232,18 @@ async function confirmarToggleEquipo(input) {
     height: 24px;
   }
 
+  body.torneos-page #partidos .partidos-equipo-lista {
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 0.72rem;
+  }
+
+  body.torneos-page #partidos .partidos-equipo-lista-label {
+    display: none;
+  }
+
   body.torneos-page #partidos .partidos-equipo-nombre {
     font-size: 0.76rem;
   }
@@ -6252,6 +7394,55 @@ async function confirmarToggleEquipo(input) {
   </div>
 </div>
 
+<div class="modal fade" id="modalDocsPartido" tabindex="-1" aria-labelledby="docsPartidoTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <div>
+          <h5 class="modal-title" id="docsPartidoTitulo">Docs</h5>
+          <small id="docsPartidoSubtitulo" class="text-white-50"></small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="docs-partido-grid">
+          <div class="docs-partido-equipo">
+            <div class="docs-partido-equipo-header">
+              <img id="docsEquipoAIcono" src="/images/default_team.png" alt="">
+              <strong id="docsEquipoANombre">Equipo A</strong>
+            </div>
+            <button type="button" class="btn btn-outline-success docs-partido-accion" onclick="imprimirDocsPartidoEquipo('a')">
+              <i class="bi bi-person-lines-fill"></i>
+              <span>Jugadores</span>
+            </button>
+            <button type="button" class="btn btn-outline-primary docs-partido-accion" onclick="imprimirPlanillaFinalPartidoEquipo('a')">
+              <i class="bi bi-file-earmark-text"></i>
+              <span>Final encuentro</span>
+            </button>
+          </div>
+          <div class="docs-partido-equipo">
+            <div class="docs-partido-equipo-header">
+              <img id="docsEquipoBIcono" src="/images/default_team.png" alt="">
+              <strong id="docsEquipoBNombre">Equipo B</strong>
+            </div>
+            <button type="button" class="btn btn-outline-success docs-partido-accion" onclick="imprimirDocsPartidoEquipo('b')">
+              <i class="bi bi-person-lines-fill"></i>
+              <span>Jugadores</span>
+            </button>
+            <button type="button" class="btn btn-outline-primary docs-partido-accion" onclick="imprimirPlanillaFinalPartidoEquipo('b')">
+              <i class="bi bi-file-earmark-text"></i>
+              <span>Final encuentro</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 
 
@@ -6291,31 +7482,18 @@ async function confirmarToggleEquipo(input) {
         <button type="button" class="btn-close btn-close-white" onclick="cerrarModalBootstrapSeguro('modalCargaEquipoPartido')" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
-        <div class="row g-3 mb-3">
-          <div class="col-md-3">
-            <label class="form-label fw-bold text-dark">Deuda anterior</label>
-            <input type="text" class="form-control" id="cargaDeudaAnterior" readonly>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold text-dark">Total items</label>
-            <input type="text" class="form-control" id="cargaTotalItems" readonly>
-          </div>
-          <div class="col-md-3">
-            <label for="cargaMontoAportado" class="form-label fw-bold text-dark">Entrega del delegado</label>
-            <input type="text" class="form-control campo-dinero" id="cargaMontoAportado" inputmode="numeric" oninput="formatearCampoDinero(this); recalcularCargaEquipoPartido();">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold text-dark">Saldo</label>
-            <input type="text" class="form-control" id="cargaSaldoFinal" readonly>
-          </div>
-        </div>
-
         <ul class="nav nav-tabs" role="tablist">
           <li class="nav-item" role="presentation">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cargaJugadoresTab" type="button" role="tab">Jugadores</button>
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cargaJugadoresTab" type="button" role="tab">Jugadores/goles</button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cargaItemsTab" type="button" role="tab">Items y finanzas</button>
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cargaTarjetasTab" type="button" role="tab">Tarjetas</button>
+          </li>
+          <li class="nav-item" role="presentation" id="cargaCambiosTabNav">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cargaCambiosTab" type="button" role="tab">Cambios</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cargaItemsTab" type="button" role="tab">Finanzas</button>
           </li>
         </ul>
 
@@ -6334,15 +7512,12 @@ async function confirmarToggleEquipo(input) {
               </div>
             </div>
             <div class="table-responsive">
-              <table class="table table-sm table-hover carga-partido-table">
+              <table class="table table-sm table-hover carga-partido-table carga-jugadores-table">
                 <thead class="table-light">
                   <tr>
                     <th>Jugador</th>
                     <th>Goles</th>
-                    <th>Amarillas</th>
-                    <th>Rojas</th>
-                    <th>Susp. Fechas</th>
-                    <th>Motivo suspension</th>
+                    <th>Goles del jugador</th>
                   </tr>
                 </thead>
                 <tbody id="cargaJugadoresTbody"></tbody>
@@ -6350,7 +7525,63 @@ async function confirmarToggleEquipo(input) {
             </div>
           </div>
 
+          <div class="tab-pane fade" id="cargaTarjetasTab" role="tabpanel">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover carga-partido-table carga-jugadores-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Jugador</th>
+                    <th>Amarillas</th>
+                    <th>Rojas</th>
+                    <th>Suspension</th>
+                  </tr>
+                </thead>
+                <tbody id="cargaTarjetasTbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="cargaCambiosTab" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong>Cambios del equipo</strong>
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarFilaCambioCarga()">
+                <i class="bi bi-plus-circle"></i> Agregar cambio
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover carga-partido-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Sale</th>
+                    <th>Entra</th>
+                    <th style="width: 110px;">Minuto</th>
+                    <th style="width: 54px;"></th>
+                  </tr>
+                </thead>
+                <tbody id="cargaCambiosTbody"></tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="tab-pane fade" id="cargaItemsTab" role="tabpanel">
+            <div class="row g-3 mb-3">
+              <div class="col-md-3">
+                <label class="form-label fw-bold text-dark">Deuda anterior</label>
+                <input type="text" class="form-control" id="cargaDeudaAnterior" readonly>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold text-dark">Total items</label>
+                <input type="text" class="form-control" id="cargaTotalItems" readonly>
+              </div>
+              <div class="col-md-3">
+                <label for="cargaMontoAportado" class="form-label fw-bold text-dark">Entrega del delegado</label>
+                <input type="text" class="form-control campo-dinero" id="cargaMontoAportado" inputmode="numeric" oninput="formatearCampoDinero(this); recalcularCargaEquipoPartido();">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold text-dark">Saldo</label>
+                <input type="text" class="form-control" id="cargaSaldoFinal" readonly>
+              </div>
+            </div>
             <div class="d-flex justify-content-between align-items-center mb-2">
               <strong>Items del encuentro</strong>
               <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarFilaItemCarga()">
@@ -6379,8 +7610,9 @@ async function confirmarToggleEquipo(input) {
         </div>
       </div>
       <div class="modal-footer">
+        <span id="cargaEquipoEstadoGuardado" class="me-auto small fw-bold text-muted"></span>
         <button type="button" class="btn btn-secondary" onclick="cerrarModalBootstrapSeguro('modalCargaEquipoPartido')">Cancelar</button>
-        <button type="button" class="btn btn-success" onclick="guardarCargaEquipoPartido()">
+        <button type="button" class="btn btn-success" id="btnGuardarCargaEquipoPartido" onclick="guardarCargaEquipoPartido()">
           <i class="bi bi-save"></i> Registrar carga
         </button>
       </div>
@@ -6966,6 +8198,7 @@ async function confirmarToggleEquipo(input) {
                 <table class="table table-hover align-middle table-sm fixture-partidos-table" style="font-size: 0.85rem;">
                   <thead class="table-dark">
                     <tr>
+                      <th class="partidos-admin-only fixture-docs-col">Docs</th>
                       <th class="fixture-equipo-col">Equipo A</th>
                       <th class="fixture-marcador-col">Marcador</th>
                       <th class="fixture-equipo-col">Equipo B</th>
@@ -6979,13 +8212,29 @@ async function confirmarToggleEquipo(input) {
                   <tbody>
                     <% if (!fecha.partidos || fecha.partidos.length === 0) { %>
                       <tr>
-                        <td colspan="8" class="text-center text-muted py-3">
+                        <td colspan="9" class="text-center text-muted py-3">
                           Fecha sin encuentros programados. Use Cruce manual para agregar partidos en esta fecha.
                         </td>
                       </tr>
                     <% } %>
                     <% fecha.partidos.forEach(partido => { %>
                       <tr class="<%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>" data-partido-row="<%= partido.id_partido %>">
+                        <td class="partidos-admin-only fixture-docs-cell">
+                          <button type="button"
+                                  class="btn btn-outline-success btn-sm fixture-docs-btn"
+                                  title="Documentos del encuentro"
+                                  onclick="abrirModalDocsPartido(this)"
+                                  data-partido-id="<%= partido.id_partido %>"
+                                  data-numero-fecha="<%= partido.numero_fecha || '' %>"
+                                  data-equipo-a-id="<%= partido.equipo_a %>"
+                                  data-equipo-b-id="<%= partido.equipo_b %>"
+                                  data-equipo-a-nombre="<%= partido.nombre_equipo_a || 'Equipo A' %>"
+                                  data-equipo-b-nombre="<%= partido.nombre_equipo_b || 'Equipo B' %>"
+                                  data-equipo-a-icono="<%= partido.icono_equipo_a || '/images/default_team.png' %>"
+                                  data-equipo-b-icono="<%= partido.icono_equipo_b || '/images/default_team.png' %>">
+                            <i class="bi bi-folder2-open"></i>
+                          </button>
+                        </td>
                         <td>
                           <div class="partidos-equipo">
                             <img src="<%= partido.icono_equipo_a || '/images/default_team.png' %>" alt="" class="partidos-equipo-icono">
@@ -7114,7 +8363,7 @@ async function confirmarToggleEquipo(input) {
                         </td>
                       </tr>
                       <tr class="partido-detalle-row <%= partido.nombre_cancha ? 'partido-detalle-row-cancha' : '' %> <%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>">
-                        <td colspan="8">
+                        <td colspan="9">
                           <div class="partido-detalle" data-partido-id="<%= partido.id_partido %>">
                             <span class="partido-detalle-meta">
                               <strong>
@@ -7698,6 +8947,109 @@ async function confirmarToggleEquipo(input) {
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (rol_id == 99) { %>
+  <div class="tab-pane fade<%= paneActiva('usoapp') %>" id="usoapp">
+    <div class="p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h3 class="text-white mb-0">Uso app</h3>
+          <small class="text-white-50">
+            <%= entidadActual ? (entidadActual.codigo || ('Entidad #' + entityId)) : ('Entidad #' + entityId) %>
+          </small>
+        </div>
+        <span class="badge text-bg-light">Resumen por usuarios unicos</span>
+      </div>
+
+      <% if (!(usoAppResumen || {}).disponible) { %>
+        <div class="alert alert-warning">
+          La tabla de uso todavia no esta creada. Aplique <code>docs/sql/app_uso_diario_20260526.sql</code> en PRD para comenzar a medir.
+        </div>
+      <% } else { %>
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="small text-muted">APK hoy</div>
+                <div class="h3 mb-0"><%= usoAppResumen.hoy_apk || 0 %></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="small text-muted">APK 7 dias</div>
+                <div class="h3 mb-0"><%= usoAppResumen.semana_apk || 0 %></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="small text-muted">APK mes</div>
+                <div class="h3 mb-0"><%= usoAppResumen.mes_apk || 0 %></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="small text-muted">Web hoy</div>
+                <div class="h3 mb-0"><%= usoAppResumen.hoy_web || 0 %></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="small text-muted">Web 7 dias</div>
+                <div class="h3 mb-0"><%= usoAppResumen.semana_web || 0 %></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <div class="small text-muted">Web mes</div>
+                <div class="h3 mb-0"><%= usoAppResumen.mes_web || 0 %></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-striped table-hover align-middle bg-white">
+            <thead class="table-dark">
+              <tr>
+                <th>Fecha</th>
+                <th class="text-end">APK usuarios</th>
+                <th class="text-end">Web usuarios</th>
+                <th class="text-end">APK pings</th>
+                <th class="text-end">Web pings</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (!((usoAppResumen || {}).diario || []).length) { %>
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-4">Todavia no hay uso registrado.</td>
+                </tr>
+              <% } %>
+              <% ((usoAppResumen || {}).diario || []).forEach(fila => { %>
+                <tr>
+                  <td><%= fila.fecha || '-' %></td>
+                  <td class="text-end fw-bold"><%= fila.usuarios_apk || 0 %></td>
+                  <td class="text-end"><%= fila.usuarios_web || 0 %></td>
+                  <td class="text-end"><%= fila.pings_apk || 0 %></td>
+                  <td class="text-end"><%= fila.pings_web || 0 %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
     </div>
   </div>
   <% } %>

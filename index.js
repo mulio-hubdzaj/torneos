@@ -13,6 +13,7 @@ const jugadorRoutes = require('./routes/jugadorRoutes');
 const jugadorEquipoRoutes = require('./routes/jugadorEquipoRoutes');
 const partidoRoutes = require('./routes/partidoRoutes');
 const itemRoutes = require('./routes/itemRoutes');
+const usoRoutes = require('./routes/usoRoutes');
 const torneoController = require('./controllers/torneoController');
 const { Entity } = require('./models');
 
@@ -71,6 +72,7 @@ app.use((req, res, next) => {
     req.path === '/' ||
     req.path === '/login' ||
     req.path === '/registro' ||
+    req.path === '/entidades/buscar' ||
     req.path.startsWith('/publico') ||
     req.path.startsWith('/css') ||
     req.path.startsWith('/js') ||
@@ -159,6 +161,7 @@ app.use('/jugador-equipo', requiereSesion, jugadorEquipoRoutes);
 app.use('/partidos', requiereSesion);
 app.use('/partidos', partidoRoutes);
 app.use('/items', requiereSesion, itemRoutes);
+app.use('/uso', requiereSesion, usoRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {

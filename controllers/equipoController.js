@@ -257,19 +257,17 @@ async function crear(req, res) {
       const equipo = await Equipo.findByPk(resumenMovimiento.equipo.id_equipo, { transaction: t });
       const origen = resumenMovimiento.grupoOrigen?.nombre_grupo || 'grupo anterior';
       const destino = resumenMovimiento.grupoDestino?.nombre_grupo || 'grupo destino';
-      const observacion = `Se cambio de ${origen} a ${destino}`;
+      const observacion = `Paso a siguiente grupo/fase (${destino}) desde ${origen}`;
 
-      if (resumenMovimiento.tienePartidos || resumenMovimiento.tienePuntos) {
-        await EquipoMovimientoGrupo.create({
-          id_equipo: equipo.id_equipo,
-          id_torneo: equipo.id_torneo,
-          id_grupo_origen: equipo.id_grupo,
-          id_grupo_destino: id_grupo,
-          observacion,
-          id_usuario: req.session.usuario_id || null,
-          entity_id: equipo.entity_id
-        }, { transaction: t });
-      }
+      await EquipoMovimientoGrupo.create({
+        id_equipo: equipo.id_equipo,
+        id_torneo: equipo.id_torneo,
+        id_grupo_origen: equipo.id_grupo,
+        id_grupo_destino: id_grupo,
+        observacion,
+        id_usuario: req.session.usuario_id || null,
+        entity_id: equipo.entity_id
+      }, { transaction: t });
 
       await equipo.update({ id_grupo }, { transaction: t });
       req.flash(
@@ -533,6 +531,10 @@ async function administrar(req, res) {
   try {
     const equipo = await Equipo.findByPk(req.params.id_equipo, {
       include: [
+        {
+          model: Torneo,
+          attributes: ['id_torneo', 'nombre_torneo']
+        },
         { 
           model: Jugador, 
           as: 'Jugadores',

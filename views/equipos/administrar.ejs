@@ -541,6 +541,26 @@ administrar ejs
 <hr>
 
 <h5>Jugadores</h5>
+<% const datosPlanillaBuenaFe = {
+  torneo: equipo.Torneo ? equipo.Torneo.nombre_torneo : '',
+  equipo: { nombre: equipo.nombre || '' },
+  jugadores: (jugadores || []).map(j => ({
+    id_jugador: j.id_jugador,
+    numero_camiseta: j.JugadorEquipo ? (j.JugadorEquipo.numero_camiseta || '') : '',
+    documento: j.documento || '',
+    fecha_nacimiento: j.fecha_nacimiento || '',
+    nombre: j.nombre || '',
+    apellido: j.apellido || '',
+    capitan: j.JugadorEquipo ? Boolean(j.JugadorEquipo.capitan) : false
+  })),
+  delegados: (delegados || []).map(d => ({
+    nombre: d.Usuario ? (d.Usuario.nombre || '') : '',
+    documento: d.Usuario ? (d.Usuario.documento || '') : ''
+  }))
+}; %>
+<button type="button" class="btn btn-sm btn-outline-primary mb-2" onclick="descargarPlanillaBuenaFe()">
+  Descargar buena fe
+</button>
 <form action="/equipos/actualizarJugadores" method="POST" id="formJugadores"></form>
   <input type="hidden" name="id_equipo" value="<%= equipo.id_equipo %>" form="formJugadores">
   <div class="table-responsive equipo-jugadores-responsive">
@@ -763,6 +783,24 @@ administrar ejs
 </script>
 
 
+<div class="modal fade" id="modalAvisoApp" tabindex="-1" aria-labelledby="modalAvisoAppTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalAvisoAppTitulo">Atencion</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0 text-dark" id="modalAvisoAppMensaje"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-primary d-none" id="modalAvisoAppCancelar">Cancelar</button>
+        <button type="button" class="btn btn-success" id="modalAvisoAppAceptar">Aceptar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     function abrirModalDelegados(id_equipo) {
@@ -788,6 +826,349 @@ administrar ejs
 
   function habilitarGuardar() {
     document.getElementById('btnGuardarCambios').disabled = false;
+  }
+</script>
+<script>
+  const datosPlanillaBuenaFe = <%- JSON.stringify(datosPlanillaBuenaFe).replace(/</g, '\\u003c') %>;
+
+  function normalizarTextoPdf(valor) {
+    return String(valor ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, '')
+      .trim();
+  }
+
+  function escaparTextoPdf(valor) {
+    return normalizarTextoPdf(valor)
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+  }
+
+  function dividirLineaPdf(texto, max = 92) {
+    const limpio = normalizarTextoPdf(texto);
+    if (!limpio) return [''];
+    const palabras = limpio.split(/\s+/);
+    const lineas = [];
+    let actual = '';
+    palabras.forEach(palabra => {
+      const candidata = actual ? `${actual} ${palabra}` : palabra;
+      if (candidata.length > max && actual) {
+        lineas.push(actual);
+        actual = palabra;
+      } else {
+        actual = candidata;
+      }
+    });
+    if (actual) lineas.push(actual);
+    return lineas;
+  }
+
+  function textoPdf(comandos, valor, x, y, opciones = {}) {
+    const size = opciones.size || 8;
+    const font = opciones.bold ? 'F2' : 'F1';
+    comandos.push(`BT /${font} ${size} Tf ${x} ${y} Td (${escaparTextoPdf(valor)}) Tj ET`);
+  }
+
+  function lineaPdf(comandos, x1, y1, x2, y2) {
+    comandos.push(`${x1} ${y1} m ${x2} ${y2} l S`);
+  }
+
+  function rectPdf(comandos, x, y, width, height) {
+    comandos.push(`${x} ${y} ${width} ${height} re S`);
+  }
+
+  function textoPdfEnCaja(comandos, valor, x, y, maxCaracteres, opciones = {}) {
+    const altoLinea = opciones.altoLinea || 9;
+    dividirLineaPdf(valor, maxCaracteres).slice(0, opciones.maxLineas || 2).forEach((linea, index) => {
+      textoPdf(comandos, linea, x, y - (index * altoLinea), opciones);
+    });
+  }
+
+  function crearPdfDesdePaginas(paginas) {
+    const objetos = [];
+    const offsets = [];
+    const agregarObjeto = contenido => {
+      objetos.push(`${objetos.length + 1} 0 obj\n${contenido}\nendobj\n`);
+      return objetos.length;
+    };
+
+    agregarObjeto('<< /Type /Catalog /Pages 2 0 R >>');
+    agregarObjeto('<< /Type /Pages /Kids [] /Count 0 >>');
+    const fontNormal = agregarObjeto('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    const fontBold = agregarObjeto('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+
+    const pageRefs = [];
+    paginas.forEach(comandos => {
+      const stream = comandos.join('\n');
+      const contenidoId = agregarObjeto(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+      const paginaId = agregarObjeto(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontNormal} 0 R /F2 ${fontBold} 0 R >> >> /Contents ${contenidoId} 0 R >>`);
+      pageRefs.push(`${paginaId} 0 R`);
+    });
+
+    objetos[1] = `2 0 obj\n<< /Type /Pages /Kids [${pageRefs.join(' ')}] /Count ${pageRefs.length} >>\nendobj\n`;
+    let pdf = '%PDF-1.4\n';
+    objetos.forEach(obj => {
+      offsets.push(pdf.length);
+      pdf += obj;
+    });
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`;
+    offsets.forEach(offset => {
+      pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+    });
+    pdf += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    return pdf;
+  }
+
+  function descargarBlob(nombreArchivo, contenido, tipo) {
+    const blob = new Blob([contenido], { type: tipo });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombreArchivo;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function esAndroidWebViewApp() {
+    return /Android/i.test(navigator.userAgent || '') || Boolean(window.Capacitor);
+  }
+
+  async function abrirUrlExternaPdf(url) {
+    const androidDownloader = window.AndroidDownloader;
+    if (androidDownloader?.open) {
+      androidDownloader.open(url);
+      return;
+    }
+
+    const capacitorBrowser = window.Capacitor?.Plugins?.Browser;
+    if (capacitorBrowser?.open) {
+      await capacitorBrowser.open({ url });
+      return;
+    }
+
+    const nuevaVentana = window.open(url, '_blank', 'noopener,noreferrer');
+    if (nuevaVentana) return;
+
+    if (/Android/i.test(navigator.userAgent || '')) {
+      const parsedUrl = new URL(url);
+      window.location.href = `intent://${parsedUrl.host}${parsedUrl.pathname}${parsedUrl.search}#Intent;scheme=${parsedUrl.protocol.replace(':', '')};end`;
+      return;
+    }
+
+    window.location.href = url;
+  }
+
+  async function descargarUrlPdfApp(url) {
+    const androidDownloader = window.AndroidDownloader;
+    if (androidDownloader?.download) {
+      androidDownloader.download(url);
+      return;
+    }
+
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = '';
+    enlace.target = '_blank';
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+
+    setTimeout(() => {
+      window.location.href = url;
+    }, 250);
+  }
+
+  function mostrarEnlacePdfApp(url, downloadUrl) {
+    const modalEl = document.getElementById('modalAvisoApp');
+    const mensajeEl = document.getElementById('modalAvisoAppMensaje');
+    if (!modalEl || !mensajeEl) return;
+
+    document.getElementById('modalAvisoAppTitulo').textContent = 'PDF listo';
+    mensajeEl.classList.add('text-dark');
+    mensajeEl.classList.remove('text-danger', 'fw-bold');
+    mensajeEl.innerHTML = '';
+
+    const texto = document.createElement('div');
+    texto.className = 'mb-2';
+    texto.textContent = 'Si el PDF no se abrio automaticamente, toque Abrir PDF.';
+
+    const btnAbrir = document.createElement('button');
+    btnAbrir.type = 'button';
+    btnAbrir.className = 'btn btn-primary w-100';
+    btnAbrir.textContent = 'Abrir PDF';
+    btnAbrir.addEventListener('click', async () => {
+      try {
+        await abrirUrlExternaPdf(url);
+      } catch (error) {
+        console.error(error);
+        window.location.href = url;
+      }
+    });
+
+    const btnDescargar = document.createElement('button');
+    btnDescargar.type = 'button';
+    btnDescargar.className = 'btn btn-success w-100 mt-2';
+    btnDescargar.textContent = 'Descargar PDF';
+    btnDescargar.addEventListener('click', async () => {
+      try {
+        await descargarUrlPdfApp(downloadUrl || url);
+      } catch (error) {
+        console.error(error);
+        window.location.href = downloadUrl || url;
+      }
+    });
+
+    mensajeEl.appendChild(texto);
+    mensajeEl.appendChild(btnAbrir);
+    mensajeEl.appendChild(btnDescargar);
+
+    const btnCancelar = document.getElementById('modalAvisoAppCancelar');
+    const btnAceptar = document.getElementById('modalAvisoAppAceptar');
+    btnCancelar.classList.add('d-none');
+    btnAceptar.textContent = 'Cerrar';
+    btnAceptar.className = 'btn btn-secondary';
+    btnAceptar.onclick = () => bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  async function abrirPdfDesdeServidor(nombreArchivo, contenidoPdf) {
+    const response = await fetch(`/torneos/<%= id_torneo %>/finanzas/pdf-preparar`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        nombre_archivo: nombreArchivo,
+        pdf_base64: btoa(contenidoPdf)
+      })
+    });
+    const data = await response.json();
+    if (!data.success || !data.url) {
+      throw new Error(data.message || 'No se pudo preparar el PDF');
+    }
+
+    const url = new URL(data.url, window.location.origin).toString();
+    const downloadUrl = new URL(data.downloadUrl || data.url, window.location.origin).toString();
+    mostrarEnlacePdfApp(url, downloadUrl);
+  }
+
+  async function descargarPdfArchivo(nombreArchivo, contenidoPdf) {
+    if (esAndroidWebViewApp()) {
+      await abrirPdfDesdeServidor(nombreArchivo, contenidoPdf);
+      return;
+    }
+
+    descargarBlob(nombreArchivo, contenidoPdf, 'application/pdf');
+  }
+
+  function crearPdfPlanillaBuenaFe(data) {
+    const paginas = [];
+    let comandos = [];
+    let y = 805;
+    const columnas = [
+      { titulo: 'NRO', x: 32, w: 42 },
+      { titulo: 'Documento', x: 74, w: 82 },
+      { titulo: 'F. nac.', x: 156, w: 62 },
+      { titulo: 'Nombre y apellido', x: 218, w: 210 },
+      { titulo: 'Firma jugador', x: 428, w: 135 }
+    ];
+
+    const nuevaPagina = () => {
+      if (comandos.length) paginas.push(comandos);
+      comandos = ['0.12 w'];
+      y = 805;
+    };
+
+    const encabezado = () => {
+      textoPdf(comandos, 'Planilla de buena fe', 40, y, { size: 14, bold: true });
+      textoPdf(comandos, `Torneo: ${data.torneo || '-'}`, 340, y, { size: 8 });
+      y -= 20;
+      rectPdf(comandos, 32, y - 48, 531, 56);
+      textoPdf(comandos, `Equipo: ${data.equipo?.nombre || '-'}`, 42, y - 10, { size: 10, bold: true });
+      textoPdf(comandos, `Generado: ${new Date().toLocaleString('es-PY')}`, 340, y - 10, { size: 8 });
+      y -= 72;
+    };
+
+    const encabezadoTabla = () => {
+      rectPdf(comandos, 32, y - 18, 531, 18);
+      columnas.forEach(col => {
+        textoPdf(comandos, col.titulo, col.x + 4, y - 12, { size: 7, bold: true });
+        if (col.x > 32) lineaPdf(comandos, col.x, y, col.x, y - 18);
+      });
+      y -= 18;
+    };
+
+    nuevaPagina();
+    encabezado();
+    encabezadoTabla();
+
+    const jugadores = data.jugadores || [];
+    jugadores.forEach(jugador => {
+      if (y < 95) {
+        nuevaPagina();
+        encabezado();
+        encabezadoTabla();
+      }
+
+      const altoFila = 26;
+      const nombre = `${jugador.nombre || ''} ${jugador.apellido || ''}${jugador.capitan ? ' (C)' : ''}`;
+      rectPdf(comandos, 32, y - altoFila, 531, altoFila);
+      columnas.forEach(col => {
+        if (col.x > 32) lineaPdf(comandos, col.x, y, col.x, y - altoFila);
+      });
+      textoPdf(comandos, jugador.numero_camiseta || '', 40, y - 16, { size: 8 });
+      textoPdfEnCaja(comandos, jugador.documento || '', 80, y - 11, 13, { size: 7, maxLineas: 2 });
+      textoPdf(comandos, jugador.fecha_nacimiento || '-', 162, y - 16, { size: 7 });
+      textoPdfEnCaja(comandos, nombre, 224, y - 10, 34, { size: 7, maxLineas: 2 });
+      y -= altoFila;
+    });
+
+    if (!jugadores.length) {
+      textoPdf(comandos, 'Sin jugadores vinculados a este equipo.', 42, y - 18, { size: 9, bold: true });
+      y -= 35;
+    }
+
+    if (y < 145) {
+      nuevaPagina();
+      encabezado();
+    }
+
+    y -= 24;
+    textoPdf(comandos, 'Firma de delegados', 40, y, { size: 10, bold: true });
+    y -= 30;
+    const delegados = data.delegados && data.delegados.length ? data.delegados : [{ nombre: 'Delegado', documento: '' }];
+    delegados.forEach(delegado => {
+      if (y < 70) {
+        nuevaPagina();
+        encabezado();
+        textoPdf(comandos, 'Firma de delegados', 40, y, { size: 10, bold: true });
+        y -= 30;
+      }
+      lineaPdf(comandos, 42, y, 245, y);
+      textoPdfEnCaja(comandos, delegado.nombre || 'Delegado', 42, y - 14, 32, { size: 8, maxLineas: 1 });
+      textoPdf(comandos, delegado.documento ? `Doc: ${delegado.documento}` : '', 42, y - 26, { size: 7 });
+      y -= 52;
+    });
+
+    paginas.push(comandos);
+    return crearPdfDesdePaginas(paginas);
+  }
+
+  async function descargarPlanillaBuenaFe() {
+    const data = JSON.parse(JSON.stringify(datosPlanillaBuenaFe));
+    data.jugadores = (data.jugadores || []).map(jugador => {
+      const input = document.querySelector(`[name="numero_camiseta_${jugador.id_jugador}"]`);
+      return { ...jugador, numero_camiseta: input ? input.value : jugador.numero_camiseta };
+    });
+    const pdf = crearPdfPlanillaBuenaFe(data);
+    const equipoSeguro = normalizarTextoPdf(data.equipo?.nombre || 'equipo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'equipo';
+    await descargarPdfArchivo(`planilla-buena-fe-${equipoSeguro}.pdf`, pdf);
   }
 </script>
 <script>

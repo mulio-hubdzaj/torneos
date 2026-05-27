@@ -2,12 +2,18 @@ const express = require('express');
 const router = express.Router();
 const { Entity, Usuario, sequelize } = require('../models'); // Importamos sequelize
 
-// Vista general de entidades (solo superadmin)
-router.get('/', async (req, res) => {
-  if (!req.session.usuario_id || req.session.rol_id !== 99) {
+function requiereSuperAdmin(req, res, next) {
+  if (!req.session.usuario_id || Number(req.session.rol_id) !== 99) {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }
+  next();
+}
+
+router.use(requiereSuperAdmin);
+
+// Vista general de entidades (solo superadmin)
+router.get('/', async (req, res) => {
   const entidades = await Entity.findAll({
     order: [
       ['activo', 'DESC'],
@@ -19,7 +25,7 @@ router.get('/', async (req, res) => {
 
 // Mostrar formulario de nueva entidad
 router.get('/nueva', async (req, res) => {
-  if (req.session.rol_id !== 99) {
+  if (Number(req.session.rol_id) !== 99) {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }
@@ -46,7 +52,7 @@ router.get('/gestionar/:id', async (req, res) => {
 
 // Guardar nueva entidad
 router.post('/nueva', async (req, res) => {
-  if (req.session.rol_id !== 99) {
+  if (Number(req.session.rol_id) !== 99) {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }
@@ -71,7 +77,7 @@ router.post('/nueva', async (req, res) => {
 
 // Toggle activo/inactivo
 router.post('/entidades/toggle/:id', async (req, res) => {
-  if (req.session.rol_id !== 99) {
+  if (Number(req.session.rol_id) !== 99) {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }
@@ -103,7 +109,7 @@ router.post('/entidades/toggle/:id', async (req, res) => {
 
 // Mostrar formulario de edición
 router.get('/editar/:id', async (req, res) => {
-  if (req.session.rol_id !== 99) {
+  if (Number(req.session.rol_id) !== 99) {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }
@@ -113,7 +119,7 @@ router.get('/editar/:id', async (req, res) => {
 
 // Guardar edición
 router.post('/editar/:id', async (req, res) => {
-  if (req.session.rol_id !== 99) {
+  if (Number(req.session.rol_id) !== 99) {
     req.flash("danger", "Acceso restringido: solo SuperAdmin");
     return res.redirect('/login');
   }

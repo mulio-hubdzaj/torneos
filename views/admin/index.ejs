@@ -75,7 +75,7 @@
                     <a href="/admin/editar/<%= entidad.entity_id %>" class="btn btn-sm btn-warning">Editar</a>
 
                     <% if (entidad.activo) { %>
-                      <a href="/entidad/gestionar/<%= entidad.entity_id %>" class="btn btn-sm btn-primary">Administrar</a>
+                      <a href="/entidad/seleccionar/<%= entidad.entity_id %>" class="btn btn-sm btn-primary">Administrar</a>
                     <% } else { %>
                       <button class="btn btn-sm btn-secondary" disabled>Administrar</button>
                     <% } %>
@@ -110,6 +110,11 @@
   </script>
   <script>
     window.APP_ABANDON_TIMEOUT_MS = <%= typeof abandonTimeoutMs !== 'undefined' ? abandonTimeoutMs : 300000 %>;
+  </script>
+  <script>
+    window.addEventListener('pageshow', function(event) {
+      if (event.persisted) window.location.reload();
+    });
   </script>
   <script src="/js/session-abandon-guard.js"></script>
 </body>

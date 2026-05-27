@@ -34,6 +34,54 @@ function numeroEnteroNoNegativo(valor) {
   return Number.parseInt(texto, 10);
 }
 
+function normalizarMinutosLista(valor) {
+  const partes = Array.isArray(valor)
+    ? valor
+    : String(valor || '').split(/[,\s;]+/);
+  const minutos = [];
+  for (const parte of partes) {
+    const texto = String(parte ?? '').trim();
+    if (!texto) continue;
+    if (/^(0|[1-9]\d*)$/.test(texto)) {
+      const minuto = Number.parseInt(texto, 10);
+      if (minuto < 0 || minuto > 130) return null;
+      minutos.push(String(minuto));
+      continue;
+    }
+    const match = texto.match(/^([0-9]{1,3}):([0-5][0-9])$/);
+    if (!match) return null;
+    const minuto = Number.parseInt(match[1], 10);
+    if (minuto < 0 || minuto > 130) return null;
+    minutos.push(`${minuto}:${match[2]}`);
+  }
+  return minutos;
+}
+
+function normalizarMinutoEvento(valor) {
+  const minutos = normalizarMinutosLista([valor]);
+  if (minutos === null || minutos.length > 1) return null;
+  return minutos[0] || null;
+}
+
+function valorOrdenMinutoEvento(valor) {
+  const minuto = normalizarMinutoEvento(valor);
+  if (!minuto) return Number.MAX_SAFE_INTEGER;
+  const [minutos, segundos = '0'] = String(minuto).split(':');
+  return (Number.parseInt(minutos, 10) * 60) + Number.parseInt(segundos, 10);
+}
+
+function parseJsonArray(valor) {
+  if (Array.isArray(valor)) return valor;
+  if (!valor) return [];
+  if (typeof valor === 'object') return Array.isArray(valor) ? valor : [];
+  try {
+    const parsed = JSON.parse(String(valor));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
 function numeroDecimalNoNegativo(valor) {
   const texto = String(valor ?? '0').trim().replace(',', '.');
   if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(texto)) return null;
@@ -644,12 +692,15 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
 
     const [partido] = await sequelize.query(`
       SELECT p.id_partido, p.id_torneo, p.entity_id, p.numero_fecha, p.fecha,
+             COALESCE(p.cambios_json, '[]'::jsonb) AS cambios_json,
              COALESCE(p.goles_a, 0) AS goles_a,
              COALESCE(p.goles_b, 0) AS goles_b,
              COALESCE(p.estado, 'programado') AS estado,
+             t.nombre_torneo,
              ea.id_equipo AS id_equipo_a, ea.nombre AS equipo_a,
              eb.id_equipo AS id_equipo_b, eb.nombre AS equipo_b
       FROM partidos p
+      INNER JOIN torneos t ON t.id_torneo = p.id_torneo
       LEFT JOIN equipos ea ON ea.id_equipo = p.equipo_a
       LEFT JOIN equipos eb ON eb.id_equipo = p.equipo_b
       WHERE p.id_partido = :partidoId
@@ -674,8 +725,11 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
              COALESCE(je.estado, true) AS estado_vinculo,
              COALESCE(je.observaciones, '') AS observacion_vinculo,
              COALESCE(est.goles, 0) AS goles,
+             COALESCE(est.goles_minutos, '[]'::jsonb) AS goles_minutos,
              COALESCE(est.tarjetas_amarillas, 0) AS tarjetas_amarillas,
+             COALESCE(est.amarillas_minutos, '[]'::jsonb) AS amarillas_minutos,
              COALESCE(est.tarjetas_rojas, 0) AS tarjetas_rojas,
+             COALESCE(est.rojas_minutos, '[]'::jsonb) AS rojas_minutos,
              COALESCE(s_partido.partidos_suspendidos, 0) AS partidos_suspendidos,
              COALESCE(s_partido.observaciones, '') AS suspension_observaciones,
              COALESCE(s_vigente.partidos_restantes, 0) AS suspension_partidos_restantes,
@@ -714,6 +768,10 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
       },
       type: sequelize.QueryTypes.SELECT
     });
+
+    const cambios = parseJsonArray(partido.cambios_json)
+      .filter(cambio => Number(cambio.equipo_id) === equipoId)
+      .sort((a, b) => valorOrdenMinutoEvento(a.minuto) - valorOrdenMinutoEvento(b.minuto));
 
     const reglaTarjetas = await obtenerReglaTarjetasTorneo(partido.id_torneo);
     const acumuladosAmarillas = await obtenerAcumuladosAmarillas({
@@ -786,12 +844,14 @@ exports.obtenerCargaEquipoPartido = async (req, res) => {
         id_torneo: partido.id_torneo,
         numero_fecha: partido.numero_fecha,
         fecha: formatearFechaVisual(partido.fecha),
+        torneo: partido.nombre_torneo || '',
         goles_a: Number(partido.goles_a || 0),
         goles_b: Number(partido.goles_b || 0),
         estado: partido.estado || 'programado'
       },
       equipo: { id_equipo: equipoId, nombre: nombreEquipo, rival: nombreRival || '' },
       jugadores,
+      cambios,
       items,
       itemsCargados,
       reglaTarjetas,
@@ -812,6 +872,7 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
     const equipoId = Number.parseInt(req.params.equipo_id, 10);
     const jugadores = Array.isArray(req.body.jugadores) ? req.body.jugadores : [];
     const items = Array.isArray(req.body.items) ? req.body.items : [];
+    const cambios = Array.isArray(req.body.cambios) ? req.body.cambios : [];
     const montoAportado = numeroDecimalNoNegativo(req.body.monto_aportado);
     const estadoPartidoPedido = typeof req.body.estado_partido === 'undefined'
       ? null
@@ -831,6 +892,7 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
     const [partido] = await sequelize.query(`
       SELECT p.id_partido, p.id_torneo, p.entity_id, p.numero_fecha,
              p.equipo_a, p.equipo_b,
+             COALESCE(p.cambios_json, '[]'::jsonb) AS cambios_json,
              COALESCE(p.goles_a, 0) AS goles_a,
              COALESCE(p.goles_b, 0) AS goles_b,
              COALESCE(p.estado, 'programado') AS estado,
@@ -922,24 +984,50 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
       const jugadorId = Number.parseInt(jugador.id_jugador, 10);
       if (!jugadoresPermitidos.has(jugadorId)) continue;
 
+      const golesMinutos = normalizarMinutosLista(jugador.goles_minutos);
+      const amarillasMinutos = normalizarMinutosLista(jugador.amarillas_minutos);
+      const rojasMinutos = normalizarMinutosLista(jugador.rojas_minutos);
       const goles = numeroEnteroNoNegativo(jugador.goles);
       const amarillas = numeroEnteroNoNegativo(jugador.tarjetas_amarillas);
       const rojas = numeroEnteroNoNegativo(jugador.tarjetas_rojas);
       let suspendidos = numeroEnteroNoNegativo(jugador.partidos_suspendidos);
 
-      if ([goles, amarillas, rojas, suspendidos].some(valor => valor === null)) {
+      if ([goles, amarillas, rojas, suspendidos].some(valor => valor === null) || golesMinutos === null || amarillasMinutos === null || rojasMinutos === null) {
         await transaction.rollback();
         return res.status(400).json({ success: false, message: 'Las estadisticas de jugadores deben ser numeros enteros positivos' });
+      }
+
+      if (golesMinutos.length > goles || amarillasMinutos.length > amarillas || rojasMinutos.length > rojas) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: 'No puede haber mas minutos cargados que eventos del jugador' });
       }
 
       golesEquipoJugadores += goles;
 
       if (goles > 0 || amarillas > 0 || rojas > 0) {
         await sequelize.query(`
-          INSERT INTO estadisticas (id_jugador, id_partido, goles, tarjetas_amarillas, tarjetas_rojas, entity_id)
-          VALUES (:jugadorId, :partidoId, :goles, :amarillas, :rojas, :entityId)
+          INSERT INTO estadisticas (
+            id_jugador, id_partido, goles, goles_minutos,
+            tarjetas_amarillas, amarillas_minutos,
+            tarjetas_rojas, rojas_minutos, entity_id
+          )
+          VALUES (
+            :jugadorId, :partidoId, :goles, CAST(:golesMinutos AS jsonb),
+            :amarillas, CAST(:amarillasMinutos AS jsonb),
+            :rojas, CAST(:rojasMinutos AS jsonb), :entityId
+          )
         `, {
-          replacements: { jugadorId, partidoId, goles, amarillas, rojas, entityId },
+          replacements: {
+            jugadorId,
+            partidoId,
+            goles,
+            golesMinutos: JSON.stringify(golesMinutos || []),
+            amarillas,
+            amarillasMinutos: JSON.stringify(amarillasMinutos || []),
+            rojas,
+            rojasMinutos: JSON.stringify(rojasMinutos || []),
+            entityId
+          },
           transaction
         });
       }
@@ -1019,6 +1107,31 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
         });
       }
     }
+
+    const cambiosExistentes = parseJsonArray(partido.cambios_json)
+      .filter(cambio => Number(cambio.equipo_id) !== equipoId);
+    const cambiosEquipo = [];
+    for (const cambio of cambios) {
+      const jugadorSaleId = Number.parseInt(cambio.jugador_sale_id, 10);
+      const jugadorEntraId = Number.parseInt(cambio.jugador_entra_id, 10);
+      const minutoTexto = String(cambio.minuto ?? '').trim();
+      const minuto = minutoTexto ? normalizarMinutoEvento(minutoTexto) : null;
+      const filaVacia = !jugadorSaleId && !jugadorEntraId && (cambio.minuto === null || cambio.minuto === undefined || String(cambio.minuto).trim() === '');
+      if (filaVacia) continue;
+
+      if (!jugadoresPermitidos.has(jugadorSaleId) || !jugadoresPermitidos.has(jugadorEntraId) || jugadorSaleId === jugadorEntraId || (minutoTexto && minuto === null)) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: 'Los cambios deben tener jugador saliente, entrante y minuto valido si se carga' });
+      }
+
+      cambiosEquipo.push({
+        equipo_id: equipoId,
+        jugador_sale_id: jugadorSaleId,
+        jugador_entra_id: jugadorEntraId,
+        minuto
+      });
+    }
+    const cambiosJson = [...cambiosExistentes, ...cambiosEquipo];
 
     await sequelize.query(`
       DELETE FROM items_equipo
@@ -1113,15 +1226,26 @@ exports.guardarCargaEquipoPartido = async (req, res) => {
         UPDATE partidos
         SET goles_a = :golesA,
             goles_b = :golesB,
-            estado = :estado
+            estado = :estado,
+            cambios_json = CAST(:cambiosJson AS jsonb)
         WHERE id_partido = :partidoId
       `, {
         replacements: {
           partidoId,
           golesA: marcadorActualizado.goles_a,
           golesB: marcadorActualizado.goles_b,
-          estado: marcadorActualizado.estado
+          estado: marcadorActualizado.estado,
+          cambiosJson: JSON.stringify(cambiosJson)
         },
+        transaction
+      });
+    } else {
+      await sequelize.query(`
+        UPDATE partidos
+        SET cambios_json = CAST(:cambiosJson AS jsonb)
+        WHERE id_partido = :partidoId
+      `, {
+        replacements: { partidoId, cambiosJson: JSON.stringify(cambiosJson) },
         transaction
       });
     }

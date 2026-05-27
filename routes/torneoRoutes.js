@@ -90,6 +90,7 @@ router.get('/:id_torneo/finanzas/resumen', torneoController.resumenFinanzas);
 router.post('/:id_torneo/finanzas/pdf-preparar', torneoController.prepararPdfFinanzas);
 router.get('/:id_torneo/finanzas/pdf/:token', torneoController.verPdfFinanzasTemporal);
 router.post('/:id_torneo/finanzas/pdf-descarga', torneoController.descargarPdfFinanzas);
+router.get('/:id_torneo/partidos/:id_partido/equipos/:id_equipo/lista-jugadores', torneoController.listaJugadoresPartidoPdf);
 router.get('/:id_torneo/auditoria/resumen', torneoController.auditoriaResumen);
 router.post('/:id_torneo/portada', requiereAdmin, upload.single('portada'), torneoController.actualizarPortada);
 router.post('/:id_torneo/portada/eliminar', requiereAdmin, torneoController.eliminarPortada);

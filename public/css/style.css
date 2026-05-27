@@ -9,6 +9,126 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+.entity-selector {
+  position: relative;
+}
+
+.entity-selector-control {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.entity-selector-control .form-control {
+  min-width: 0;
+}
+
+.entity-selector-favorite {
+  width: 44px;
+  flex: 0 0 44px;
+  border-color: #d7dee7;
+  color: #6c757d;
+}
+
+.entity-selector-favorite.is-active {
+  border-color: #f0b429;
+  background: #fff7df;
+  color: #c47f00;
+}
+
+.entity-selector-results {
+  position: absolute;
+  z-index: 1056;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #d7dee7;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+}
+
+.entity-selector-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  border-bottom: 1px solid #eef1f4;
+  background: #fff;
+  padding: 0.62rem 0.75rem;
+  text-align: left;
+}
+
+.entity-selector-option:hover,
+.entity-selector-option:focus {
+  background: #eef7f0;
+}
+
+.entity-selector-option span {
+  min-width: 0;
+}
+
+.entity-selector-option strong,
+.entity-selector-option small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.entity-selector-option small {
+  color: #6c757d;
+}
+
+.entity-selector-option .bi-star-fill {
+  color: #c47f00;
+}
+
+.entity-selector-empty {
+  padding: 0.7rem 0.75rem;
+  color: #6c757d;
+}
+
+.entity-selector-invalid .entity-selector-input {
+  border-color: #dc3545;
+}
+
+.modal-comunidades-publicas .modal-dialog {
+  max-width: min(560px, calc(100vw - 24px));
+}
+
+.modal-comunidades-publicas .modal-body {
+  max-height: calc(100vh - 170px);
+}
+
+.modal-comunidades-publicas .entity-selector-results {
+  position: static;
+  max-height: min(46vh, 360px);
+  margin-top: 0.4rem;
+}
+
+.modal-comunidades-publicas .entity-selector-option {
+  min-height: 58px;
+}
+
+@media (max-width: 576px) {
+  .modal-comunidades-publicas .modal-dialog {
+    max-width: calc(100vw - 16px);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .modal-comunidades-publicas .modal-body {
+    max-height: calc(100vh - 130px);
+  }
+
+  .modal-comunidades-publicas .entity-selector-results {
+    max-height: 48vh;
+  }
+}
+
 .card {
   background-color: rgba(255, 255, 255, 0.9);
   color: #000;

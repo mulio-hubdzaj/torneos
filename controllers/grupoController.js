@@ -1,5 +1,6 @@
 // controllers/grupoController.js
-const { Grupo, Equipo, Torneo, sequelize } = require('../models');
+const { Grupo, Equipo, Torneo, EquipoMovimientoGrupo, sequelize } = require('../models');
+const { Op } = require('sequelize');
 
 function volverAtras(req, fallback = '/torneos') {
   return req.get('referer') || fallback;
@@ -196,6 +197,15 @@ exports.eliminar = async (req, res) => {
       req.flash("danger", "No se puede eliminar: el grupo contiene equipos");
       return res.redirect(`/torneos/gestionar/${grupo.id_torneo}#grupos`);
     }
+
+    await EquipoMovimientoGrupo.destroy({
+      where: {
+        [Op.or]: [
+          { id_grupo_origen: grupo.id_grupo },
+          { id_grupo_destino: grupo.id_grupo }
+        ]
+      }
+    });
 
     await grupo.destroy();
     req.flash("success", "Grupo eliminado con exito");

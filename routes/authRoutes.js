@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { Usuario, Entity, Torneo } = require('../models');
+const { Op, fn, col, where: sequelizeWhere } = require('sequelize');
 const bcrypt = require('bcrypt');
 const torneoController = require('../controllers/torneoController');
 const LOGOUT_REDIRECT_URL = process.env.LOGOUT_REDIRECT_URL || '/';
@@ -28,6 +29,20 @@ async function obtenerEntidadesActivas() {
   return entidades.map(entidad => entidad.get({ plain: true }));
 }
 
+async function redirigirAEntidadDeTrabajo(req, res, entityId) {
+  const torneo = await Torneo.findOne({
+    where: { entity_id: entityId, estado: true },
+    order: [['nombre_torneo', 'ASC']]
+  });
+
+  if (torneo) {
+    req.session.torneo_id = torneo.id_torneo;
+    return res.redirect(`/torneos/gestionar/${torneo.id_torneo}?tab=torneos#torneos`);
+  }
+
+  return res.redirect(`/entidad/gestionar/${entityId}`);
+}
+
 // Mostrar formulario de login
 router.get('/login', async (req, res) => {
   try {
@@ -36,6 +51,36 @@ router.get('/login', async (req, res) => {
   } catch (error) {
     console.error('Error al cargar entidades para login:', error);
     res.render('login', { entidades: [] });
+  }
+});
+
+router.get('/entidades/buscar', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const where = { activo: true };
+
+    if (q) {
+      const termino = `%${q.toLowerCase()}%`;
+      where[Op.or] = [
+        sequelizeWhere(fn('LOWER', col('codigo')), { [Op.like]: termino }),
+        sequelizeWhere(fn('LOWER', col('descripcion')), { [Op.like]: termino })
+      ];
+    }
+
+    const entidades = await Entity.findAll({
+      where,
+      attributes: ['entity_id', 'codigo', 'descripcion'],
+      order: [['codigo', 'ASC']],
+      limit: 20
+    });
+
+    res.json({
+      success: true,
+      entidades: entidades.map(entidad => entidad.get({ plain: true }))
+    });
+  } catch (error) {
+    console.error('Error al buscar entidades:', error);
+    res.status(500).json({ success: false, entidades: [] });
   }
 });
 
@@ -218,7 +263,7 @@ router.post('/cambiar-contrasena', async (req, res) => {
         return res.redirect(torneo ? `/torneos/gestionar/${torneo.id_torneo}` : '/torneos');
       }
       case 3:
-        return res.redirect(`/entidad/gestionar/${req.session.entity_id}`);
+        return redirigirAEntidadDeTrabajo(req, res, req.session.entity_id);
       case 99:
         return res.redirect('/admin');
       default:
@@ -257,13 +302,25 @@ router.post('/login', async (req, res) => {
       entityId = entidadObj.entity_id;
     }
 
-    // Construir cláusula de búsqueda con documento + entidad obligatoria
-    let whereClause = { documento };
+    // Si no selecciona entidad, usamos la entidad registrada cuando el documento no es ambiguo.
+    let user = null;
     if (entityId) {
-      whereClause.entity_id = entityId;
-    }
+      user = await Usuario.findOne({ where: { documento, entity_id: entityId } });
+    } else {
+      const usuariosDocumento = await Usuario.findAll({
+        where: { documento },
+        order: [['creado_en', 'DESC']],
+        limit: 2
+      });
 
-    const user = await Usuario.findOne({ where: whereClause });
+      if (usuariosDocumento.length === 1) {
+        user = usuariosDocumento[0];
+        entityId = user.entity_id;
+      } else if (usuariosDocumento.length > 1) {
+        req.flash("danger", "Este documento existe en varias entidades. Seleccione una entidad para iniciar sesion.");
+        return res.redirect('/login');
+      }
+    }
 
     if (!user) {
       req.flash("danger", "Usuario no encontrado en la entidad seleccionada");
@@ -322,7 +379,7 @@ router.post('/login', async (req, res) => {
 
       case 3: // Admin
         req.flash("success", "Bienvenido Admin");
-        return res.redirect(`/entidad/gestionar/${user.entity_id}`);
+        return redirigirAEntidadDeTrabajo(req, res, user.entity_id);
 
       case 99: // Super Admin
         req.flash("success", "Bienvenido Super Admin");

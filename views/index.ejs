@@ -165,7 +165,7 @@
     </div>
   </div>
 
-  <div class="modal fade" id="modalComunidadesPublicas" tabindex="-1" aria-labelledby="modalComunidadesPublicasTitulo" aria-hidden="true">
+  <div class="modal fade modal-comunidades-publicas" id="modalComunidadesPublicas" tabindex="-1" aria-labelledby="modalComunidadesPublicasTitulo" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
@@ -174,20 +174,23 @@
         </div>
         <div class="modal-body">
           <% if (comunidadesDisponibles.length) { %>
-            <div class="community-list">
-              <% comunidadesDisponibles.forEach(comunidad => { %>
-                <div class="community-option">
-                  <div>
-                    <div class="community-name"><%= comunidad.descripcion || comunidad.codigo %></div>
-                    <div class="community-code"><%= comunidad.codigo %></div>
-                  </div>
-                  <a href="/publico/comunidad?entity_id=<%= comunidad.entity_id %>" class="btn btn-success btn-sm">
-                    <i class="bi bi-arrow-right-circle"></i>
-                    Ver torneos
-                  </a>
+            <form action="/publico/comunidad" method="GET">
+              <label for="comunidadBusqueda" class="form-label text-start d-block">Comunidad</label>
+              <div class="entity-selector" data-entity-selector data-value-field="entity_id" data-required="true" data-save-on-submit="true" data-save-on-select="true">
+                <input type="hidden" id="comunidadEntidad" name="entity_id" class="entity-selector-value" required>
+                <div class="entity-selector-control">
+                  <input type="text" id="comunidadBusqueda" class="form-control entity-selector-input" autocomplete="off" placeholder="Buscar comunidad por nombre o codigo">
+                  <button type="button" class="btn btn-outline-secondary entity-selector-favorite" aria-label="Comunidad favorita" aria-pressed="false">
+                    <i class="bi bi-star"></i>
+                  </button>
                 </div>
-              <% }) %>
-            </div>
+                <div class="entity-selector-results d-none"></div>
+              </div>
+              <button type="submit" class="btn btn-success w-100 mt-3">
+                <i class="bi bi-arrow-right-circle"></i>
+                Ver torneos
+              </button>
+            </form>
           <% } else { %>
             <div class="alert alert-info mb-0">No hay comunidades activas para consultar.</div>
           <% } %>
@@ -195,5 +198,6 @@
       </div>
     </div>
   </div>
+  <script src="/js/entity-selector.js"></script>
 </body>
 </html>

@@ -106,17 +106,19 @@
       </div>
 
       <div class="mb-3">
-        <label for="entidad" class="form-label">Entidad:</label>
-        <select id="entidad" name="entidad" class="form-select" autocomplete="organization">
-          <option value="" selected>Seleccione una entidad</option>
-          <% (typeof entidades !== 'undefined' ? entidades : []).forEach(entidad => { %>
-            <option value="<%= entidad.codigo %>">
-              <%= entidad.descripcion || entidad.codigo %> (<%= entidad.codigo %>)
-            </option>
-          <% }) %>
-        </select>
+        <label for="entidadBusqueda" class="form-label">Entidad:</label>
+        <div class="entity-selector" data-entity-selector data-value-field="codigo" data-save-on-submit="true" data-save-on-select="true" data-allow-empty-favorite="true">
+          <input type="hidden" id="entidad" name="entidad" class="entity-selector-value">
+          <div class="entity-selector-control">
+            <input type="text" id="entidadBusqueda" class="form-control entity-selector-input" autocomplete="off" placeholder="Buscar entidad por nombre o codigo">
+            <button type="button" class="btn btn-outline-secondary entity-selector-favorite" aria-label="Entidad favorita" aria-pressed="false">
+              <i class="bi bi-star"></i>
+            </button>
+          </div>
+          <div class="entity-selector-results d-none"></div>
+        </div>
         <small class="form-text text-muted">
-          Ingresa el código de la entidad si deseas iniciar sesión en un contexto específico.
+          Si no seleccionas entidad, se usa la entidad registrada cuando tu documento no esta repetido.
         </small>
       </div>
 
@@ -128,6 +130,7 @@
     </div>
   </div>
 
+  <script src="/js/entity-selector.js"></script>
   <script>
     if (!window.Capacitor) {
       document.body.classList.add('app-browser');
