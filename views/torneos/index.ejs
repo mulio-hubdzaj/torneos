@@ -9,6 +9,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.45, maximum-scale=3, user-scalable=yes, viewport-fit=cover">
   <title>Gestión de Torneos</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
@@ -1802,6 +1803,7 @@ function imprimirDocsPartidoEquipo(lado) {
 function actualizarHorarioPartidoEnVista(partidoId, partido = {}) {
   const row = document.querySelector(`tr[data-partido-row="${partidoId}"]`);
   const detalle = document.querySelector(`.partido-detalle[data-partido-id="${partidoId}"]`);
+  const publicCard = document.querySelector(`[data-public-partido-card="${partidoId}"]`);
   const fechaDisplay = partido.fecha_formateada || '-';
   const horaDisplay = partido.hora || '-';
   const canchaNombre = String(partido.nombre_cancha || '').trim();
@@ -1832,6 +1834,15 @@ function actualizarHorarioPartidoEnVista(partidoId, partido = {}) {
     const canchaDetalle = canchaWrap.querySelector('.partido-detalle-cancha');
     if (canchaDetalle) canchaDetalle.textContent = canchaNombre;
   }
+
+  const publicFecha = publicCard?.querySelector('.fixture-public-fecha');
+  const publicHora = publicCard?.querySelector('.fixture-public-hora');
+  const publicCanchaWrap = publicCard?.querySelector('.fixture-public-cancha-wrap');
+  const publicCancha = publicCard?.querySelector('.fixture-public-cancha');
+  if (publicFecha) publicFecha.textContent = fechaDisplay;
+  if (publicHora) publicHora.textContent = horaDisplay;
+  if (publicCanchaWrap) publicCanchaWrap.classList.toggle('d-none', !canchaNombre);
+  if (publicCancha) publicCancha.textContent = canchaNombre;
 
   const btnEditar = row?.querySelector('.editar-horario-btn');
   if (btnEditar) {
@@ -1873,10 +1884,51 @@ function actualizarAccionesPartido(partidoId, estado) {
   if (selectEstado) {
     selectEstado.classList.toggle('estado-en-curso', estadoNormalizado === 'en_curso');
   }
+  actualizarEstadoPublicoPartido(partidoId, estadoNormalizado);
 }
 
 function normalizarEstadoPartidoCliente(estado) {
   return String(estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function textoEstadoPartidoCliente(estado) {
+  const estadoNormalizado = normalizarEstadoPartidoCliente(estado);
+  if (estadoNormalizado === 'en_curso') return 'En curso';
+  return estadoNormalizado.charAt(0).toUpperCase() + estadoNormalizado.slice(1);
+}
+
+function claseBadgeEstadoPartidoCliente(estado) {
+  const estadoNormalizado = normalizarEstadoPartidoCliente(estado);
+  if (estadoNormalizado === 'en_curso') return 'estado-badge-en-curso';
+  if (estadoNormalizado === 'finalizado') return 'text-bg-success';
+  if (estadoNormalizado === 'suspendido') return 'text-bg-secondary';
+  return 'text-bg-light';
+}
+
+function actualizarEstadoPublicoPartido(partidoId, estado) {
+  const estadoNormalizado = normalizarEstadoPartidoCliente(estado);
+  const publicCard = document.querySelector(`[data-public-partido-card="${partidoId}"]`);
+  if (!publicCard) return;
+
+  publicCard.className = publicCard.className
+    .split(/\s+/)
+    .filter(clase => clase && !clase.startsWith('fixture-public-estado-'))
+    .join(' ');
+  publicCard.classList.add(`fixture-public-estado-${estadoNormalizado}`);
+
+  const estadoEl = publicCard.querySelector('.fixture-public-status');
+  if (estadoEl) {
+    estadoEl.className = `fixture-public-status badge ${claseBadgeEstadoPartidoCliente(estadoNormalizado)}`;
+    estadoEl.textContent = textoEstadoPartidoCliente(estadoNormalizado);
+  }
+
+  const marcador = document.querySelector(`td[data-id="${partidoId}"][data-equipo-a]`);
+  const mostrarMarcador = estadoNormalizado === 'finalizado' || estadoNormalizado === 'en_curso';
+  const score = publicCard.querySelector('.fixture-public-score');
+  const vs = publicCard.querySelector('.fixture-public-vs');
+  if (score && marcador) score.textContent = `${marcador.dataset.golesA || 0} - ${marcador.dataset.golesB || 0}`;
+  score?.classList.toggle('d-none', !mostrarMarcador);
+  vs?.classList.toggle('d-none', mostrarMarcador);
 }
 
 function cerrarModalBootstrapSeguro(modalId) {
@@ -2824,6 +2876,12 @@ async function guardarHorariosComunes(numeroFecha) {
         if (fechaEl) fechaEl.textContent = fechaDisplay;
         if (horaEl) horaEl.textContent = horaActual;
 
+        const publicCard = row.querySelector('.fixture-public-card');
+        const publicFecha = publicCard?.querySelector('.fixture-public-fecha');
+        const publicHora = publicCard?.querySelector('.fixture-public-hora');
+        if (publicFecha) publicFecha.textContent = fechaDisplay;
+        if (publicHora) publicHora.textContent = horaActual;
+
         const btnEditar = row.querySelector('.editar-horario-btn');
         if (btnEditar) {
           btnEditar.dataset.fecha = fechaComun;
@@ -2933,6 +2991,9 @@ function actualizarMarcadorPartidoEnVista(partidoId, golesA, golesB, estado = nu
     const span = resultCell.querySelector('span');
     if (span) span.textContent = `${golesA} - ${golesB}`;
   }
+
+  const publicScore = document.querySelector(`[data-public-partido-card="${partidoId}"] .fixture-public-score`);
+  if (publicScore) publicScore.textContent = `${golesA} - ${golesB}`;
 
   if (estadoNormalizado) {
     const selectEstado = document.querySelector(`.estado-select[data-id="${partidoId}"]`);
@@ -6320,6 +6381,179 @@ async function confirmarToggleEquipo(input) {
   display: inline-flex;
 }
 
+#partidos.partidos-vista-publica .fixture-fecha-panel {
+  overflow-x: visible;
+}
+
+#partidos.partidos-vista-publica .table-responsive {
+  overflow-x: visible !important;
+}
+
+#partidos.partidos-vista-publica .fixture-partidos-table {
+  border-collapse: separate;
+  border-spacing: 0 0.8rem;
+  min-width: 0;
+}
+
+#partidos.partidos-vista-publica .fixture-partidos-table thead {
+  display: none;
+}
+
+#partidos.partidos-vista-publica .fixture-partidos-table tbody,
+#partidos.partidos-vista-publica .fixture-partidos-table tr,
+#partidos.partidos-vista-publica .fixture-partidos-table td.fixture-public-card-cell {
+  display: block;
+  width: 100%;
+}
+
+#partidos.partidos-vista-publica .fixture-partidos-table tr[data-partido-row] {
+  background: transparent;
+  border: 0;
+}
+
+#partidos.partidos-vista-publica .fixture-partidos-table tr[data-partido-row] > td:not(.fixture-public-card-cell) {
+  display: none !important;
+}
+
+#partidos.partidos-vista-publica .fixture-public-card-cell {
+  border: 0;
+  padding: 0;
+}
+
+#partidos.partidos-vista-publica .partido-detalle-row {
+  display: none !important;
+}
+
+.fixture-public-card {
+  background:
+    linear-gradient(135deg, rgba(9, 28, 56, 0.96), rgba(11, 64, 92, 0.94)),
+    url('/images/fondo-futbol.jpg');
+  background-position: center;
+  background-size: cover;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(11, 31, 58, 0.18);
+  color: #fff;
+  overflow: hidden;
+}
+
+.fixture-public-main {
+  align-items: center;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+  min-height: 74px;
+  padding: 0.75rem 0.8rem 0.5rem;
+}
+
+.fixture-public-team {
+  align-items: center;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.fixture-public-team-b {
+  grid-template-columns: minmax(0, 1fr) 42px;
+  text-align: right;
+}
+
+.fixture-public-team-b .fixture-public-icon {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.fixture-public-team-b strong,
+.fixture-public-team-b .fixture-public-team-note {
+  grid-column: 1;
+}
+
+.fixture-public-icon {
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  height: 42px;
+  object-fit: contain;
+  padding: 0.16rem;
+  width: 42px;
+}
+
+.fixture-public-team strong {
+  color: #fff;
+  font-size: 0.92rem;
+  line-height: 1.05;
+  min-width: 0;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fixture-public-team-note {
+  color: #ffd8a8;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.fixture-public-versus {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.fixture-public-vs,
+.fixture-public-score {
+  align-items: center;
+  background: #0d6efd;
+  border-radius: 6px;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.28);
+  color: #fff;
+  display: inline-flex;
+  font-size: 1.05rem;
+  font-weight: 900;
+  justify-content: center;
+  line-height: 1;
+  min-height: 40px;
+  min-width: 58px;
+  padding: 0.45rem 0.5rem;
+}
+
+.fixture-public-score {
+  background: #f8fafc;
+  color: #0b1f3a;
+}
+
+.fixture-public-meta {
+  align-items: center;
+  background: rgba(248, 250, 252, 0.94);
+  color: #0b1f3a;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.fixture-public-meta span {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.fixture-public-meta i {
+  color: #0d6efd;
+}
+
+.fixture-public-meta strong {
+  font-size: 0.78rem;
+}
+
+.fixture-public-status {
+  margin-left: auto;
+}
+
 #partidos.partidos-vista-publica .editar-marcador-btn {
   cursor: default !important;
   pointer-events: none;
@@ -6600,33 +6834,6 @@ async function confirmarToggleEquipo(input) {
     border-top: 1px solid #dbe2ea;
   }
 
-  #partidos.partidos-vista-publica .table tr[data-partido-row] {
-    grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
-    grid-template-areas:
-      "equipoA marcador equipoB"
-      "estado estado estado";
-    gap: 0.35rem 0.3rem;
-    padding: 0.58rem 0.42rem 0.45rem;
-  }
-
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(2) {
-    grid-area: equipoA;
-  }
-
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(3) {
-    grid-area: marcador;
-  }
-
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(4) {
-    grid-area: equipoB;
-  }
-
-  #partidos.partidos-vista-publica .table tr[data-partido-row] > td:nth-child(8) {
-    grid-area: estado;
-    justify-self: end;
-    padding-top: 0;
-  }
-
   .torneos-page #partidos .fixture-web-col {
     display: none !important;
   }
@@ -6683,30 +6890,30 @@ async function confirmarToggleEquipo(input) {
     padding: 0;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(1) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(2) {
     grid-area: docs;
     align-self: center;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(2) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(3) {
     grid-area: equipoA;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(3) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(4) {
     grid-area: marcador;
     align-self: center;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(4) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(5) {
     grid-area: equipoB;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(8) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(9) {
     grid-area: estado;
     align-self: center;
   }
 
-  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(9) {
+  .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(10) {
     grid-area: acciones;
     align-self: center;
   }
@@ -6837,6 +7044,94 @@ async function confirmarToggleEquipo(input) {
     line-height: 1.05;
     padding-left: 0.12rem;
     padding-right: 0.12rem;
+  }
+
+  #partidos.partidos-vista-publica .fixture-partidos-table,
+  #partidos.partidos-vista-publica .fixture-partidos-table tbody,
+  #partidos.partidos-vista-publica .fixture-partidos-table tr[data-partido-row],
+  #partidos.partidos-vista-publica .fixture-partidos-table td.fixture-public-card-cell {
+    display: block;
+    width: 100%;
+  }
+
+  #partidos.partidos-vista-publica .fixture-partidos-table tr[data-partido-row] {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+
+  #partidos.partidos-vista-publica .fixture-partidos-table tr[data-partido-row] > td:not(.fixture-public-card-cell) {
+    display: none !important;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-card {
+    margin-bottom: 0;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-main {
+    grid-template-columns: minmax(0, 1fr) 46px minmax(0, 1fr);
+    min-height: 58px;
+    padding: 0.48rem 0.5rem 0.38rem;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-team {
+    align-items: center;
+    display: flex;
+    gap: 0.3rem;
+    min-height: 36px;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-team-b {
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+    text-align: right;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-icon {
+    flex: 0 0 auto;
+    height: 30px;
+    width: 30px;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-team strong {
+    display: -webkit-box;
+    flex: 1 1 auto;
+    font-size: 0.68rem;
+    line-height: 1.05;
+    max-height: 2.15em;
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: normal;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-vs,
+  #partidos.partidos-vista-publica .fixture-public-score {
+    font-size: 0.78rem;
+    min-height: 30px;
+    min-width: 40px;
+    padding: 0.34rem 0.38rem;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-meta {
+    gap: 0.3rem 0.45rem;
+    padding: 0.38rem 0.5rem;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-meta strong {
+    font-size: 0.68rem;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-meta .badge {
+    font-size: 0.66rem;
+  }
+
+  #partidos.partidos-vista-publica .fixture-public-status {
+    margin-left: 0;
   }
 
   .dashboard-score-box {
@@ -8218,7 +8513,45 @@ async function confirmarToggleEquipo(input) {
                       </tr>
                     <% } %>
                     <% fecha.partidos.forEach(partido => { %>
+                      <%
+                        const estadoPartidoValor = String(partido.estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_');
+                        const estadoPartidoTexto = estadoPartidoValor === 'en_curso' ? 'En curso' : (estadoPartidoValor.charAt(0).toUpperCase() + estadoPartidoValor.slice(1));
+                        const estadoPartidoBadge = estadoPartidoValor === 'en_curso' ? 'estado-badge-en-curso' : (estadoPartidoValor === 'finalizado' ? 'text-bg-success' : (estadoPartidoValor === 'suspendido' ? 'text-bg-secondary' : 'text-bg-light'));
+                        const grupoPartidoTexto = `${partido.nombre_grupo_display || partido.nombre_grupo || 'Sin grupo'}${(partido.observaciones === 'Ida' || partido.observaciones === 'Vuelta') && !String(partido.nombre_grupo_display || '').includes(partido.observaciones) ? ' - ' + partido.observaciones : ''}`;
+                        const mostrarMarcadorPublico = estadoPartidoValor === 'finalizado' || estadoPartidoValor === 'en_curso';
+                      %>
                       <tr class="<%= partido.tiene_equipo_inhabilitado ? 'table-secondary partido-inhabilitado' : '' %>" data-partido-row="<%= partido.id_partido %>">
+                        <td class="fixture-public-card-cell partidos-public-only" colspan="9">
+                          <article class="fixture-public-card fixture-public-estado-<%= estadoPartidoValor %>" data-public-partido-card="<%= partido.id_partido %>">
+                            <div class="fixture-public-main">
+                              <div class="fixture-public-team fixture-public-team-a">
+                                <img src="<%= partido.icono_equipo_a || '/images/default_team.png' %>" alt="" class="fixture-public-icon">
+                                <strong title="<%= partido.nombre_equipo_a || 'Equipo A' %>"><%= partido.nombre_equipo_a || 'Equipo A' %></strong>
+                                <% if (partido.estado_equipo_a === false) { %>
+                                  <span class="fixture-public-team-note">inhabilitada</span>
+                                <% } %>
+                              </div>
+                              <div class="fixture-public-versus">
+                                <span class="fixture-public-score <%= mostrarMarcadorPublico ? '' : 'd-none' %>"><%= partido.goles_a ?? 0 %> - <%= partido.goles_b ?? 0 %></span>
+                                <span class="fixture-public-vs <%= mostrarMarcadorPublico ? 'd-none' : '' %>">VS</span>
+                              </div>
+                              <div class="fixture-public-team fixture-public-team-b">
+                                <img src="<%= partido.icono_equipo_b || '/images/default_team.png' %>" alt="" class="fixture-public-icon">
+                                <strong title="<%= partido.nombre_equipo_b || 'Equipo B' %>"><%= partido.nombre_equipo_b || 'Equipo B' %></strong>
+                                <% if (partido.estado_equipo_b === false) { %>
+                                  <span class="fixture-public-team-note">inhabilitada</span>
+                                <% } %>
+                              </div>
+                            </div>
+                            <div class="fixture-public-meta">
+                              <span><i class="bi bi-diagram-3"></i> <strong class="fixture-public-grupo"><%= grupoPartidoTexto %></strong></span>
+                              <span><i class="bi bi-calendar-event"></i> <strong class="fixture-public-fecha"><%= partido.fecha_formateada || '-' %></strong></span>
+                              <span><i class="bi bi-clock"></i> <strong class="fixture-public-hora"><%= partido.hora || '-' %></strong></span>
+                              <span class="fixture-public-cancha-wrap <%= partido.nombre_cancha ? '' : 'd-none' %>"><i class="bi bi-geo-alt"></i> <strong class="fixture-public-cancha"><%= partido.nombre_cancha || '' %></strong></span>
+                              <span class="fixture-public-status badge <%= estadoPartidoBadge %>"><%= estadoPartidoTexto %></span>
+                            </div>
+                          </article>
+                        </td>
                         <td class="partidos-admin-only fixture-docs-cell">
                           <button type="button"
                                   class="btn btn-outline-success btn-sm fixture-docs-btn"
@@ -8286,9 +8619,6 @@ async function confirmarToggleEquipo(input) {
                         <td class="fixture-web-col fixture-fecha-cell"><%= partido.fecha_formateada || '-' %></td>
                         <td class="fixture-web-col fixture-hora-cell"><%= partido.hora || '-' %></td>
                         <td>
-                          <% const estadoPartidoValor = String(partido.estado || 'programado').trim().toLowerCase().replace(/[\s-]+/g, '_'); %>
-                          <% const estadoPartidoTexto = estadoPartidoValor === 'en_curso' ? 'En curso' : (estadoPartidoValor.charAt(0).toUpperCase() + estadoPartidoValor.slice(1)); %>
-                          <% const estadoPartidoBadge = estadoPartidoValor === 'en_curso' ? 'estado-badge-en-curso' : (estadoPartidoValor === 'finalizado' ? 'text-bg-success' : (estadoPartidoValor === 'suspendido' ? 'text-bg-secondary' : 'text-bg-light')); %>
                           <select class="form-select form-select-sm estado-select partidos-admin-only <%= estadoPartidoValor === 'en_curso' ? 'estado-en-curso' : '' %>" data-id="<%= partido.id_partido %>" data-estado-actual="<%= estadoPartidoValor %>">
                             <option value="programado" <%= estadoPartidoValor === 'programado' ? 'selected' : '' %>>Programado</option>
                             <option value="en_curso" <%= estadoPartidoValor === 'en_curso' ? 'selected' : '' %>>En curso</option>

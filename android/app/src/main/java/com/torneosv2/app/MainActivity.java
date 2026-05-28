@@ -9,6 +9,7 @@ import android.os.Environment;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.URLUtil;
 import android.widget.Toast;
@@ -23,6 +24,10 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         if (webView != null) {
             webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
+            WebSettings settings = webView.getSettings();
+            settings.setSupportZoom(true);
+            settings.setBuiltInZoomControls(true);
+            settings.setDisplayZoomControls(false);
             webView.addJavascriptInterface(new AndroidDownloader(), "AndroidDownloader");
             webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
                 iniciarDescarga(url, userAgent, contentDisposition, mimeType);
