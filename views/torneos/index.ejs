@@ -150,6 +150,13 @@
       </div>
     </div>
   </nav>
+  <button type="button"
+          class="fixture-nav-restore"
+          id="fixtureNavRestore"
+          aria-label="Mostrar menu superior"
+          title="Mostrar menu superior">
+    <i class="bi bi-chevron-down"></i>
+  </button>
 
   <!-- Bloque de alertas arriba -->
  <% if (messages.danger && messages.danger.length > 0) { %>
@@ -4708,6 +4715,10 @@ async function confirmarToggleEquipo(input) {
   display: none;
 }
 
+.fixture-nav-restore {
+  display: none;
+}
+
 .torneos-page .btn {
   margin: 0;
   padding: 0.38rem 0.72rem;
@@ -6662,6 +6673,7 @@ async function confirmarToggleEquipo(input) {
 
   .torneos-page .navbar {
     padding: 0.45rem 0;
+    transition: transform 0.22s ease;
   }
 
   .torneos-page .navbar .container-fluid {
@@ -6756,6 +6768,37 @@ async function confirmarToggleEquipo(input) {
     padding: 0.36rem 0.5rem;
     font-size: 0.82rem;
     line-height: 1.1;
+  }
+
+  body.fixture-nav-auto-hidden {
+    padding-top: 34px;
+  }
+
+  body.fixture-nav-auto-hidden .navbar {
+    transform: translateY(calc(-100% - 2px));
+  }
+
+  body.fixture-nav-auto-hidden .fixture-nav-restore {
+    align-items: center;
+    background: #0d6efd;
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    border-radius: 8px 0 0 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+    color: #fff;
+    display: inline-flex;
+    height: 34px;
+    justify-content: center;
+    padding: 0;
+    position: fixed;
+    right: 0;
+    top: 34px;
+    width: 34px;
+    z-index: 1042;
+  }
+
+  body.fixture-nav-auto-hidden .fixture-nav-restore i {
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .torneos-page .tab-content {
@@ -10081,7 +10124,35 @@ if (sessionStorage.getItem('jugadoresModoAdmin') === '1') {
 
 const appNavToggle = document.getElementById('appNavToggle');
 const appNavActions = document.getElementById('appNavActions');
+const fixtureNavRestore = document.getElementById('fixtureNavRestore');
 let appNavCloseTimer = null;
+let fixtureNavHideTimer = null;
+
+function esPantallaMobileFixture() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function pestanaActivaPrincipal() {
+  return document.querySelector('.navbar [data-bs-toggle="tab"].active')?.getAttribute('href') || window.location.hash || '#torneos';
+}
+
+function ocultarNavFixtureSiCorresponde() {
+  if (pestanaActivaPrincipal() === '#partidos' && esPantallaMobileFixture()) {
+    cerrarMenuAppNav();
+    document.body.classList.add('fixture-nav-auto-hidden');
+  }
+}
+
+function mostrarNavFixture() {
+  document.body.classList.remove('fixture-nav-auto-hidden');
+}
+
+function programarOcultarNavFixture() {
+  if (fixtureNavHideTimer) clearTimeout(fixtureNavHideTimer);
+  mostrarNavFixture();
+  if (pestanaActivaPrincipal() !== '#partidos' || !esPantallaMobileFixture()) return;
+  fixtureNavHideTimer = setTimeout(ocultarNavFixtureSiCorresponde, 3000);
+}
 
 function cerrarMenuAppNav() {
   if (!appNavActions || !appNavToggle) return;
@@ -10101,6 +10172,7 @@ function programarCierreMenuAppNav() {
 appNavToggle?.addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
+  mostrarNavFixture();
   const menuAbierto = appNavActions?.classList.toggle('is-open');
   appNavToggle.setAttribute('aria-expanded', menuAbierto ? 'true' : 'false');
   if (menuAbierto) {
@@ -10108,6 +10180,10 @@ appNavToggle?.addEventListener('click', event => {
   } else {
     cerrarMenuAppNav();
   }
+});
+
+fixtureNavRestore?.addEventListener('click', () => {
+  programarOcultarNavFixture();
 });
 
 appNavActions?.addEventListener('click', event => {
@@ -10123,6 +10199,7 @@ document.addEventListener('click', event => {
 document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', event => {
     cerrarMenuAppNav();
+    mostrarNavFixture();
     const href = event.target?.getAttribute('href');
     if (!href) return;
 
@@ -10172,8 +10249,29 @@ document.querySelectorAll('.navbar [data-bs-toggle="tab"]').forEach(tab => {
     if (href === '#auditoria') {
       refrescarAuditoria();
     }
+
+    if (href === '#partidos') {
+      programarOcultarNavFixture();
+    } else if (fixtureNavHideTimer) {
+      clearTimeout(fixtureNavHideTimer);
+      fixtureNavHideTimer = null;
+    }
   });
 });
+
+window.addEventListener('resize', () => {
+  if (!esPantallaMobileFixture()) {
+    mostrarNavFixture();
+    if (fixtureNavHideTimer) {
+      clearTimeout(fixtureNavHideTimer);
+      fixtureNavHideTimer = null;
+    }
+    return;
+  }
+  programarOcultarNavFixture();
+});
+
+programarOcultarNavFixture();
 
 function activarVistaPublicaFinanzas() {
   const panel = document.getElementById('finanzas');
