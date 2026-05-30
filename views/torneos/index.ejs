@@ -6887,6 +6887,10 @@ async function confirmarToggleEquipo(input) {
     min-width: 0;
   }
 
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-public-only {
+    display: none !important;
+  }
+
   .torneos-page #partidos .partido-detalle-row {
     display: block;
     width: 100%;
@@ -6921,7 +6925,7 @@ async function confirmarToggleEquipo(input) {
     grid-template-columns: 54px minmax(0, 1fr) 58px minmax(0, 1fr);
     grid-template-areas:
       "docs equipoA marcador equipoB"
-      "estado estado estado acciones";
+      "estado estado acciones acciones";
     gap: 0.45rem 0.35rem;
     align-items: stretch;
     padding: 0.72rem 0.52rem 0.62rem;
