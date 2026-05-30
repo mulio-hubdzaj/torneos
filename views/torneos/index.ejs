@@ -14,6 +14,33 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    @media (max-width: 991.98px), (pointer: coarse) {
+      body.torneos-page {
+        padding-top: 150px;
+      }
+
+      body.torneos-page .navbar .nav-tabs {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        width: 100%;
+      }
+
+      body.torneos-page .navbar .nav-tabs::-webkit-scrollbar {
+        display: none;
+      }
+
+      body.torneos-page .app-nav-actions {
+        display: none !important;
+      }
+
+      body.torneos-page .app-nav-actions.is-open {
+        display: flex !important;
+      }
+    }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
   <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -6922,7 +6949,7 @@ async function confirmarToggleEquipo(input) {
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] {
-    grid-template-columns: 54px minmax(0, 1fr) 58px minmax(0, 1fr);
+    grid-template-columns: 48px minmax(0, 1fr) 54px minmax(0, 1fr);
     grid-template-areas:
       "docs equipoA marcador equipoB"
       "estado estado acciones acciones";
@@ -6939,7 +6966,7 @@ async function confirmarToggleEquipo(input) {
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(2) {
     grid-area: docs;
-    align-self: center;
+    align-self: end;
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(3) {
@@ -6948,7 +6975,7 @@ async function confirmarToggleEquipo(input) {
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(4) {
     grid-area: marcador;
-    align-self: center;
+    align-self: end;
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .table tr[data-partido-row] > td:nth-child(5) {
@@ -6970,7 +6997,7 @@ async function confirmarToggleEquipo(input) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 48px;
+    min-height: 44px;
     border-radius: 6px;
     background: #f8f9fa;
     border: 1px solid #dbe2ea !important;
@@ -6998,9 +7025,9 @@ async function confirmarToggleEquipo(input) {
   .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo {
     grid-template-columns: 20px minmax(0, 1fr) 32px;
     grid-auto-flow: row;
-    align-items: center;
-    min-height: 50px;
-    padding: 0.25rem 0;
+    align-items: start;
+    min-height: 64px;
+    padding: 0.12rem 0 0.25rem;
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo .badge {
@@ -7014,6 +7041,7 @@ async function confirmarToggleEquipo(input) {
     width: 32px;
     height: 32px;
     justify-self: end;
+    align-self: end;
   }
 
   .torneos-page #partidos:not(.partidos-vista-publica) td.partidos-admin-only .btn-group {
@@ -7070,9 +7098,23 @@ async function confirmarToggleEquipo(input) {
     gap: 0.22rem;
   }
 
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo {
+    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-areas:
+      "icono nombre"
+      ". carga";
+    align-items: start;
+    min-height: 64px;
+    row-gap: 0.26rem;
+  }
+
   .torneos-page #partidos .partidos-equipo-icono {
     width: 18px;
     height: 18px;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-icono {
+    grid-area: icono;
   }
 
   .torneos-page #partidos .partidos-equipo-nombre {
@@ -7081,9 +7123,24 @@ async function confirmarToggleEquipo(input) {
     white-space: nowrap;
     word-break: normal;
     overflow-wrap: normal;
-    overflow: visible;
-    text-overflow: clip;
+    overflow: hidden;
+    text-overflow: ellipsis;
     letter-spacing: 0;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-nombre {
+    display: -webkit-box;
+    grid-area: nombre;
+    text-overflow: clip;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-carga {
+    align-self: end;
+    grid-area: carga;
+    justify-self: end;
   }
 
   .torneos-page #partidos .editar-marcador-btn {
@@ -7588,6 +7645,30 @@ async function confirmarToggleEquipo(input) {
 
   body.torneos-page #partidos .partidos-equipo-nombre {
     font-size: 0.76rem;
+  }
+
+  body.torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo {
+    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-areas:
+      "icono nombre"
+      ". carga";
+    row-gap: 0.18rem;
+  }
+
+  body.torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-icono {
+    grid-area: icono;
+  }
+
+  body.torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-nombre {
+    grid-area: nombre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.torneos-page #partidos:not(.partidos-vista-publica) .partidos-equipo-carga {
+    grid-area: carga;
+    justify-self: end;
   }
 
   body.torneos-page #partidos .estado-select {
